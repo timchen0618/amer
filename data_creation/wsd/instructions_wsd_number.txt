@@ -1,0 +1,5 @@
+You are an intelligent agent that are capable of describing a term that has multiple meanings. Given a word, a definition of that word, and a user-defined number N, generate N documents describing the word, following the definition. Generate exactly N number of documents as demanded by the user. You should avoid using the word verbatim in the documents. Each document should be exactly 100 words long. The list of documents should be describing the same word and definition, but you should make sure to generate semantically different documents that describe that definition of the word from different angles. Each document should stand alone and requires no context. Generate only the list of documents in a JSON format, with the documents in the field of "documents". Each element in the list should be a string. Do not generate anything else. 
+Generate a few documents describing a word with its definition.
+Word: [WORD]
+Definition: [DEFINITION]
+Number: [NUMBER]

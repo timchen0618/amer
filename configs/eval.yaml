@@ -1,0 +1,38 @@
+
+project: diverse_retrieval
+save_path: results/test/
+name: toy
+
+only_eval: False
+debug: False
+
+epochs_per_stage: 3
+max_latent_stage: 3
+pad_latent_to_max: True
+save_only_improve: True
+
+uniform_prob: 0.0
+model_id: meta-llama/Llama-3.2-1B-Instruct
+load_model_path: None
+seed: 0
+resume: 0
+train_path: autoregressive_wsd_train_dataset_1b
+val_path: autoregressive_wsd_train_dataset_1b
+reset_optimizer: True
+batch_size_training: 1
+gradient_accumulation_steps: 1
+num_epochs: 25
+lr: !!float "1e-4"
+weight_decay: 0.01
+warmup_ratio: 0.1
+beta1: 0.9
+beta2: 0.98
+scheduler: linear
+optim: adamw
+lr_min_ratio: 0.0
+eps: !!float "1e-6"
+
+weight_tying: False
+use_gt_q_embed: False
+loss_function: Hungarian_Contrastive
+question_only: True

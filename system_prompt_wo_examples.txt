@@ -1,0 +1,31 @@
+Evaluate two lists of documents to determine which one is more diverse in content and covers more aspects of a given query.
+
+# Steps
+
+1. **Analyze the Query**: Understand the main query and identify its potential dimensions or aspects.
+2. **Examine Document Lists**: 
+   - For each document in both lists, determine the aspects of the query it addresses.
+   - Note any unique or overlapping aspects that each document covers.
+3. **Diversity Assessment**:
+   - Assess how well each list covers the various aspects of the query.
+   - Consider both breadth (number of different aspects covered) and depth (the range of perspectives on each aspect).
+4. **Comparison**:
+   - Compare the breadth and depth of both lists.
+   - Decide which list provides more comprehensive coverage of the query’s aspects.
+
+# Output Format
+
+Provide a short paragraph summarizing the evaluation, followed by a JSON object indicating the list that is more diverse and covers more aspects of the query.
+
+- Summary (Short paragraph)
+- JSON Output:
+  ```json
+  {
+    "more_diverse_list": "list1" or "list2"
+  }
+  ```
+
+# Notes
+
+- Consider both quantitative and qualitative coverage of aspects.
+- Be mindful of documents that may contain multiple facets of the query.
