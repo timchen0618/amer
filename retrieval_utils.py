@@ -20,9 +20,23 @@ def add_embeddings(index, embeddings, ids, indexing_batch_size):
     index.index_data(ids_toadd, embeddings_toadd)
     return embeddings, ids
 
-def index_encoded_data(index, embedding_files, indexing_batch_size):
+def shard_and_get_embedding_files(embedding_files, shard_id, num_shards):
+    num_files_per_shard = [len(embedding_files) // num_shards for _ in range(num_shards)]
+    # evenly distribute the remaining numbers to each shard
+    for i in range(len(embedding_files) % num_shards):
+        num_files_per_shard[i] += 1
+    assert sum(num_files_per_shard) == len(embedding_files)
+    start_idx = sum(num_files_per_shard[:shard_id])
+    end_idx = start_idx + num_files_per_shard[shard_id]
+    return embedding_files[start_idx:end_idx]
+
+
+def index_encoded_data(index, embedding_files, indexing_batch_size, shard_id=0, num_shards=1):
     allids = []
     allembeddings = np.array([])
+    print('shard_id', shard_id, 'num_shards', num_shards)
+    embedding_files = shard_and_get_embedding_files(embedding_files, shard_id, num_shards)
+    print('embedding_files', len(embedding_files))
     for i, file_path in enumerate(embedding_files):
         print(f"Loading file {file_path}")
         with open(file_path, "rb") as fin:
@@ -96,7 +110,7 @@ def load_passages(path):
 
 class Indexer(object):
 
-    def __init__(self, vector_sz, n_subquantizers=0, n_bits=8):
+    def __init__(self, vector_sz, n_subquantizers=0, n_bits=8, use_gpu=False):
         if n_subquantizers > 0:
             # self.index = faiss.IndexPQ(vector_sz, n_subquantizers, n_bits, faiss.METRIC_INNER_PRODUCT)
             quantizer = faiss.IndexFlatIP(vector_sz)  # Inner Product as base index
@@ -105,21 +119,45 @@ class Indexer(object):
             self.index.nprobe = min(64, nlist)  # Set a reasonable nprobe value
         else:
             self.index = faiss.IndexFlatIP(vector_sz)
+            if use_gpu:
+                print('using gpu')
+                self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, self.index)
+            # cpu_index = faiss.IndexFlatIP(vector_sz)
+
+            # self.num_gpus = faiss.get_num_gpus()
+            # gpu_resources = [faiss.StandardGpuResources() for _ in range(self.num_gpus)]
+            
+            # gpu_indexes = []
+            # for i in range(self.num_gpus):
+            #     gpu_index = faiss.index_cpu_to_gpu(gpu_resources[i], i, cpu_index)
+            #     gpu_indexes.append(gpu_index)
+            # self.index = faiss.IndexShards(1536, threaded=True, successive_ids=True)
+            # for gpu_index in gpu_indexes:
+            #     self.index.add_shard(gpu_index)
+    
+            # # # Shard the index across all available GPUs
+            # # # self.index = faiss.index_cpu_to_all_gpus(cpu_index)
+            # # resources = faiss.StandardGpuResources()
+            # # # cloner_options = faiss.GpuClonerOptions()
+            # cloner_options = faiss.GpuMultipleClonerOptions()
+            # cloner_options.useFloat16 = True 
+            # cloner_options.shard = True
+            # # self.index = faiss.index_cpu_to_gpu(resources, 0, cpu_index, cloner_options)
+            
+
         #self.index_id_to_db_id = np.empty((0), dtype=np.int64)
         self.index_id_to_db_id = []
-        # if torch.cuda.is_available():
-        #     print("Using GPU")
-        #     res = faiss.StandardGpuResources()
-        #     self.index = faiss.index_cpu_to_gpu(res, 0, self.index)
-        #     print('finished moving to GPU')
 
     def index_data(self, ids, embeddings):
         self._update_id_mapping(ids)
         embeddings = embeddings.astype('float32')
         if not self.index.is_trained:
             self.index.train(embeddings)
+            
+        # vectors_per_gpu = np.array_split(embeddings, self.num_gpus)
+        # for i, chunk in enumerate(vectors_per_gpu):
+        #     self.index[i].add(chunk)
         self.index.add(embeddings)
-
         print(f'Total data indexed {len(self.index_id_to_db_id)}')
 
     def search_knn(self, query_vectors: np.array, top_docs: int, index_batch_size: int = 2048) -> List[Tuple[List[object], List[float]]]:
@@ -162,4 +200,3 @@ class Indexer(object):
         #new_ids = np.array(db_ids, dtype=np.int64)
         #self.index_id_to_db_id = np.concatenate((self.index_id_to_db_id, new_ids), axis=0)
         self.index_id_to_db_id.extend(db_ids)
-  

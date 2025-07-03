@@ -213,3 +213,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # python visualize_clusters.py     \
+    # --labels_path /datastor1/hungting/clustering_results/mteb_retriever/stella-400M/trivia_qa_10_kmeans_10_labels.npy \
+    # --centroids_path /datastor1/hungting/clustering_results/mteb_retriever/stella-400M/trivia_qa_10_kmeans_10_centroids.npy \
+    # --embeddings_path /var/local/timchen0618/retrieval_outputs/echo_data/mteb_retriever/stella-400M/trivia_qa_10_doc_embeddings.npy \
+    # --output_path clustering_visualization.html \
+    # --retrieved_documents_path /var/local/timchen0618/retrieval_outputs/echo_data/mteb_retriever/stella-400M/trivia_qa_10.json

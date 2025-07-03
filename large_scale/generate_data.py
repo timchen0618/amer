@@ -164,12 +164,13 @@ def load_retrieval_results(input_dir: str, logger: logging.Logger) -> List[dict]
         List of retrieval results
     """
     logger.info(f"Loading retrieval results from {input_dir}")
-    if str(input_dir).endswith(".jsonl"):
-        return read_jsonl(input_dir)
-    elif str(input_dir).endswith(".json"):
-        return read_json(input_dir)
-    else:
-        raise ValueError(f"Unsupported file type: {input_dir}")
+    return read_jsonl(input_dir)
+    # if str(input_dir).endswith(".jsonl"):
+    #     return read_jsonl(input_dir)
+    # elif str(input_dir).endswith(".json"):
+    #     return read_json(input_dir)
+    # else:
+    #     raise ValueError(f"Unsupported file type: {input_dir}")
 
 def filter_data(data: np.ndarray, 
                 retrieval_results: List[dict],
