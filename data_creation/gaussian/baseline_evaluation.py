@@ -136,7 +136,8 @@ def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarra
 
 def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int) -> float:
     """
-    Compute Recall@k: fraction of queries where at least one ground truth is in top-k.
+    Compute Recall@k: percentage of ground truth vectors found in top-k results.
+    Uses macro averaging - computes recall per query and averages the results.
     
     Args:
         rankings: Ranked corpus indices for each test query
@@ -144,21 +145,23 @@ def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int
         k: Number of top results to consider
         
     Returns:
-        Recall@k score
+        Macro-averaged Recall@k score
     """
     test_pairs = pairs_data['test']
-    successful_queries = 0
+    query_recalls = []
     
     for i, pair in enumerate(test_pairs):
         gt_indices = set(pair['ground_truth_indices'])
         top_k_indices = set(rankings[i, :k])
         
-        # Check if any ground truth is in top-k
-        if len(gt_indices.intersection(top_k_indices)) > 0:
-            successful_queries += 1
+        # Compute recall for this query
+        gt_found = len(gt_indices.intersection(top_k_indices))
+        query_recall = gt_found / len(gt_indices)
+        query_recalls.append(query_recall)
     
-    recall = successful_queries / len(test_pairs)
-    return recall
+    # Macro average - mean of per-query recalls
+    macro_recall = np.mean(query_recalls)
+    return macro_recall
 
 
 def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int) -> float:
