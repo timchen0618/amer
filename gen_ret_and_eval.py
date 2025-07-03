@@ -506,10 +506,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate embeddings and perform retrieval evaluation')
     # Data configuration
     parser.add_argument('--data_name', type=str, default='ambiguous_qe', 
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct'],
                        help='Name of the dataset to evaluate on')
     parser.add_argument('--training_data_name', type=str, default='ambiguous_qe',
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
                        help='Name of the dataset used for training')
     parser.add_argument('--split', type=str, default='dev', choices=['dev', 'train', 'train-held-out'],
                        help='Data split to evaluate on')
@@ -539,14 +539,14 @@ def parse_args():
                        help='Base model ID')
     parser.add_argument('--max_new_tokens', type=int, default=None,
                        help='Maximum number of new tokens to generate')
-    parser.add_argument('--compute_loss', action='store_true', default=True,
+    parser.add_argument('--compute_loss', action='store_true', default=False,
                        help='Whether to compute loss during evaluation')
     # Google API configuration
     parser.add_argument('--google_api', action='store_true', default=False,
                        help='Whether to use Google API')
     
     # Config parameters (previously from config file)
-    parser.add_argument('--loss_function', type=str, default='Contrastive',
+    parser.add_argument('--loss_function', type=str, default='Hungarian_Contrastive',
                        help='Loss function to use')
     parser.add_argument('--question_only', action='store_true', default=True,
                        help='Whether to use question only')
@@ -638,6 +638,8 @@ if __name__ == "__main__":
             passages_path = f'{args.root}/wikipedia_chunks/chunks_v5.tsv'
         elif args.data_name == 'ambiguous':
             passages_path = f'data/nq/corpus.tsv'
+        elif args.data_name == 'wsd_distinct':
+            passages_path = f'data/wsd/distinct/corpus.tsv'
         else:
             passages_path = f'data/{args.data_name}/corpus.tsv'
     else:
@@ -648,7 +650,7 @@ if __name__ == "__main__":
         dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only_2_to_5_ctxs.jsonl'
     elif args.data_name == 'qampari':
         dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only_5_to_8_ctxs.jsonl'
-    elif args.data_name in ['nq', 'msmarco']:
+    elif args.data_name in ['nq', 'msmarco', 'wsd_distinct']:
         dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only.jsonl'
     else:
         dev_data_path = f"data_creation/raw_data/{args.data_name}_question_only.jsonl"
@@ -683,7 +685,7 @@ if __name__ == "__main__":
                 dataset_path = f'training_datasets/{args.data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_contrastive_5_to_8_ctxs'
             elif args.data_name in ['nq', 'msmarco']:
                 dataset_path = f'training_datasets/{args.data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_qemb'
-            elif args.data_name in ['arguana_generated', 'kialo', 'opinionqa']:
+            elif args.data_name in ['arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct']:
                 dataset_path = dev_data_path
             else:
                 raise ValueError(f"Invalid data name: {args.data_name}")
@@ -845,3 +847,13 @@ if __name__ == "__main__":
                     aggregate_end_idx=2,
                     MAX_LATENTS=args.max_new_tokens
                 )
+
+
+# python gen_ret_and_eval.py --data_name wsd_distinct \
+#                            --training_data_name nq \
+#                            --suffix_list _contrastive \
+#                            --retriever_list inf \
+#                            --use_gpu --num_shards 1 \
+#                            --checkpoint_num 70000
+
+python eval.py --data_type wsd_distinct --root /scratch/hc3337/projects/autoregressive/results/nq_inf/ --topk 99 10 --has_gold_id
