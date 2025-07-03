@@ -1,3 +1,11 @@
 data/
 data_creation/raw_data/
 .vscode/
+deletable/
+example_usage.py
+histogram_2.png
+results/
+run.SBATCH
+submit.sh
+t_back.py
+training_datasets/
