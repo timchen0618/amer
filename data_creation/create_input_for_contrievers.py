@@ -561,13 +561,13 @@ if __name__ == '__main__':
         split='train'
         length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
         
-        use_hard_negatives = False
-        for split in ['train', 'dev']:
-            for length in [2,3,4,5]:
-                # for model_name in ['cont', 'stella', 'inf']:
-                for model_name in ['cont', 'stella']:
+        use_hard_negatives = True
+        for split in ['train']:
+            for length in [5,6,7,8]:
+                for model_name in ['inf']:
+                # for model_name in ['cont', 'stella']:
                     # for data_name in ['nq', 'msmarco']:
-                    for data_name in ['ambiguous_qe']:
+                    for data_name in ['qampari']:
                         rootdir = Path('../../autoregressive/data_creation/raw_data/')
                         if length == 1:
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
@@ -584,8 +584,7 @@ if __name__ == '__main__':
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings_{length}.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings_{length}.npy',
                                                             out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_{length}_ctxs' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_{length}_ctxs')
                         print(len(data_indices)) 
-                
-                
+                        
     if generate_split == 'contrastive_sequence':
         
 

@@ -11,7 +11,7 @@ from accelerate.logging import get_logger
 import torch.distributed as dist
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from dataclasses import dataclass
-
+from accelerate.utils import DistributedType
 from model import EmbeddingModel, load_model
 from dataset import (
     load_embeddings_dataset,
@@ -32,46 +32,89 @@ import argparse
 import functools
 import random
 import structlog
-logger = get_logger(__name__)
+from collections import OrderedDict
+
+# logger = get_logger(__name__)
+logger = structlog.get_logger()
+MAX_GPU_BATCH_SIZE = 16
 
 def save_model(model, save_dir, step, accelerator):
     # Save the base causal language model
+    state_dict = accelerator.get_state_dict(model)
+    if accelerator.is_main_process:
+        linear_layers = {
+            'input_projection': OrderedDict({'weight': state_dict['input_projection.weight']}),
+            'output_projection': OrderedDict({'weight': state_dict['output_projection.weight']})
+        }
+    else:
+        linear_layers = None
+    # print(linear_layers, accelerator.process_index)
+    
+    
+    # print('before unwrap model', accelerator.process_index)
     unwrapped_model = accelerator.unwrap_model(model)
+    # print('after unwrap model', accelerator.process_index)
+    # print(os.path.join(save_dir, f"checkpoint_{step}"))
     unwrapped_model.base_causallm.save_pretrained(
-        os.path.join(save_dir, f"checkpoint_{step}"), 
-        safe_serialization=True
+        os.path.join(save_dir, f"best_model"), 
+        safe_serialization=True,
+        is_main_process=accelerator.is_main_process,
+        save_function=accelerator.save,
+        state_dict=accelerator.get_state_dict(model)
     )
+    # print('after save model', accelerator.process_index)
     
     # Save the linear layers
-    linear_layers = {
-        'input_projection': unwrapped_model.input_projection.state_dict(),
-        'output_projection': unwrapped_model.output_projection.state_dict()
-    }
-    torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    if linear_layers is not None:
+        accelerator.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
+        logger.info(f"saving model.", step=(step), process_index=accelerator.process_index)
+    # accelerator.save_model(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    # accelerator.save_model(model.input_projection, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
     
-    logger.info(f"saving model.", step=(step))
+    
 
-def train():
-    # load the configuration file
-    with open('configs/train.yaml') as f:
-        config_dict = yaml.safe_load(f)
 
-    logger.info("Config:", config_dict=config_dict)
 
-    configs = Config(config_dict)
+def train(configs):
+    if not configs.debug:
+        log_with_wandb = True
+        log_with_string = 'wandb'
+    else:
+        log_with_wandb = False
+        log_with_string = None
+        
+    # Initialize accelerator
+    accelerator = Accelerator(gradient_accumulation_steps=configs.gradient_accumulation_steps, log_with=log_with_string, mixed_precision='fp16')
+    
+    if log_with_wandb:
+        if accelerator.is_main_process:
+            os.environ['WANDB_INIT_TIMEOUT'] = '600'
+            os.environ['WANDB_DEBUG'] = 'true'
+            ttt = configs.save_path.strip('/').split('/')[-1]
+            logger.info('tags', wandb_tag=ttt)
+            wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt])
+            wandb_run.config.update(configs, allow_val_change=True)
+            text_table = wandb.Table(columns=["step", "text"])
+        
+        accelerator.init_trackers(
+            project_name=configs.project,   # wandb project name
+        )
+
+
+    # # If the batch size is too big we use gradient accumulation
+    # gradient_accumulation_steps = 1
+    # batch_size = configs.batch_size_training
+    # if batch_size > MAX_GPU_BATCH_SIZE and accelerator.distributed_type != DistributedType.XLA:
+    #     gradient_accumulation_steps = batch_size // MAX_GPU_BATCH_SIZE
+    #     batch_size = MAX_GPU_BATCH_SIZE
+        
+    
     set_seed(configs.seed)
     save_dir = os.path.join(configs.save_path, configs.name)
-
-    model, tokenizer = load_model(train_lora=True,
-                                base_model_id=configs.model_id, 
-                                adapter_path=configs.adapter_path, 
-                                linear_checkpoint_path=configs.linear_checkpoint_path,
-                                embedding_model_dim=configs.embedding_model_dim, 
-                                weight_tying=configs.weight_tying, 
-                                loss_function=configs.loss_function, 
-                                temperature=configs.temperature,
-                                extra_q_embed=configs.extra_q_embed,
-                                compute_loss_on_q=configs.compute_loss_on_q)
+    
+    if accelerator.is_main_process:
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
 
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
@@ -88,125 +131,124 @@ def train():
         train_dataloader, valid_loss_dataloader = data_handler.get_train_dev_dataloader(random_train_loader=False)
     
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
+    total_length = total_length // accelerator.num_processes
     
+    
+    # Instantiate the model (we build the model here so that the seed also control new weights initialization)
+    model, tokenizer = load_model(train_lora=True,
+                                base_model_id=configs.model_id, 
+                                adapter_path=configs.adapter_path, 
+                                linear_checkpoint_path=configs.linear_checkpoint_path,
+                                embedding_model_dim=configs.embedding_model_dim, 
+                                weight_tying=configs.weight_tying, 
+                                loss_function=configs.loss_function, 
+                                temperature=configs.temperature,
+                                extra_q_embed=configs.extra_q_embed,
+                                compute_loss_on_q=configs.compute_loss_on_q)
+    model = model.to(accelerator.device)
+
     # optimize and scheduler    
     configs.total_steps = total_length * configs.num_epochs
     configs.warmup_steps = total_length * configs.num_epochs * configs.warmup_ratio
     optimizer, scheduler = set_optim(configs, model)
 
-
-    # Initialize accelerator
-    accelerator = Accelerator()
-    if accelerator.is_main_process:
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-            
-    total_train_steps = 0
-    if not configs.debug and not configs.only_eval and accelerator.is_main_process:        
-        os.environ['WANDB_INIT_TIMEOUT'] = '600'
-        os.environ['WANDB_DEBUG'] = 'true'
-        ttt = configs.save_path.strip('/').split('/')[-1]
-        logger.info('tags', wandb_tag=ttt)
-        wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt])
-        wandb_run.config.update(configs, allow_val_change=True)
-        text_table = wandb.Table(columns=["step", "text"])
-    else:
-        wandb_run = None
-
-    
     # Prepare everything with accelerator
     model, optimizer, train_dataloader, valid_loss_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, valid_loss_dataloader, scheduler
-    )
-
+    )    
+    
+    total_train_steps = 0
     best_acc = 0
     best_val_loss = 10000
     losses = []
     for epoch in range(configs.resume, configs.num_epochs):
-
-        if not configs.only_eval:
-            ##############
-            # Do Training
-            ##############
-            
-            pbar = tqdm(
-                colour="blue",
-                desc=f"Training Epoch: {epoch+1}",
-                total=total_length,
-                dynamic_ncols=True,
-                disable=not accelerator.is_main_process
-            )
-            
-            # shuffle the data by length
-            data_handler.length_aware_shuffle()
-            if configs.train_on_all_data:
-                train_dataloader = data_handler.get_full_dataloader()
-            else:
-                train_dataloader = data_handler.get_sequential_train_dataloader()
-            
-            train_dataloader = accelerator.prepare(train_dataloader)
-            
-            for step, batch in enumerate(train_dataloader):
+        ##############
+        # Do Training
+        ##############
+        
+        pbar = tqdm(
+            colour="blue",
+            desc=f"Training Epoch: {epoch+1}",
+            total=total_length,
+            dynamic_ncols=True,
+            disable=not accelerator.is_main_process
+        )
+        
+        # shuffle the data by length
+        data_handler.length_aware_shuffle()
+        if configs.train_on_all_data:
+            train_dataloader = data_handler.get_full_dataloader()
+        else:
+            train_dataloader = data_handler.get_sequential_train_dataloader()
+        
+        train_dataloader = accelerator.prepare(train_dataloader)
+        
+        for step, batch in enumerate(train_dataloader):
+            with accelerator.accumulate(model):
                 total_train_steps += 1
                 outputs = model(**batch)
-
-                loss = outputs.loss / configs.gradient_accumulation_steps
+                # loss = outputs.loss / configs.gradient_accumulation_steps
+                loss = outputs.loss
                 accelerator.backward(loss)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), configs.max_grad_norm)
+                # if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
                 
-                if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
-                    optimizer.step()
-                    scheduler.step()
-                    optimizer.zero_grad()
-                
-                if accelerator.is_main_process:
-                    if wandb_run:
-                        losses.append(loss.detach().float())
-
-                    if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
-                        pbar.update(1)
-
-                    if wandb_run and (step) % 100 == 0:
+                if log_with_wandb:
+                    losses.append(loss.detach().float())
+                    if (step) % 100 == 0:
                         log_dict = {
                             "train/epoch": epoch + 1,
                             "train/step": epoch * len(train_dataloader) + step,
-                            "train/loss (*1000)": 1000*sum(losses)/ len(losses) 
+                            "train/loss": sum(losses)/ len(losses) 
                             * configs.gradient_accumulation_steps,
                         }
-                        wandb_run.log(log_dict)
+                        accelerator.log(log_dict, step=total_train_steps)
                         losses = []
+                
+                # update the progress bar
+                if accelerator.is_main_process:
+                    if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
+                        pbar.update(1)
                     pbar.set_description(
                         f"Training Epoch: {epoch+1}/{configs.num_epochs}, batch {step}/{len(train_dataloader)} "
-                        f"completed (loss (*1000): {round(float(loss.detach().float() * configs.gradient_accumulation_steps * 1000), 4)}"
+                        f"completed (loss): {round(float(loss.detach().float() * configs.gradient_accumulation_steps), 4)}"
                     )
+                # accelerator.wait_for_everyone()
                 
-                if (total_train_steps-1) % configs.save_every_n_steps == 0 and accelerator.is_main_process:
+
+                if (total_train_steps-1) % configs.save_every_n_steps == 0:
                     ## enter evaluation mode
                     if (
                         not configs.save_only_improve
                         and not configs.debug
-                        and not configs.only_eval
                     ):
-                        if accelerator.is_main_process:
-                            save_model(model, save_dir, total_train_steps-1, accelerator)
-
+                        save_model(model, save_dir, total_train_steps-1, accelerator)
                         gc.collect()
                         torch.cuda.empty_cache()
 
-                    if accelerator.is_main_process:
-                        # val loss
-                        total_loss = 0
-                        with torch.no_grad():
-                            model.eval()
-                            for step, batch in enumerate(tqdm(valid_loss_dataloader, disable=not accelerator.is_main_process)):
-                                outputs = model(**batch)
-                                loss = outputs.loss
-                                total_loss += loss.item()
+                    # val loss
+                    total_loss = 0
+                    with torch.no_grad():
+                        model.eval()
+                        # print out if linear layers actually in eval mode
+                        # print('linear layers in eval mode', model.input_projection.weight.requires_grad, model.output_projection.weight.requires_grad)
+                        for step, batch in enumerate(tqdm(valid_loss_dataloader, disable=not accelerator.is_main_process)):
+                            # print('00000000', accelerator.process_index)
+                            outputs = model(**batch)
+                            loss = outputs.loss
+                            total_loss += loss.item()
+                            # print('11111111', accelerator.process_index)
 
-                            if wandb_run:
-                                log_dict = {
-                                    "eval/loss (*1000)": (total_loss / len(valid_loss_dataloader)) * 1000,
-                                }
-                                wandb_run.log(log_dict)
+                        if log_with_wandb:
+                            log_dict = {
+                                "eval/loss": (total_loss / len(valid_loss_dataloader)),
+                            }
+                            accelerator.log(log_dict, step=total_train_steps)
+                            if accelerator.is_main_process:
                                 logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)))
                             
                     ##############
@@ -216,15 +258,21 @@ def train():
                         total_loss / len(valid_loss_dataloader) < best_val_loss
                         and configs.save_only_improve
                         and not configs.debug
-                        and not configs.only_eval
-                        and accelerator.is_main_process
                     ):
                         save_model(model, save_dir, total_train_steps, accelerator)
                         best_val_loss = total_loss / len(valid_loss_dataloader)
 
                     gc.collect()
                     torch.cuda.empty_cache()
-            pbar.close()
+                
+        pbar.close()
+            
+    accelerator.end_training()
 
 if __name__ == "__main__":
-    train() 
+    # load the configuration file
+    with open(sys.argv[1]) as f:
+        config_dict = yaml.safe_load(f)
+    configs = Config(config_dict)
+    logger.info("Config:", config_dict=config_dict)
+    train(configs) 

@@ -3,13 +3,13 @@
 
 import torch
 import torch.nn as nn
-from torch.nn import CrossEntropyLoss
 from collections import namedtuple
 from transformers.models.gpt2 import GPT2LMHeadModel
-from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training, get_peft_model
+from peft import LoraConfig, PeftModel, get_peft_model
+
+import dist_utils
 
 Outputs = namedtuple("Outputs", ["loss", "inputs_embeds", "last_hidden_states", "labels"])
-MAX_N_LATENT = 8
 
 
 class HungarianMSELoss(nn.Module):
@@ -71,14 +71,20 @@ class ContrastiveLoss(nn.Module):
     def forward(self, outputs, positive_embeddings, negative_embeddings):
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
-        # negative_embeddings: (batch_size, k, d)
+        # negative_embeddings: (batch_size, k, d)    
         batch_size, k, d = outputs.shape
         labels = torch.arange(batch_size * k).long().to(outputs.device)
         outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
         positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
         negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
-        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, all_embeddings)  # (batch_size * k, 2 * batch_size * k)
+        
+        # handle distributed training
+        labels = labels + dist_utils.get_rank() * len(all_embeddings)
+        gather_fn = dist_utils.gather
+        gather_kemb = gather_fn(all_embeddings)
+        
+        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
         loss = self.ce_loss(similarity, labels)
         loss = loss.mean()
         return loss
@@ -94,14 +100,15 @@ class HungarianContrastiveLoss(nn.Module):
     Returns:
         Scalar tensor: average contrastive loss over the batch
     """
-    def __init__(self, temperature=0.05):
+    def __init__(self, temperature=0.05, use_eos=False):
         super().__init__()
         from scipy.optimize import linear_sum_assignment
         self.linear_sum_assignment = linear_sum_assignment
         self.temperature = temperature
         self.ce_loss = nn.CrossEntropyLoss()
         self.log_softmax = nn.LogSoftmax(dim=1)
-
+        self.use_eos = use_eos
+            
     def forward(self, outputs, positive_embeddings, negative_embeddings):
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
@@ -116,22 +123,38 @@ class HungarianContrastiveLoss(nn.Module):
         # print('negative_embeddings', negative_embeddings.shape)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
         # print('all_embeddings', all_embeddings.shape)
-        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, all_embeddings)  # (batch_size * k, 2 * batch_size * k)
-        # print('similarity', similarity.shape, similarity)
+        
+        # handle distributed training
+        gather_fn = dist_utils.varsize_gather
+        gather_kemb = gather_fn(all_embeddings)
+        # print('gather_kemb', gather_kemb.shape, dist_utils.get_rank())
+        # gather_kemb = all_embeddings
+        
+        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
+        # print('similarity', similarity.shape, dist_utils.get_rank())
         similarity = self.log_softmax(similarity)
         # denominator = torch.sum(torch.exp(similarity), dim=1)  # (batch_size * k)
+        # print('similarity', similarity.shape, dist_utils.get_rank())
         # print('denominator', denominator.shape)
         losses = []
         for i in range(batch_size):
             # print('============================')
+            start_idx = k*i + dist_utils.get_rank() * len(all_embeddings)
+            # start_idx = k*i
             batch_scores = similarity[k*i:k*(i+1)]
-            # print('batch_scores', batch_scores.shape, batch_scores, k*i, k*i+k)
-            cost_matrix = batch_scores[:, k*i:k*i+k]
-            # print('cost_matrix', cost_matrix.shape, cost_matrix)
+            # print('batch_scores', i, batch_scores.shape, k*i, k*i+k, start_idx, start_idx+k, dist_utils.get_rank())
+            cost_matrix = batch_scores[:, start_idx:start_idx+k]
+            # print('cost_matrix', cost_matrix.shape, cost_matrix, dist_utils.get_rank())
+            if self.use_eos:
+                # if use eos, force match the last token to the eos token
+                cost_eos = cost_matrix[-1, -1]
+                cost_matrix = cost_matrix[:-1, :-1]
+            
             row_ind, col_ind = self.linear_sum_assignment(cost_matrix.detach().cpu().numpy(), maximize=True)
-            # print('row_ind', row_ind)
             # print('col_ind', col_ind)
             costs = cost_matrix[row_ind, col_ind]  # (k, )
+            if self.use_eos:
+                costs = torch.cat([costs, cost_eos.unsqueeze(0)])
             # print('costs', costs.shape)
             costs = -(costs)
             # print('costs', costs.shape, costs)
@@ -153,7 +176,8 @@ class EmbeddingModel(nn.Module):
         loss_function='Hungarian_MSE',
         temperature=0.05,
         extra_q_embed=False,
-        compute_loss_on_q=False
+        compute_loss_on_q=False,
+        use_eos=False
     ):
 
         super(EmbeddingModel, self).__init__()
@@ -183,7 +207,8 @@ class EmbeddingModel(nn.Module):
             
         self.extra_q_embed = extra_q_embed
         self.compute_loss_on_q = compute_loss_on_q
-        
+        self.use_eos = use_eos
+
         if loss_function == 'Hungarian_MSE':
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
@@ -194,6 +219,7 @@ class EmbeddingModel(nn.Module):
             self.loss_fct = torch.nn.MSELoss()
         else:
             raise ValueError(f"Loss function {loss_function} not supported")
+        self.mse_loss = torch.nn.MSELoss()
 
     def forward(self, **inputs):
         has_label = 'labels' in inputs or 'positive_embeddings' in inputs
@@ -277,7 +303,10 @@ class EmbeddingModel(nn.Module):
                 #########################################################
                 positive_embeddings = labels
                 negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
+                print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
+                if self.use_eos:
+                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
+                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
                 loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
                 return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
             else:
@@ -289,16 +318,17 @@ class EmbeddingModel(nn.Module):
         
 
 
-    def train(self):
-        self.base_causallm.train()
+    # def train(self):
+    #     self.base_causallm.train()
 
-    def eval(self):
-        self.base_causallm.eval()
+    # def eval(self):
+    #     self.base_causallm.eval()
 
     def generate(
         self,
         max_new_tokens=16, 
         use_gt_q_embed=False,
+        use_eos=False,
         **inputs
     ):
         self.gen_forward_cnt = 0
@@ -342,6 +372,11 @@ class EmbeddingModel(nn.Module):
             outputs = self.base_causallm(inputs_embeds=new_inputs_embeds, output_hidden_states=True)
             self.gen_forward_cnt += 1
             next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
+            if use_eos:
+                print("next_emb", next_emb.shape, (next_emb - 0.5).abs().mean(), next_emb)
+                if (next_emb - 0.5).abs().mean() < 1e-4:
+                    print("EOS token generated")
+                    break
             next_embs.append(next_emb)
             new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
         
@@ -356,7 +391,9 @@ class EmbeddingModel(nn.Module):
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, embedding_model_dim, weight_tying=False, loss_function='Hungarian_MSE', temperature=0.05, extra_q_embed=False, compute_loss_on_q=False):
+def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, embedding_model_dim, 
+               weight_tying=False, loss_function='Hungarian_MSE', temperature=0.05, lora_alpha=16, lora_r=64, lora_dropout=0.1, extra_q_embed=False, 
+               compute_loss_on_q=False, use_eos=False):
     # Load the base model
     base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
     base_model.gradient_checkpointing_enable()
@@ -374,11 +411,11 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
             model = PeftModel.from_pretrained(base_model, adapter_path, is_trainable=True)
         else:
             peft_config = LoraConfig(
-                lora_alpha=16,
-                lora_dropout=0.1,
-                r=64,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                r=lora_r,
                 bias="none",
-                # task_type="CAUSAL_LM",
+                task_type="CAUSAL_LM",
                 target_modules="q_proj,k_proj,v_proj,o_proj,down_proj,up_proj,gate_proj".split(",")
             )
             model = get_peft_model(base_model, peft_config)
@@ -393,7 +430,9 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
             model = base_model
     
     # Wrap with your custom EmbeddingModel
-    model = EmbeddingModel(model, start_id, tokenizer.eos_token_id, embedding_model_dim, weight_tying, loss_function, temperature, extra_q_embed, compute_loss_on_q)
+    model = EmbeddingModel(model, start_id, tokenizer.eos_token_id, 
+                           embedding_model_dim, weight_tying, loss_function, 
+                           temperature, extra_q_embed, compute_loss_on_q, use_eos)
     
     # Load linear layers if checkpoint is provided
     if linear_checkpoint_path is not None:

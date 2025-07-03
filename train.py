@@ -32,17 +32,21 @@ import structlog
 logger = structlog.get_logger()
 
 
-def save_model(model, save_dir, step):
+def save_model(model, save_dir, step, eval_loss):
     # Save the base causal language model
-    model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
+    # model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
+    model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model.pt"), safe_serialization=True)
     
     # Save the linear layers
+    # print(model.input_projection.state_dict())
     linear_layers = {
         'input_projection': model.input_projection.state_dict(),
-        'output_projection': model.output_projection.state_dict()
+        'output_projection': model.output_projection.state_dict(),
+        'step': step,
+        'loss': eval_loss
     }
-    torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
-    
+    # torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
     logger.info(f"saving model.", step=(step))
     
 
@@ -74,7 +78,8 @@ def train():
                                   loss_function=configs.loss_function, 
                                   temperature=configs.temperature,
                                   extra_q_embed=configs.extra_q_embed,
-                                  compute_loss_on_q=configs.compute_loss_on_q)
+                                  compute_loss_on_q=configs.compute_loss_on_q,
+                                  use_eos=configs.use_eos)
 
     total_train_steps = 0
     if not configs.debug and not configs.only_eval:        
@@ -94,7 +99,7 @@ def train():
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
         collator = functools.partial(MSETrainCollator(), shuffle=True, question_only=configs.question_only)
     else:
-        collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first)
+        collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
     data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train')
         
@@ -151,6 +156,10 @@ def train():
 
                 loss = outputs.loss / configs.gradient_accumulation_steps
                 loss.backward()
+                
+                # clip gradients
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=configs.max_grad_norm)
+                
                 if wandb_run:
                     losses.append(loss.detach().float())
                     
@@ -167,14 +176,15 @@ def train():
                     log_dict = {
                         "train/epoch": epoch + 1,
                         "train/step": epoch * len(train_dataloader) + step,
-                        "train/loss (*1000)": 1000*sum(losses)/ len(losses) 
+                        "train/loss": sum(losses)/ len(losses) 
                         * configs.gradient_accumulation_steps,
+                        "train/lr": scheduler.get_last_lr()[0]
                     }
                     wandb_run.log(log_dict)
                     losses = []
                 pbar.set_description(
                     f"Training Epoch: {epoch+1}/{configs.num_epochs}, batch {step}/{len(train_dataloader)} "
-                    f"completed (loss (*1000): {round(float(loss.detach().float() * configs.gradient_accumulation_steps * 1000), 4)}"
+                    f"completed (loss): {round(float(loss.detach().float() * configs.gradient_accumulation_steps), 4)}"
                 )
                 
                 
@@ -184,9 +194,9 @@ def train():
                         not configs.save_only_improve
                         and not configs.debug
                         and not configs.only_eval
-                    ):
-                    
-                        save_model(model, save_dir, total_train_steps-1)
+                    ):  
+                        ## if save every n steps, save the model
+                        save_model(model, save_dir, total_train_steps-1, 0)
 
                         gc.collect()
                         torch.cuda.empty_cache()
@@ -204,7 +214,7 @@ def train():
 
                         if wandb_run:
                             log_dict = {
-                                "eval/loss (*1000)": (total_loss / len(valid_loss_dataloader)) * 1000,
+                                "eval/loss": (total_loss / len(valid_loss_dataloader)),
                             }
                             wandb_run.log(log_dict)
                             logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)))
@@ -220,10 +230,8 @@ def train():
                         and not configs.debug
                         and not configs.only_eval
                     ):
-                        save_model(model, save_dir, total_train_steps)
-
-                        # best_acc = cor / total
                         best_val_loss = total_loss / len(valid_loss_dataloader)
+                        save_model(model, save_dir, total_train_steps, best_val_loss)
 
                         gc.collect()
                         torch.cuda.empty_cache()

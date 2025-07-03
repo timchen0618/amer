@@ -1,12 +1,12 @@
 project: diverse_retrieval
 ########################################################
 save_path: results/ambiguous_qe_inf/
-name: toy_contrastive_lr2e5_ep30_temp0.05_warmup0.05_gradnorm1_bs32
+name: toy_contrastive_4_gpus_from_stage2_lr2e5_ep20_temp0.05_warmup0.05
 train_path: training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/
 
 # save and load
-save_every_n_steps: 250
-embedding_model_dim: 1024
+save_every_n_steps: 50
+embedding_model_dim: 1536
 adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
 linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
 # adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
@@ -17,17 +17,12 @@ linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.p
 # training
 batch_size_training: 32
 gradient_accumulation_steps: 1
-num_epochs: 30
+num_epochs: 20
 lr: !!float "2e-5"
 weight_decay: 0.01
 warmup_ratio: 0.05
 scheduler: linear
 max_grad_norm: 1.0
-
-# lora
-lora_alpha: 16
-lora_r: 64
-lora_dropout: 0.1
 
 # some options 
 shuffle_sequence: True
@@ -41,12 +36,12 @@ loss_function: Hungarian_Contrastive  # MSE, Hungarian_MSE, Contrastive, Hungari
 extra_q_embed: False
 compute_loss_on_q: False
 use_eos: False
+
 # data loading 
 question_only: False
 
 ########################################################
 # not used that often
-only_eval: False
 debug: False
 epochs_per_stage: 3
 max_latent_stage: 3

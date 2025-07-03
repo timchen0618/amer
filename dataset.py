@@ -51,7 +51,7 @@ class MSETrainCollator:
 
 @dataclass
 class ContrastiveTrainCollator:
-    def __call__(self, features, shuffle=False, take_first=False):
+    def __call__(self, features, shuffle=False, take_first=False, use_eos=False):
         """
             Data Shape:
             positive_embeddings: (batch_size, length, embedding_dim)
@@ -61,6 +61,8 @@ class ContrastiveTrainCollator:
         
         lens_cnt = Counter(len(f['positive_embeddings']) for f in features)
         majority_len = max(lens_cnt, key=lens_cnt.get)
+        if use_eos:
+            eos_token = [0.5 for _ in range(len(features[0]['positive_embeddings'][0]))]
         
         # find out which features to keep
         keep_feature_indices = []
@@ -73,6 +75,9 @@ class ContrastiveTrainCollator:
                     shuffled_indices = torch.randperm(len(features[i]['positive_embeddings']))
                     features[i]['positive_embeddings'] = [features[i]['positive_embeddings'][j] for j in shuffled_indices]
                     features[i]['negative_embeddings'] = [features[i]['negative_embeddings'][j] for j in shuffled_indices]
+                if use_eos:
+                    features[i]['positive_embeddings'].append(eos_token)
+                    features[i]['negative_embeddings'].append(random.choice(features[i]['negative_embeddings']))
                 if take_first:
                     features[i]['positive_embeddings'] = features[i]['positive_embeddings'][:1]
                     features[i]['negative_embeddings'] = features[i]['negative_embeddings'][:1]
@@ -387,20 +392,20 @@ if __name__ == "__main__":
     command = 'combine_datasets'
     
     if command == 'combine_datasets':
-        # for retriever in ['cont', 'stella', 'inf']:
-        for retriever in ['inf']:
+        for retriever in ['cont', 'stella', 'inf']:
+        # for retriever in ['inf']:
             data_name = 'ambiguous_qe'
             split = 'dev'
             for split in ['train', 'dev']:
                 start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
-                dataset_paths = [f'data_creation/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{i}_ctxs' \
+                dataset_paths = [f'training_datasets/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{i}_ctxs' \
                     for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
                 assert len(dataset_paths) == 4
                 dataset_paths = [load_from_disk(path) for path in dataset_paths]
                 # dataset_paths = [d.select([i for i in range(30)]) for d in dataset_paths]
 
                 combined_dataset = concatenate_datasets(dataset_paths)
-                combined_dataset.save_to_disk(f'data_creation/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
+                combined_dataset.save_to_disk(f'training_datasets/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
                 
         for split in ['train', 'dev']:
             start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
@@ -627,14 +632,14 @@ if __name__ == "__main__":
             
         
     if command == 'filter_by_context_length':
-        data_name = 'ambiguous'
-        for split in ['train']:
+        data_name = 'ambiguous_qe'
+        for split in ['dev']:
             filtered_question = []
             for length in [2,3,4,5]:
                 filter_data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{length}_ctxs.jsonl')
                 filtered_question.extend([inst['question'] for inst in filter_data])
                 
-            data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}.jsonl')
+            data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}.jsonl')
             q2inst = {inst['question']: inst for inst in data}
             
             filtered_data = []
@@ -642,8 +647,8 @@ if __name__ == "__main__":
                 if question in q2inst:
                     filtered_data.append(q2inst[question])
                     
-            write_jsonl(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.jsonl')
-            write_json(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.json')
+            write_jsonl(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.jsonl')
+            write_json(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.json')
             
             
             

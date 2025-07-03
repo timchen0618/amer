@@ -36,3 +36,4 @@ weight_tying: False
 use_gt_q_embed: False
 loss_function: Hungarian_Contrastive
 question_only: True
+use_eos: False
