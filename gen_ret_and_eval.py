@@ -214,6 +214,7 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
         
         outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=use_gt_q_embed, use_eos=use_eos, compute_loss=compute_loss)
         # outputs = outputs.reshape(-1, embedding_model_dim)
+        print('len all lengths', len(all_lengths))
         np.save(output_path, outputs)
         if len(all_lengths) > 0:
             np.save(output_lengths_path, np.array(all_lengths))
@@ -849,11 +850,3 @@ if __name__ == "__main__":
                 )
 
 
-# python gen_ret_and_eval.py --data_name wsd_distinct \
-#                            --training_data_name nq \
-#                            --suffix_list _contrastive \
-#                            --retriever_list inf \
-#                            --use_gpu --num_shards 1 \
-#                            --checkpoint_num 70000
-
-python eval.py --data_type wsd_distinct --root /scratch/hc3337/projects/autoregressive/results/nq_inf/ --topk 99 10 --has_gold_id

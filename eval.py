@@ -26,7 +26,6 @@ def get_data_mapping(project_root):
         },
         "wsd_distinct": {
             'dev': f'{project_root}/autoregressive/data/wsd/distinct/dev.jsonl',
-            'train': f'{project_root}/autoregressive/data/wsd/distinct/train.jsonl',
         },
     }
 
@@ -34,9 +33,9 @@ def get_data_mapping(project_root):
 def get_file_list(data_type):
     """Returns the default file list for a given data type."""
     return [
-        f'toy_contrastive/retrieval_out_dev_{data_type}_single.jsonl', 
-        f'toy_contrastive/retrieval_out_dev_{data_type}.jsonl', 
-        f'toy_contrastive/retrieval_out_dev_{data_type}_from_2nd_to_3rd.jsonl'
+        f'retrieval_out_dev_{data_type}_single.jsonl', 
+        f'retrieval_out_dev_{data_type}.jsonl', 
+        f'retrieval_out_dev_{data_type}_from_2nd_to_3rd.jsonl'
     ]
 
 
@@ -136,6 +135,7 @@ def main():
     print(f"Number of inputs: {args.num_input}")
     print(f"Top-k values: {args.topk}")
     print(f"Files to evaluate: {file_list}")
+    print(f"Root: {args.root}")
     print("-" * 50)
     
     for num_input in args.num_input:
