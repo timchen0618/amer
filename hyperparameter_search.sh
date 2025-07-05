@@ -5,7 +5,7 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="hypersearch_config.sh"
+CONFIG_FILE="hypersearch_config_qampari.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
@@ -27,11 +27,12 @@ generate_exp_name() {
     local batch=$3
     local epochs=$4
     local warmup=$5
-    
+    local use_hard_negatives=$6
+
     if declare -f generate_custom_exp_name > /dev/null; then
-        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup"
+        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$use_hard_negatives"
     else
-        echo "lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn${use_hard_negatives}"
     fi
 }
 
@@ -43,10 +44,10 @@ create_sbatch_file() {
     local batch=$4
     local epochs=$5
     local warmup=$6
-    
+
     local sbatch_file="${SBATCH_DIR}/run_${exp_name}.SBATCH"
     local output_file="${JOB_OUTPUT_DIR}/run_${exp_name}.out"
-    local save_path="${BASE_SAVE_PATH}/${exp_name}"
+    local save_path="${BASE_SAVE_PATH}"
     
     # Create SBATCH file based on configuration
     cat > "$sbatch_file" << EOF
@@ -135,6 +136,7 @@ calculate_total_combinations() {
 # Main hyperparameter search loop
 echo "Starting hyperparameter search..."
 echo "Configuration loaded from: $CONFIG_FILE"
+echo "Using hard negatives: $USE_HARD_NEGATIVES"
 
 total_combinations=$(calculate_total_combinations)
 echo "Total combinations to run: $total_combinations"
@@ -157,7 +159,7 @@ for lr in "${LEARNING_RATES[@]}"; do
                         continue
                     fi
                     
-                    exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup")
+                    exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$USE_HARD_NEGATIVES")
                     
                     echo "Creating experiment: $exp_name"
                     

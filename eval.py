@@ -211,8 +211,9 @@ def main():
         columns = ['MRecall@100', 'Recall@100', 'Precision@100', 
                   'MRecall@10', 'Recall@10', 'Precision@10']
     
-    df = pd.DataFrame(all_scores, columns=columns[:len(all_scores[0]) if all_scores else len(columns)])
-    df.to_csv(args.output_csv, index=False)
+    df = pd.DataFrame(all_scores, columns=columns[:len(all_scores[0]) if all_scores else len(columns)], index=file_list)
+    df.index.name = 'file_name'
+    df.to_csv(args.output_csv, index=True)
     print(f"\nResults saved to: {args.output_csv}")
     print(f"Shape: {df.shape}")
     print("\nSample results:")

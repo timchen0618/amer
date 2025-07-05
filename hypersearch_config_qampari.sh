@@ -8,24 +8,27 @@
 # =================================================================
 
 # Learning rates to test
-# LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
-LEARNING_RATES=(1e-5)
+LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
+# LEARNING_RATES=(2e-5)
 
 # Temperature values for contrastive loss
-# TEMPERATURES=(0.05)
-TEMPERATURES=(0.01)
+TEMPERATURES=(0.05)
+# TEMPERATURES=(0.01)
 
 # Batch sizes
-# BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(8)
+BATCH_SIZES=(16 8 32)
+# BATCH_SIZES=(16)
 
 # Number of epochs
-# NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(10)
+NUM_EPOCHS_LIST=(20 10 30)
+# NUM_EPOCHS_LIST=(20)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
+
+# Use hard negatives
+USE_HARD_NEGATIVES=true
 
 # =================================================================
 # BASE CONFIGURATION
@@ -35,10 +38,14 @@ WARMUP_RATIOS=(0.05)
 BASE_PROJECT="diverse_retrieval"
 
 # Base directory for saving results
-BASE_SAVE_PATH="results/hypersearch_qampari"
+BASE_SAVE_PATH="results/qampari_inf"
 
 # Training dataset path
-BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+if [ "$USE_HARD_NEGATIVES" = true ]; then
+    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+else
+    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+fi
 
 # Model checkpoints
 BASE_ADAPTER_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
@@ -167,9 +174,14 @@ generate_custom_exp_name() {
     local batch=$3
     local epochs=$4
     local warmup=$5
-    
+    local use_hard_negatives=$6
+
     # Default naming scheme
-    echo "lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+    if [ "$use_hard_negatives" = true ]; then
+        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
+    else
+        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+    fi
     
     # Alternative naming schemes (uncomment one if desired):
     # echo "exp_$(date +%Y%m%d)_lr${lr}_t${temp}_b${batch}_e${epochs}_w${warmup}"

@@ -8,20 +8,20 @@
 # =================================================================
 
 # Learning rates to test
-# LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
-LEARNING_RATES=(2e-5)
+LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
+# LEARNING_RATES=(2e-5)
 
 # Temperature values for contrastive loss
+TEMPERATURES=(0.03 0.1)
 # TEMPERATURES=(0.05)
-TEMPERATURES=(0.05)
 
 # Batch sizes
-# BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(16)
+BATCH_SIZES=(8 16 32)
+# BATCH_SIZES=(16)
 
 # Number of epochs
-# NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(20)
+NUM_EPOCHS_LIST=(10 20 30)
+# NUM_EPOCHS_LIST=(20)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -35,7 +35,7 @@ WARMUP_RATIOS=(0.05)
 BASE_PROJECT="diverse_retrieval"
 
 # Base directory for saving results
-BASE_SAVE_PATH="results/hypersearch"
+BASE_SAVE_PATH="results/ambiguous_qe_inf/"
 
 # Training dataset path
 BASE_TRAIN_PATH="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
@@ -74,7 +74,7 @@ MAX_GRAD_NORM=1.0
 # =================================================================
 
 # Maximum number of concurrent jobs
-MAX_CONCURRENT_JOBS=40
+MAX_CONCURRENT_JOBS=100
 
 # SLURM job time limit
 TIME_LIMIT="12:00:00"
@@ -169,7 +169,7 @@ generate_custom_exp_name() {
     local warmup=$5
     
     # Default naming scheme
-    echo "lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+    echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
     
     # Alternative naming schemes (uncomment one if desired):
     # echo "exp_$(date +%Y%m%d)_lr${lr}_t${temp}_b${batch}_e${epochs}_w${warmup}"
