@@ -661,7 +661,7 @@ if __name__ == "__main__":
         for retriever in args.retriever_list:
             train_name = f"{args.training_data_name}_{retriever}"
             dataset_name = f"{args.data_name}_{retriever}"
-            model_name = f"toy{suffix}"
+            model_name = f"{suffix}"
             
             # Set up model paths
             Path(f"output_embeddings/{train_name}").mkdir(parents=True, exist_ok=True)
@@ -749,7 +749,7 @@ if __name__ == "__main__":
                         embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                         lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                         data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}{shard_string}.jsonl',
+                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}{shard_string}.jsonl',
                         MAX_LATENTS=args.max_new_tokens,
                         top_k_per_query=args.top_k_per_query,
                         top_k=args.top_k,
@@ -764,7 +764,7 @@ if __name__ == "__main__":
                         embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                         lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                         data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_single{shard_string}.jsonl',
+                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single{shard_string}.jsonl',
                         MAX_LATENTS=args.max_new_tokens,
                         top_k_per_query=args.top_k_per_query,
                         top_k=args.top_k,
@@ -781,7 +781,7 @@ if __name__ == "__main__":
                         embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                         lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                         data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd{shard_string}.jsonl',
+                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd{shard_string}.jsonl',
                         MAX_LATENTS=args.max_new_tokens,
                         top_k_per_query=args.top_k_per_query,
                         top_k=args.top_k,
@@ -793,9 +793,9 @@ if __name__ == "__main__":
                 
                 # Aggregate sharded results
                 if args.num_shards > 1:
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}.jsonl', args.num_shards)
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_single.jsonl', args.num_shards)
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl', args.num_shards)
+                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl', args.num_shards)
+                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl', args.num_shards)
+                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl', args.num_shards)
             else:
                 # Google API path
                 main_test_google(
@@ -805,7 +805,7 @@ if __name__ == "__main__":
                     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                    output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}.jsonl',
+                    output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl',
                     MAX_LATENTS=args.max_new_tokens,
                     top_k_per_query=args.top_k_per_query,
                     top_k=args.top_k,
@@ -822,7 +822,7 @@ if __name__ == "__main__":
                     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                    output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_single.jsonl',   
+                    output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl',   
                     top_k_per_query=args.top_k_per_query,
                     top_k=args.top_k,
                     start_idx=args.start_idx,
@@ -839,7 +839,7 @@ if __name__ == "__main__":
                     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                    output_path=f'results/{args.training_data_name}_{retriever}/toy{suffix}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl',   
+                    output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl',   
                     top_k_per_query=args.top_k_per_query,
                     top_k=args.top_k,
                     start_idx=args.start_idx,

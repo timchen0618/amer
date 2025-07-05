@@ -156,6 +156,7 @@ def train(configs):
         model, optimizer, train_dataloader, valid_loss_dataloader, scheduler
     )    
     
+   
     total_train_steps = 0
     best_acc = 0
     best_val_loss = 10000
@@ -230,7 +231,7 @@ def train(configs):
                         torch.cuda.empty_cache()
 
                     # val loss
-                    total_loss = 0
+                    total_loss_list = []
                     with torch.no_grad():
                         model.eval()
                         # print out if linear layers actually in eval mode
@@ -239,16 +240,19 @@ def train(configs):
                             # print('00000000', accelerator.process_index)
                             outputs = model(**batch)
                             loss = outputs.loss
-                            total_loss += loss.item()
+                            total_loss_list.append(loss.view(1,))
                             # print('11111111', accelerator.process_index)
 
+                        total_loss_across_gpus = torch.cat(total_loss_list, dim=0).sum()
+                        total_losses = accelerator.gather(total_loss_across_gpus.view(1,))
+                        total_loss = total_losses.sum().item()
                         if log_with_wandb:
                             log_dict = {
                                 "eval/loss": (total_loss / len(valid_loss_dataloader)),
                             }
                             accelerator.log(log_dict, step=total_train_steps)
                             if accelerator.is_main_process:
-                                logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)))
+                                logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)), length=len(valid_loss_dataloader))
                             
                     ##############
                     # Model Saving

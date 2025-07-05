@@ -123,6 +123,8 @@ class HungarianContrastiveLoss(nn.Module):
         # print('negative_embeddings', negative_embeddings.shape)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
         # print('all_embeddings', all_embeddings.shape)
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        # print('var_sizes', var_sizes, dist_utils.get_rank())
         
         # handle distributed training
         gather_fn = dist_utils.varsize_gather
@@ -139,25 +141,29 @@ class HungarianContrastiveLoss(nn.Module):
         losses = []
         for i in range(batch_size):
             # print('============================')
-            start_idx = k*i + dist_utils.get_rank() * len(all_embeddings)
+            start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+            start_idx += k*i 
             # start_idx = k*i
             batch_scores = similarity[k*i:k*(i+1)]
             # print('batch_scores', i, batch_scores.shape, k*i, k*i+k, start_idx, start_idx+k, dist_utils.get_rank())
             cost_matrix = batch_scores[:, start_idx:start_idx+k]
-            # print('cost_matrix', cost_matrix.shape, cost_matrix, dist_utils.get_rank())
+            
+            # print('===============================================')
+            # print('gather_kemb', gather_kemb.shape, 'k', k, 'all_embeddings', all_embeddings.shape,'similarity', similarity.shape, dist_utils.get_rank())
+            # print('cost_matrix', cost_matrix.shape, cost_matrix, 'batch_scores', i, batch_scores.shape, k*i, k*i+k, start_idx, start_idx+k, dist_utils.get_rank())
             if self.use_eos:
                 # if use eos, force match the last token to the eos token
                 cost_eos = cost_matrix[-1, -1]
                 cost_matrix = cost_matrix[:-1, :-1]
             
             row_ind, col_ind = self.linear_sum_assignment(cost_matrix.detach().cpu().numpy(), maximize=True)
-            # print('col_ind', col_ind)
+            # print('row_ind', row_ind, 'col_ind', col_ind, dist_utils.get_rank())
             costs = cost_matrix[row_ind, col_ind]  # (k, )
             if self.use_eos:
                 costs = torch.cat([costs, cost_eos.unsqueeze(0)])
             # print('costs', costs.shape)
             costs = -(costs)
-            # print('costs', costs.shape, costs)
+            # print('costs', costs.shape, costs, dist_utils.get_rank())
             losses.append(costs.mean())
         return torch.stack(losses).mean()
 
@@ -303,7 +309,7 @@ class EmbeddingModel(nn.Module):
                 #########################################################
                 positive_embeddings = labels
                 negative_embeddings = inputs.pop("negative_embeddings")
-                print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
+                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
                 if self.use_eos:
                     loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
                     loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
