@@ -5,7 +5,7 @@
 # Uses eval.sh as template and populates suffix_list with all completed experiments
 
 # Load configuration
-CONFIG_FILE="hypersearch_config_qampari.sh"
+CONFIG_FILE="hypersearch_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
@@ -28,13 +28,15 @@ MAX_NEW_TOKENS=""  # or "--max_new_tokens 2" if needed
 USE_BEST_MODEL="--use_best_model"
 COMPUTE_LOSS="--compute_loss"
 TOPK_LIST="100 10"
-HAS_GOLD_ID="--has-gold-id"
+# HAS_GOLD_ID="--has-gold-id"
+HAS_GOLD_ID=""
+INFERENCE_MODES="--inference_modes all first second"
 
 # SLURM configuration for evaluation job
 EVAL_TIME_LIMIT="12:00:00"  # Longer time for evaluating multiple experiments
 EVAL_MEMORY="200GB"
 EVAL_CPUS_PER_TASK=20
-EVAL_GPUS_PER_NODE=2
+EVAL_GPUS_PER_NODE=1
 
 # Output directories for evaluation job
 EVAL_SBATCH_DIR="sbatch_eval_jobs"
@@ -97,15 +99,15 @@ for lr in "${LEARNING_RATES[@]}"; do
                     
                     # Check if experiment exists and has been completed
                     if check_experiment_exists "$exp_name"; then
-                        echo "Found completed experiment: $exp_name"
-                        completed_experiments+=("$exp_name")
-                        
-                        # Add to suffix list with hypersearch_ prefix
-                        if [[ -z "$suffix_list" ]]; then
-                            suffix_list="hypersearch_${exp_name}"
-                        else
-                            suffix_list="${suffix_list} hypersearch_${exp_name}"
-                        fi
+                    echo "Found completed experiment: $exp_name"
+                    completed_experiments+=("$exp_name")
+                    
+                    # Add to suffix list with hypersearch_ prefix
+                    if [[ -z "$suffix_list" ]]; then
+                        suffix_list="hypersearch_${exp_name}"
+                    else
+                        suffix_list="${suffix_list} hypersearch_${exp_name}"
+                    fi
                     else
                         echo "Skipping $exp_name - experiment not found or incomplete"
                     fi
@@ -163,7 +165,7 @@ use_best_model="${USE_BEST_MODEL}"
 compute_loss="${COMPUTE_LOSS}"
 topk_list="${TOPK_LIST}"
 has_gold_id="${HAS_GOLD_ID}"
-
+inference_mode="${INFERENCE_MODE}"
 # Run evaluation inside singularity container
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "
 source /ext3/env.sh
@@ -178,7 +180,8 @@ python gen_ret_and_eval.py --data_name \$data_name \\
                             --retriever_list \$retriever_list \\
                             \$use_gpu --num_shards \$num_shards \\
                             --checkpoint_num \$checkpoint_num \\
-                            \$max_new_tokens \$use_best_model \$compute_loss
+                            \$max_new_tokens \$use_best_model \$compute_loss \\
+                            \$inference_mode
 
 # Evaluate retrieval results
 for suffix in \$suffix_list

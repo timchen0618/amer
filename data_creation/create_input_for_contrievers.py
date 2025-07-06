@@ -558,14 +558,14 @@ if __name__ == '__main__':
     if generate_split == 'contrastive':
         import sys
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
-        split='train'
+        split='dev'
         length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
         
         use_hard_negatives = True
-        for split in ['train']:
+        for split in ['train', 'dev']:
             for length in [5,6,7,8]:
-                for model_name in ['inf']:
-                # for model_name in ['cont', 'stella']:
+                # for model_name in ['inf']:
+                for model_name in ['cont', 'stella']:
                     # for data_name in ['nq', 'msmarco']:
                     for data_name in ['qampari']:
                         rootdir = Path('../../autoregressive/data_creation/raw_data/')

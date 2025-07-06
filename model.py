@@ -244,6 +244,8 @@ class EmbeddingModel(nn.Module):
         outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
         
+        # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        
         # print(inputs['hidden_states'].size())  # [1, 257, dim]
         # print(inputs['attention_mask'].size()) # [1, 257]
         # print(loss_mask.size()) # [1, 257]

@@ -12,15 +12,15 @@ LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
 # LEARNING_RATES=(2e-5)
 
 # Temperature values for contrastive loss
-TEMPERATURES=(0.05)
-# TEMPERATURES=(0.01)
+TEMPERATURES=(0.03 0.1)
+# TEMPERATURES=(0.05)
 
 # Batch sizes
 BATCH_SIZES=(16 8 32)
 # BATCH_SIZES=(16)
 
 # Number of epochs
-NUM_EPOCHS_LIST=(20 10 30)
+NUM_EPOCHS_LIST=(20 10 30 40)
 # NUM_EPOCHS_LIST=(20)
 
 # Warmup ratios
