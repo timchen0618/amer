@@ -95,7 +95,7 @@ def get_varsize(x: torch.Tensor):
     allsizes = [torch.zeros_like(size) for _ in range(dist.get_world_size())]
     dist.all_gather(allsizes, size)
     allsizes = torch.cat(allsizes)
-    print("max size")
+    # print("max size")
     return allsizes
 
 
