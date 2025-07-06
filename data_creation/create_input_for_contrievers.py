@@ -584,7 +584,16 @@ if __name__ == '__main__':
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings_{length}.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings_{length}.npy',
                                                             out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_{length}_ctxs' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_{length}_ctxs')
                         print(len(data_indices)) 
-                        
+    
+    if generate_split == 'gaussian_synthetic':
+        import sys
+        # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
+        split='dev'
+        length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
+        
+        use_hard_negatives = True
+        
+        
     if generate_split == 'contrastive_sequence':
         
 

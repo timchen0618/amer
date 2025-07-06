@@ -504,18 +504,10 @@ def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards):
             top_ids_and_scores[i][1] = np.append(top_ids_and_scores[i][1], all_sharded_ids_and_scores[shard_id][i][1])  # scores
             top_ids_and_scores[i][0].extend(all_sharded_ids_and_scores[shard_id][i][0])  # ids
             
-        print('========')
-        print(top_ids_and_scores[i])
-        print('------')
-        print(top_ids_and_scores[i][1])
         indices = np.argsort(top_ids_and_scores[i][1])[::-1]
         top_ids_and_scores[i][1] = top_ids_and_scores[i][1][indices]
         top_ids_and_scores[i][0] = [top_ids_and_scores[i][0][j] for j in indices]
-        
-        print(top_ids_and_scores[i])
-        print('------')
-        print(top_ids_and_scores[i][0])
-    
+            
     return top_ids_and_scores
     
     
