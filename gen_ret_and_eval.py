@@ -423,7 +423,7 @@ def main_test_google(passages_embeddings, passages_path, output_path,
     logger.info(f"Saved results to {output_path}")
     
       
-def main_test(index, passage_id_map, output_path, 
+def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, output_path, 
               raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
               data_path = 'out.npy', lengths_path = "", embedding_size = 4096, top_k_per_query = 100, top_k = 100,
               start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None):
@@ -449,14 +449,31 @@ def main_test(index, passage_id_map, output_path,
         assert question_embeddings.shape[0] == sum(lengths), (question_embeddings.shape[0], sum(lengths))
     else:
         lengths = None
-
+        
+    # Start Retrieving!
+    all_sharded_ids_and_scores = []
+    for shard_id in range(num_shards):
+        # Load index
+        logger.info('passages_embeddings', passages_embeddings=passage_embeddings_map[retriever]["embedding_path"])
+        index = load_index(
+            passage_embeddings_map[retriever]["embedding_dim"], 
+            passage_embeddings_map[retriever]["embedding_path"], 
+            save_or_load_index=args.save_or_load_index,
+            use_gpu=args.use_gpu,
+            shard_id=shard_id,
+            num_shards=args.num_shards
+        )
     
-    # Start Search! Get top k results.
-    start_time_retrieval = time.time()
-    top_ids_and_scores = index.search_knn(question_embeddings.reshape(-1, embedding_size), top_k_per_query)
-    logger.info(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
+        # Start Search! Get top k results.
+        start_time_retrieval = time.time()
+        sharded_ids_and_scores = index.search_knn(question_embeddings.reshape(-1, embedding_size), top_k_per_query)
+        logger.info(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
+        all_sharded_ids_and_scores.append(sharded_ids_and_scores)
+    
+    top_ids_and_scores = aggregate_sharded_results(all_sharded_ids_and_scores, num_shards)
+    logger.info(f"aggregated top_ids_and_scores for {num_shards} shards")
+    
     top_ids_and_scores = aggregate_different_queries_by_length(top_ids_and_scores, lengths, MAX_LATENTS, top_k, aggregate_start_idx, aggregate_end_idx)
-
     logger.info(f"length of the data to be retrieved: {len(data)}, length of the retrieved results: {len(top_ids_and_scores)}")
     add_passages(data, passage_id_map, top_ids_and_scores)
 
@@ -468,38 +485,39 @@ def main_test(index, passage_id_map, output_path,
     logger.info(f"Saved results to {output_path}")
     
     
-def aggregate_sharded_results(output_path, num_shards):
+def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards):
     if num_shards == 1:
-        return
-    # read all the data
-    query2docs = {}
-    START = 0
-    END = num_shards
-    TOPK = 0
-    for i in range(START, END):            
-        data = read_jsonl(output_path.replace('.jsonl', f'_shard_{i}.jsonl'))
-
-        if i == START:
-            TOPK = len(data[0]['ctxs'])
-            for d in data:
-                query2docs[d['question']] = []
-
-        for inst in data:
-            query2docs[inst['question']].extend(inst['ctxs'])
-
-    for query, docs in query2docs.items():
-        sorted_docs = sorted(docs, key=lambda x: x['score'], reverse=True)[:TOPK]
-        query2docs[query] = sorted_docs
-
-    # reassign the sorted docs to the original data
-    for inst in data:
-        inst['ctxs'] = query2docs[inst['question']]
-
-    write_jsonl(data, output_path)
+        return all_sharded_ids_and_scores[0]
     
-    # remove the shard files
-    for i in range(START, END):
-        os.remove(output_path.replace('.jsonl', f'_shard_{i}.jsonl'))
+    # len(all_sharded_ids_and_scores) -> num_shards
+    # all_sharded_ids_and_scores[0] -> list of top_ids_and_scores for the first shard
+    # docs = [passages[doc_id] for doc_id in results_and_scores[0]]
+    # scores = [str(score) for score in results_and_scores[1]]
+
+    # Aggregate results from all shards
+    top_ids_and_scores = []
+    for i in range(len(all_sharded_ids_and_scores[0])):
+        top_ids_and_scores.append([])
+        for _ in range(2):
+            top_ids_and_scores[i].append([])
+        for shard_id in range(num_shards):
+            top_ids_and_scores[i][1] = np.append(top_ids_and_scores[i][1], all_sharded_ids_and_scores[shard_id][i][1])  # scores
+            top_ids_and_scores[i][0].extend(all_sharded_ids_and_scores[shard_id][i][0])  # ids
+            
+        print('========')
+        print(top_ids_and_scores[i])
+        print('------')
+        print(top_ids_and_scores[i][1])
+        indices = np.argsort(top_ids_and_scores[i][1])[::-1]
+        top_ids_and_scores[i][1] = top_ids_and_scores[i][1][indices]
+        top_ids_and_scores[i][0] = [top_ids_and_scores[i][0][j] for j in indices]
+        
+        print(top_ids_and_scores[i])
+        print('------')
+        print(top_ids_and_scores[i][0])
+    
+    return top_ids_and_scores
+    
     
 
     
@@ -520,7 +538,7 @@ def parse_args():
                        help='List of retrievers to use')
     
     # Indexing configuration
-    parser.add_argument('--use_gpu', action='store_true', default=True,
+    parser.add_argument('--use_gpu', action='store_true', default=False,
                        help='Whether to use GPU for indexing')
     parser.add_argument('--num_shards', type=int, default=1,
                        help='Number of shards for indexing')
@@ -573,10 +591,13 @@ def parse_args():
                        help='Starting index for data processing')
     parser.add_argument('--end_idx', type=int, default=None,
                        help='Ending index for data processing')
-    parser.add_argument('--aggregate_start_idx', type=int, default=0,
-                       help='Starting index for aggregation')
-    parser.add_argument('--aggregate_end_idx', type=int, default=None,
-                       help='Ending index for aggregation')   
+    # parser.add_argument('--aggregate_start_idx', type=int, default=0,
+    #                    help='Starting index for aggregation')
+    # parser.add_argument('--aggregate_end_idx', type=int, default=None,
+    #                    help='Ending index for aggregation')   
+    parser.add_argument('--inference_modes', type=str, nargs='+', default='all',
+                       choices=['first', 'second', 'all'],
+                       help='Inference mode')
     
     return parser.parse_args()
 
@@ -718,84 +739,90 @@ if __name__ == "__main__":
             logger.info('writing to %s', generated_embeddings_path)
             outputs_gen = np.load(generated_embeddings_path)
             
+            output_embedding_dir = f'output_embeddings/{args.training_data_name}_{retriever}/'
+            os.makedirs(output_embedding_dir, exist_ok=True)
+            
             if not args.google_api:
                 # Load passages
                 logger.info(f"Loading passages from {passages_path}")
                 passages = load_passages(passages_path)
                 passage_id_map = {x["id"]: x for x in passages}
                 
-                for shard_id in range(args.num_shards):
-                    # Load index
-                    logger.info('passages_embeddings', passages_embeddings=passage_embeddings_map[retriever]["embedding_path"])
-                    logger.info('passages_path', passages_path=passages_path, shard_id=shard_id, num_shards=args.num_shards)
-                    index = load_index(
-                        passage_embeddings_map[retriever]["embedding_dim"], 
-                        passage_embeddings_map[retriever]["embedding_path"], 
-                        save_or_load_index=args.save_or_load_index,
-                        use_gpu=args.use_gpu,
-                        shard_id=shard_id,
-                        num_shards=args.num_shards
-                    )
-                    shard_string = f"_shard_{shard_id}" if args.num_shards > 1 else ""
-                    
-                    output_embedding_dir = f'output_embeddings/{args.training_data_name}_{retriever}/'
-                    os.makedirs(output_embedding_dir, exist_ok=True)
+                for inference_mode in args.inference_modes:
+                    if inference_mode == 'first':
+                        inference_string = '_single'
+                        aggregate_start_idx = 0
+                        aggregate_end_idx = 1
+                    elif inference_mode == 'second':
+                        inference_string = '_from_2nd_to_3rd'
+                        aggregate_start_idx = 1
+                        aggregate_end_idx = 2
+                    elif inference_mode == 'all':
+                        inference_string = ''
+                        aggregate_start_idx = 0
+                        aggregate_end_idx = None
+                    else:
+                        raise ValueError(f"Invalid inference mode: {inference_mode}")
                     
                     # Retrieve and evaluate
-                    main_test(
-                        index=index,
+                    retrieve(
+                        num_shards=args.num_shards, 
+                        retriever=retriever, 
+                        passage_embeddings_map=passage_embeddings_map, 
                         passage_id_map=passage_id_map,
                         raw_data_path=dev_data_path,
                         embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
                         lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
                         data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}{shard_string}.jsonl',
+                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}{inference_string}.jsonl',
                         MAX_LATENTS=args.max_new_tokens,
                         top_k_per_query=args.top_k_per_query,
                         top_k=args.top_k,
                         start_idx=args.start_idx,
                         end_idx=args.end_idx,
-                    )
-                    
-                    main_test(
-                        index=index,
-                        passage_id_map=passage_id_map,
-                        raw_data_path=dev_data_path,
-                        embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                        lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                        data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single{shard_string}.jsonl',
-                        MAX_LATENTS=args.max_new_tokens,
-                        top_k_per_query=args.top_k_per_query,
-                        top_k=args.top_k,
-                        start_idx=args.start_idx,
-                        end_idx=args.end_idx,
-                        aggregate_start_idx=0,
-                        aggregate_end_idx=1
-                    )
-                    
-                    main_test(
-                        index=index,
-                        passage_id_map=passage_id_map,
-                        raw_data_path=dev_data_path,
-                        embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                        lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                        data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd{shard_string}.jsonl',
-                        MAX_LATENTS=args.max_new_tokens,
-                        top_k_per_query=args.top_k_per_query,
-                        top_k=args.top_k,
-                        start_idx=args.start_idx,
-                        end_idx=args.end_idx,
-                        aggregate_start_idx=1,
-                        aggregate_end_idx=2
+                        aggregate_start_idx=aggregate_start_idx,
+                        aggregate_end_idx=aggregate_end_idx
                     )
                 
-                # Aggregate sharded results
-                if args.num_shards > 1:
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl', args.num_shards)
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl', args.num_shards)
-                    aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl', args.num_shards)
+                # retrieve(
+                #     index=index,
+                #     passage_id_map=passage_id_map,
+                #     raw_data_path=dev_data_path,
+                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
+                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
+                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
+                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single{shard_string}.jsonl',
+                #     MAX_LATENTS=args.max_new_tokens,
+                #     top_k_per_query=args.top_k_per_query,
+                #     top_k=args.top_k,
+                #     start_idx=args.start_idx,
+                #     end_idx=args.end_idx,
+                #     aggregate_start_idx=0,
+                #     aggregate_end_idx=1
+                # )
+                
+                # retrieve(
+                #     index=index,
+                #     passage_id_map=passage_id_map,
+                #     raw_data_path=dev_data_path,
+                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
+                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
+                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
+                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd{shard_string}.jsonl',
+                #     MAX_LATENTS=args.max_new_tokens,
+                #     top_k_per_query=args.top_k_per_query,
+                #     top_k=args.top_k,
+                #     start_idx=args.start_idx,
+                #     end_idx=args.end_idx,
+                #     aggregate_start_idx=1,
+                #     aggregate_end_idx=2
+                # )
+                
+                # # Aggregate sharded results
+                # if args.num_shards > 1:
+                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl', args.num_shards)
+                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl', args.num_shards)
+                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl', args.num_shards)
             else:
                 # Google API path
                 main_test_google(
