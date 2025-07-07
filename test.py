@@ -1,4 +1,5 @@
 from logging import config
+from re import A
 import torch
 import torch.distributed
 import torch.optim as optim
@@ -73,20 +74,46 @@ print(test_pairs[0]['query_idx'])
 print(np.array(test_pairs[0]['query_vector']).shape)
 print(np.array(test_pairs[0]['ground_truth_indices']).shape)
 queries = data['queries']
-print(queries[test_pairs[0]['query_idx']])
-# model, tokenizer = load_model(train_lora=True,
-#                                 base_model_id="meta-llama/Llama-3.2-1B-Instruct", 
-#                                 adapter_path="", 
-#                                 linear_checkpoint_path=None,
-#                                 embedding_model_dim=1536, 
-#                                 weight_tying=False, 
-#                                 loss_function='Hungarian_Contrastive', 
-#                                 temperature=0.05,
-#                                 extra_q_embed=False,
-#                                 compute_loss_on_q=False,
-#                                 use_eos=False)
+corpus = data['corpus']
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model, tokenizer = load_model(train_lora=True,
+                                base_model_id="meta-llama/Llama-3.2-1B-Instruct", 
+                                adapter_path=None, 
+                                linear_checkpoint_path=None,
+                                embedding_model_dim=1024, 
+                                weight_tying=False, 
+                                loss_function='Hungarian_Contrastive', 
+                                temperature=0.05,
+                                extra_q_embed=False,
+                                compute_loss_on_q=False,
+                                use_eos=False)
 
+batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+
+LENGTH = 16
+for i in range(len(test_pairs)):
+    query_vector = queries[test_pairs[i]['query_idx']]
+    ground_truth_indices = test_pairs[i]['ground_truth_indices']
+    ground_truth_embeddings = corpus[ground_truth_indices]
+    batch['inputs_embeds'].append(query_vector)
+    batch['attention_mask'].append(np.zeros(LENGTH))
+    batch['positive_embeddings'].append(ground_truth_embeddings)
+    batch['negative_embeddings'].append(ground_truth_embeddings)
+
+batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
+print(batch['inputs_embeds'].size())
+batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
+batch['attention_mask'][:, 0] = 1
+print(batch['attention_mask'].size())
+batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
+print(batch['positive_embeddings'].size())
+batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
+print(batch['negative_embeddings'].size())
+
+model.cuda()
+outputs = model(**batch)
+print(outputs.loss)
 # collator = functools.partial(ContrastiveTrainCollator(), shuffle=False, take_first=False, use_eos=False)
 # full_dataset = load_embeddings_dataset(dataset_path='autoregressive_qampari_inf_train_dataset_1b_contrastive_5_ctxs')
 # data_handler = DataHandler(full_dataset, collator, 1, 'train')

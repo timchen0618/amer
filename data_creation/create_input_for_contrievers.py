@@ -13,7 +13,7 @@ from nltk import word_tokenize
 import regex
 import string
 import unicodedata
-
+import os
 
 class SimpleTokenizer(object):
     ALPHA_NUM = r'[\p{L}\p{N}\p{M}]+'
@@ -420,14 +420,14 @@ if __name__ == '__main__':
     rootdir = Path(__file__).parent
     print(rootdir)
     
-    generate_split = 'contrastive'
+    generate_split = 'gaussian_synthetic'
     if generate_split in ['qampari_train', 'qampari_dev']:
         tag='qampari_org'
     elif generate_split in ['wsd_train', 'wsd_dev']:
         tag='wsd_distinct'
     elif generate_split in ['qampari_q_sm_500_train']:
         tag='qampari_q_sm_500'
-    elif generate_split in ['question_only', 'corpus', 'contrastive', 'contrastive_sequence', 'contrastive_sequence_check_answer']:
+    elif generate_split in ['question_only', 'corpus', 'contrastive', 'contrastive_sequence', 'contrastive_sequence_check_answer', 'gaussian_synthetic']:
         tag=''
     else:
         raise ValueError(f'Invalid generate_split: {generate_split}')
@@ -588,15 +588,79 @@ if __name__ == '__main__':
     if generate_split == 'gaussian_synthetic':
         import sys
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
-        split='dev'
-        length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
+        split='test'  # ['train', 'test']
         
-        use_hard_negatives = True
+        def load_synthetic_dataset(data_dir='./synthetic_data'):
+            
+            # 1. Load configuration (metadata about the dataset)
+            with open(os.path.join(data_dir, 'config.json'), 'r') as f:
+                config = json.load(f)
+            
+            # 2. Load the main data arrays
+            corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
+            queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
+            transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))  # Shape: (n_rotations, dimensions, dimensions)
+            
+            # 3. Load query-ground truth mappings
+            with open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r') as f:
+                pairs_data = json.load(f)
+            
+            return {
+                'config': config,
+                'corpus': corpus,
+                'queries': queries,
+                'transformation_matrices': transformation_matrices,
+                'pairs_data': pairs_data
+            }
+            
+            
+        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH):
+            batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+            for i in range(len(pairs)):
+                query_vector = queries[pairs[i]['query_idx']]
+                ground_truth_indices = pairs[i]['ground_truth_indices']
+                ground_truth_embeddings = corpus[ground_truth_indices]
+                batch['inputs_embeds'].append(query_vector)
+                batch['attention_mask'].append(np.zeros(LENGTH))
+                batch['positive_embeddings'].append(ground_truth_embeddings)
+                batch['negative_embeddings'].append(ground_truth_embeddings)
+
+            batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).float().unsqueeze(1).expand(-1, LENGTH, -1)  # (bsz, LENGTH, d)
+            batch['attention_mask'] = torch.tensor(batch['attention_mask']).long()             # (bsz, LENGTH). Only the first token is 1, the rest are 0.
+            batch['attention_mask'][:, 0] = 1
+            batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).float()  # (bsz, k, d), LENGTH > k
+            batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).float()  # (bsz, k, d)
+            
+            import time
+            start_time = time.time()
+            
+            dataset_dicts = []
+            for i in range(len(pairs)):
+                positive = batch['positive_embeddings'][i]  # (k, d)
+                negative = batch['negative_embeddings'][i]  # (k, d)
+                print('positive.shape, negative.shape', positive.shape, negative.shape)
+                print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
+
+                dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][0].cpu().numpy(), 
+                                    "attention_mask": batch['attention_mask'][0].cpu().numpy(), 
+                                    "positive_embeddings": positive, 
+                                    "negative_embeddings": negative})
+                                
+            safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
+
+            print('time elapsed: ', (time.time()-start_time)/60.0, 'min.')
+            print('actual data size: ', len(dataset_dicts))
+            
+        LENGTH = 16
+        data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data/')
+        pairs = data['pairs_data'][split]
+        create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive', 
+                                 pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
         
-        
+            
     if generate_split == 'contrastive_sequence':
         
-
+        
         # rootdir = Path('../../autoregressive/data/ambiguous/nqopen')
         # # for split in ['train', 'dev', 'test']:
         # for split in ['dev', 'test']:

@@ -241,12 +241,15 @@ class EmbeddingModel(nn.Module):
         loss_mask = inputs['attention_mask'].detach().clone()
         
         # get the input embeddings from the base causal language model
-        outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        if 'input_ids' in inputs:
+            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        else:
+            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
         
-        # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
         
-        # print(inputs['hidden_states'].size())  # [1, 257, dim]
+        
+        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
         # print(inputs['attention_mask'].size()) # [1, 257]
         # print(loss_mask.size()) # [1, 257]
         # print(labels.size()) # [1, 257]
@@ -255,6 +258,7 @@ class EmbeddingModel(nn.Module):
             
             # assign the labels to the hidden states as input
             input_start_for_output = inputs['attention_mask'][i].sum()
+            
             # [1, 257, 2048], [1, 3, 2048], [1, 3, 1536]
             output_len = labels[i].size(0)
             inputs['hidden_states'][i][input_start_for_output:input_start_for_output+output_len,:] = self.input_projection(labels[i].float())
@@ -315,6 +319,7 @@ class EmbeddingModel(nn.Module):
                 if self.use_eos:
                     loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
                     loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
+                    
                 loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
                 return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
             else:
