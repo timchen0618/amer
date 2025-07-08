@@ -32,12 +32,12 @@ def get_data_mapping(project_root):
 
 def get_file_list(data_type):
     """Returns the default file list for a given data type."""
-    return [
-        f'retrieval_out_dev_{data_type}_single.jsonl', 
-        f'retrieval_out_dev_{data_type}.jsonl', 
-        f'retrieval_out_dev_{data_type}_from_2nd_to_3rd.jsonl'
-    ]
-
+    # return [
+    #     f'retrieval_out_dev_{data_type}_single.jsonl', 
+    #     f'retrieval_out_dev_{data_type}.jsonl', 
+    #     f'retrieval_out_dev_{data_type}_from_2nd_to_3rd.jsonl'
+    # ]
+    return [f'retrieval_out_dev_{data_type}.jsonl']
 
 def parse_arguments():
     """Parse command line arguments."""

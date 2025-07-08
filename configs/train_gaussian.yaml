@@ -1,23 +1,23 @@
 project: diverse_retrieval
 ########################################################
-save_path: results/ambiguous_qe_inf/
-name: toy_contrastive_lr2e5_ep30_temp0.05_warmup0.05_gradnorm1_bs32
-train_path: training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/
+save_path: results/gaussian_synthetic_inf/
+name: toy_mse_lr2e5_ep20_temp0.05_warmup0.05_gradnorm1_bs16
+train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_mse
 
 # save and load
-save_every_n_steps: 250
-embedding_model_dim: 1536
-adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
-linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
+save_every_n_steps: 2500
+embedding_model_dim: 1024
+# adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
+# linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
 # adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
 # linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
-# adapter_path: 
-# linear_checkpoint_path: 
+adapter_path: 
+linear_checkpoint_path: 
 
 # training
-batch_size_training: 32
+batch_size_training: 16
 gradient_accumulation_steps: 1
-num_epochs: 30
+num_epochs: 20
 lr: !!float "2e-5"
 weight_decay: 0.01
 warmup_ratio: 0.05
@@ -37,12 +37,12 @@ take_first: False
 
 # model architecture
 temperature: 0.05
-loss_function: Hungarian_Contrastive  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
+loss_function: MSE  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
 extra_q_embed: False
 compute_loss_on_q: False
 use_eos: False
 # data loading 
-question_only: False
+question_only: True
 
 ########################################################
 # not used that often

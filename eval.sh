@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari"
-training_data_name="qampari"
+data_name="ambiguous_qe"
+training_data_name="ambiguous_qe"
 # suffix_list="hypersearch_lr1e-4_temp0.05_batch16_ep20_warmup0.05 hypersearch_lr1e-4_temp0.05_batch16_ep10_warmup0.05"
-# suffix_list="toy_contrastive_from_stage2_lr2e5_ep20_temp0.05_warmup0.05"
-suffix_list="hypersearch_lr1e-4_temp0.05_batch32_ep30_warmup0.05"
+# suffix_list="toy_contrastive"
+suffix_list="test_save"
+
 retriever_list="inf"
 use_gpu="--use_gpu"
 # use_gpu=""
@@ -26,7 +27,8 @@ compute_loss="--compute_loss"
 topk_list="100 10"
 # has_gold_id="--has-gold-id"
 has_gold_id=""
-inference_modes="all first second"
+# inference_modes="all first second"
+inference_modes="all"
 
 
 python gen_ret_and_eval.py --data_name $data_name \
