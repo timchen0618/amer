@@ -35,7 +35,7 @@ logger = structlog.get_logger()
 def save_model(model, save_dir, step, eval_loss):
     # Save the base causal language model
     # model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
-    model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model.pt"), safe_serialization=True)
+    model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model"), safe_serialization=True)
     
     # Save the linear layers
     # print(model.input_projection.state_dict())
@@ -54,7 +54,7 @@ def save_model(model, save_dir, step, eval_loss):
 def train():
 
     # load the configuration file
-    with open('configs/train_gaussian.yaml') as f:
+    with open('configs/train_qampari.yaml') as f:
         config_dict = yaml.safe_load(f)
 
     logger.info("Config:", config_dict=config_dict)

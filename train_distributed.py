@@ -59,7 +59,11 @@ def save_model(model, save_dir, step, accelerator):
         safe_serialization=True,
         is_main_process=accelerator.is_main_process,
         save_function=accelerator.save,
-        state_dict=accelerator.get_state_dict(model)
+        state_dict={
+            k.replace("base_causallm.", ""): v 
+            for k, v in state_dict.items() 
+            if k.startswith("base_causallm.")
+        }
     )
     # print('after save model', accelerator.process_index)
     
@@ -157,6 +161,9 @@ def train(configs):
     )    
     
    
+    # save_model(model, save_dir, 0, accelerator)
+    # exit(0)
+    
     total_train_steps = 0
     best_acc = 0
     best_val_loss = 10000

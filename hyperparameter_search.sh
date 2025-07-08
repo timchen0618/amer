@@ -62,7 +62,6 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPUS_PER_NODE}
-#SBATCH --constraint="a100|h100"
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}

@@ -681,7 +681,8 @@ if __name__ == "__main__":
             
             # Determine checkpoint number
             if args.use_best_model:
-                adapter_path = f"results/{train_name}/{model_name}/best_model"
+                # adapter_path = f"results/{train_name}/{model_name}/best_model"
+                adapter_path = "results/nq_inf/toy_contrastive/checkpoint_70000"
                 linear_checkpoint_path = f"results/{train_name}/{model_name}/best_model_linear.pt"
             else:
                 if args.use_suffix_mapping and suffix in num_map_inst:
@@ -690,7 +691,9 @@ if __name__ == "__main__":
                     checkpoint_num = args.checkpoint_num
                 
                 adapter_path = f"results/{train_name}/{model_name}/checkpoint_{checkpoint_num}"
+                # adapter_path = "results/nq_inf/toy_contrastive/checkpoint_70000"
                 linear_checkpoint_path = f"results/{train_name}/{model_name}/checkpoint_{checkpoint_num}_linear.pt"
+                # linear_checkpoint_path = "results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
             
             # Set up dataset path
             if args.data_name == 'ambiguous' or args.data_name == 'ambiguous_qe':

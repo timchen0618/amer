@@ -1,18 +1,18 @@
 project: diverse_retrieval
 ########################################################
-save_path: results/gaussian_synthetic_inf/
-name: toy_contrastive_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16_takefirst
-train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive/
+save_path: results/ambiguous_qe_inf/
+name: test_save_single
+train_path: training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/
 
 # save and load
 save_every_n_steps: 250
-embedding_model_dim: 1024
-# adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
-# linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
+embedding_model_dim: 1536
+adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
+linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
 # adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
 # linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
-adapter_path: 
-linear_checkpoint_path: 
+# adapter_path: 
+# linear_checkpoint_path: 
 
 # training
 batch_size_training: 16
@@ -33,7 +33,7 @@ lora_dropout: 0.1
 shuffle_sequence: True
 train_on_all_data: False
 save_only_improve: True
-take_first: True
+take_first: False
 
 # model architecture
 temperature: 0.05

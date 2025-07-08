@@ -1,7 +1,7 @@
 project: diverse_retrieval
 ########################################################
 save_path: results/gaussian_synthetic_inf/
-name: toy_mse_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16
+name: toy_mse_lr2e5_ep20_temp0.05_warmup0.05_gradnorm1_bs16
 train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_mse
 
 # save and load
@@ -17,8 +17,8 @@ linear_checkpoint_path:
 # training
 batch_size_training: 16
 gradient_accumulation_steps: 1
-num_epochs: 50
-lr: !!float "1e-4"
+num_epochs: 20
+lr: !!float "2e-5"
 weight_decay: 0.01
 warmup_ratio: 0.05
 scheduler: linear
