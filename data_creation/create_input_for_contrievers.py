@@ -685,10 +685,10 @@ if __name__ == '__main__':
             print('actual data size: ', len(dataset_dicts))
             
         LENGTH = 16
-        # data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data/')
-        # pairs = data['pairs_data'][split]
-        # create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive', 
-        #                          pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
+        data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data/')
+        pairs = data['pairs_data'][split]
+        create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive', 
+                                 pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
         
         mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
         create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 

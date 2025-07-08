@@ -54,7 +54,7 @@ def save_model(model, save_dir, step, eval_loss):
 def train():
 
     # load the configuration file
-    with open('configs/train_qampari.yaml') as f:
+    with open('configs/train_gaussian.yaml') as f:
         config_dict = yaml.safe_load(f)
 
     logger.info("Config:", config_dict=config_dict)
