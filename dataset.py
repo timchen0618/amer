@@ -98,12 +98,15 @@ class ContrastiveTrainCollator:
 def contrastive_eval_collator(features):
     """
     """
-    batch = {'input_ids': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+    if 'input_ids' in features[0]:
+        batch = {'input_ids': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+    else:  # use inputs_embeds
+        batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
     
     for inst in features:
         input_len = sum(inst['attention_mask'])
         for k in inst.keys():
-            if k in ['input_ids', 'attention_mask']:
+            if k in ['input_ids', 'attention_mask', 'inputs_embeds']:
                 batch[k].append(torch.tensor(inst[k][:input_len]).unsqueeze(0))
             elif k in batch: # get the question embeddings
                 batch[k].append(torch.tensor(inst[k]).unsqueeze(0))

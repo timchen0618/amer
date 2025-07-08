@@ -348,6 +348,9 @@ class EmbeddingModel(nn.Module):
         if 'input_ids' in inputs:
             input_ids = inputs['input_ids']
             assert input_ids.shape[0] == 1, "only support batch_size == 1 now"
+        elif 'inputs_embeds' in inputs:
+            inputs_embeds = inputs['inputs_embeds']
+            assert inputs_embeds.shape[0] == 1, "only support batch_size == 1 now"
         else:
             hidden_states = inputs['hidden_states']
             assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
@@ -359,11 +362,17 @@ class EmbeddingModel(nn.Module):
         # HC Implementation
         next_embs = []
         
-        assert 'input_ids' in inputs, "only support input_ids now"
-        assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
+        assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
+        if 'input_ids' in inputs:
+            assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
+        else:
+            assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
         
         # predict the first pass; also get the input embeddings from the base causal language model
-        outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        if 'input_ids' in inputs:
+            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        else:
+            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0]
         
         

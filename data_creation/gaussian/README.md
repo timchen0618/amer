@@ -13,10 +13,16 @@ The synthetic data generation follows this process:
 
 ## Files
 
+#### Data Generation Scripts
 - `generate_data.py` - Main data generation script
-- `example_usage.py` - Example of how to load and evaluate with the generated data
-- `test_generation.py` - Small-scale test to verify the generation works
-- `requirements.txt` - Required Python packages
+- `generate_data_opposing_pairs.py` - Main data generation script for hard data (for single retriever).
+- `hard_dataset_ideas.py` - some ideas for generating hard data. 
+
+#### Loading / Testing / Verification
+- `baseline_evaluation.py` - Test the orcale single retriever baseline. 
+- `loading_instructions.py` - Example of how to load and evaluate with the generated data
+- `test_anti_averaging.py` - Small-scale test to verify the generation works
+- `validate_data.py` - validate if the data is as what we thought. 
 
 ## Installation
 

@@ -1,11 +1,11 @@
 project: diverse_retrieval
 ########################################################
 save_path: results/gaussian_synthetic_inf/
-name: toy_contrastive_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16_takefirst
-train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive/
+name: toy_mse_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16
+train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_mse
 
 # save and load
-save_every_n_steps: 250
+save_every_n_steps: 2500
 embedding_model_dim: 1024
 # adapter_path: results/nq_inf/toy_contrastive/checkpoint_70000   # (stage 1) adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
 # linear_checkpoint_path: results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt  # (stage 1) linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
@@ -33,16 +33,16 @@ lora_dropout: 0.1
 shuffle_sequence: True
 train_on_all_data: False
 save_only_improve: True
-take_first: True
+take_first: False
 
 # model architecture
 temperature: 0.05
-loss_function: Contrastive  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
+loss_function: MSE  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
 extra_q_embed: False
 compute_loss_on_q: False
 use_eos: False
 # data loading 
-question_only: False
+question_only: True
 
 ########################################################
 # not used that often

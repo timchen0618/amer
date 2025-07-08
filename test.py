@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from model import EmbeddingModel, load_model
 from dataset import (
     load_embeddings_dataset,
-    MSETrainCollator,
     ContrastiveTrainCollator,
-    DataHandler
+    DataHandler,
+    contrastive_eval_collator
 )
 from utils import Config, set_seed, set_optim
 
@@ -33,7 +33,10 @@ import structlog
 logger = structlog.get_logger()
 import numpy as np
 
-def load_synthetic_dataset(data_dir='./synthetic_data'):
+from gen_ret_and_eval import evaluate_loop
+from data_creation.gaussian.baseline_evaluation import evaluate_baseline
+
+def load_synthetic_dataset(data_dir='./synthetic_data', split='test'):
     """
     Load the complete synthetic dataset.
     
@@ -57,137 +60,106 @@ def load_synthetic_dataset(data_dir='./synthetic_data'):
     with open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r') as f:
         pairs_data = json.load(f)
     
-    return {
-        'config': config,
-        'corpus': corpus,
-        'queries': queries,
-        'transformation_matrices': transformation_matrices,
-        'pairs_data': pairs_data
-    }
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-data = load_synthetic_dataset(data_dir='data_creation/gaussian/data/opposing_pairs_data/')
-test_pairs = data['pairs_data']['test']
-print(len(test_pairs)) # dict_keys(['query_idx', 'query_vector', 'ground_truth_indices'])
-print(test_pairs[0]['query_idx']) 
-print(np.array(test_pairs[0]['query_vector']).shape)
-print(np.array(test_pairs[0]['ground_truth_indices']).shape)
-queries = data['queries']
-corpus = data['corpus']
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model, tokenizer = load_model(train_lora=True,
-                                base_model_id="meta-llama/Llama-3.2-1B-Instruct", 
-                                adapter_path=None, 
-                                linear_checkpoint_path=None,
-                                embedding_model_dim=1024, 
-                                weight_tying=False, 
-                                loss_function='Hungarian_Contrastive', 
-                                temperature=0.05,
-                                extra_q_embed=False,
-                                compute_loss_on_q=False,
-                                use_eos=False)
-
-batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
-
-LENGTH = 16
-for i in range(len(test_pairs)):
-    query_vector = queries[test_pairs[i]['query_idx']]
-    ground_truth_indices = test_pairs[i]['ground_truth_indices']
-    ground_truth_embeddings = corpus[ground_truth_indices]
-    batch['inputs_embeds'].append(query_vector)
-    batch['attention_mask'].append(np.zeros(LENGTH))
-    batch['positive_embeddings'].append(ground_truth_embeddings)
-    batch['negative_embeddings'].append(ground_truth_embeddings)
-
-batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
-print(batch['inputs_embeds'].size())
-batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
-batch['attention_mask'][:, 0] = 1
-print(batch['attention_mask'].size())
-batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
-print(batch['positive_embeddings'].size())
-batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
-print(batch['negative_embeddings'].size())
-
-model.cuda()
-outputs = model(**batch)
-print(outputs.loss)
-# collator = functools.partial(ContrastiveTrainCollator(), shuffle=False, take_first=False, use_eos=False)
-# full_dataset = load_embeddings_dataset(dataset_path='autoregressive_qampari_inf_train_dataset_1b_contrastive_5_ctxs')
-# data_handler = DataHandler(full_dataset, collator, 1, 'train')
+    pairs_data = pairs_data[split]
+    # data = load_synthetic_dataset(data_dir='data_creation/gaussian/data/opposing_pairs_data/')
     
-# train_dataloader, valid_loss_dataloader = data_handler.get_train_dev_dataloader(random_train_loader=False)
-
-# total_length = len(train_dataloader)
-# total_train_steps = 0
-
-# num_epochs = 2
-# total_steps = total_length * num_epochs
-# warmup_steps = total_length * num_epochs * 0.05
-# optimizer = torch.optim.AdamW(
-#     model.parameters(), lr=0.00001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01
-# )
-
-# for epoch in range(num_epochs):
-
-#     pbar = tqdm(
-#         colour="blue",
-#         desc=f"Training Epoch: {epoch+1}",
-#         total=total_length,
-#         dynamic_ncols=True,
-#     )
+    print(len(pairs_data)) # dict_keys(['query_idx', 'query_vector', 'ground_truth_indices'])
+    print(pairs_data[0]['query_idx']) 
+    print(np.array(pairs_data[0]['query_vector']).shape)
+    print(np.array(pairs_data[0]['ground_truth_indices']).shape)
+    return pairs_data, queries, corpus
     
-#     # shuffle the data by length
-#     data_handler.length_aware_shuffle()
+    # return {
+    #     'config': config,
+    #     'corpus': corpus,
+    #     'queries': queries,
+    #     'transformation_matrices': transformation_matrices,
+    #     'pairs_data': pairs_data
+    # }
 
-#     train_dataloader = data_handler.get_sequential_train_dataloader()
+
+def load_model_local(adapter_path=None, linear_checkpoint_path=None):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model, tokenizer = load_model(train_lora=True,
+                                    base_model_id="meta-llama/Llama-3.2-1B-Instruct", 
+                                    adapter_path=adapter_path, 
+                                    linear_checkpoint_path=linear_checkpoint_path,
+                                    embedding_model_dim=1024, 
+                                    weight_tying=False, 
+                                    loss_function='Hungarian_Contrastive', 
+                                    temperature=0.05,
+                                    extra_q_embed=False,
+                                    compute_loss_on_q=False,
+                                    use_eos=False)
+    model.to(device)
+    return model, tokenizer, device
+
+def load_input_data(input_data_path):
+    # Load dataset
+    collator = contrastive_eval_collator
+    full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
+    data_handler = DataHandler(full_dataset, collator, 1, 'dev')
     
-#     for step, batch in enumerate(train_dataloader):
-#         for k, v in batch.items():
-#             batch[k] = v.to(device)
-#             if step == 0 and k == 'labels':
-#                 print('labels, 0', batch[k].size())
-#             if step == 0:
-#                 logger.info(k, size=batch[k].size())
-#         total_train_steps += 1
-#         outputs = model(**batch)
+    dataloader = data_handler.get_full_dataloader()
+    return dataloader
 
-#         loss = outputs.loss
-#         loss.backward()
-        
-#         # clip gradients
-#         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            
-#         optimizer.step()
-#         optimizer.zero_grad()
-#         pbar.update(1)
+    
+command = 'simple_eval'
 
-#         pbar.set_description(
-#             f"Training Epoch: {epoch+1}/{num_epochs}, batch {step}/{len(train_dataloader)} "
-#             f"completed (loss): {round(float(loss.detach().float() * 1), 4)}"
-#         )
-        
-#         if (total_train_steps-1) % 10 == 0:
-#             ## enter evaluation mode
-#             total_loss = 0
-#             with torch.no_grad():
-#                 model.eval()
-#                 for step, batch in enumerate(tqdm(valid_loss_dataloader)):
-#                     for k, v in batch.items():
-#                         batch[k] = v.to(device)
-#                     outputs = model(**batch)
-#                     loss = outputs.loss
-#                     total_loss += loss.item()                    
-#             best_val_loss = total_loss / len(valid_loss_dataloader)
-#             # save_model(model, save_dir, total_train_steps, best_val_loss)
 
-#             gc.collect()
-#             torch.cuda.empty_cache()
-#     pbar.close()
 
-            
+
+if command == 'simple_train':
+    test_pairs, queries, corpus = load_synthetic_dataset(data_dir='data_creation/gaussian/data/opposing_pairs_data/')
+    model, tokenizer, device = load_model_local()
+    
+
+    batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+
+    LENGTH = 16
+    for i in range(len(test_pairs)):
+        query_vector = queries[test_pairs[i]['query_idx']]
+        ground_truth_indices = test_pairs[i]['ground_truth_indices']
+        ground_truth_embeddings = corpus[ground_truth_indices]
+        batch['inputs_embeds'].append(query_vector)
+        batch['attention_mask'].append(np.zeros(LENGTH))
+        batch['positive_embeddings'].append(ground_truth_embeddings)
+        batch['negative_embeddings'].append(ground_truth_embeddings)
+
+    batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
+    batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
+    batch['attention_mask'][:, 0] = 1
+    batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
+    batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
+    print('input embeds', batch['inputs_embeds'].size(), 'attention mask', batch['attention_mask'].size(), 'positive embeddings', batch['positive_embeddings'].size(), 'negative embeddings', batch['negative_embeddings'].size())
+    
+    outputs = model(**batch)
+    print('loss', outputs.loss)
+    
+    
+elif command == 'simple_eval':
+    split = 'train'
+    data_dir = 'data_creation/gaussian/data/opposing_pairs_data/'
+    
+    pairs_data = json.load(open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r'))
+    test_pairs, queries, corpus = load_synthetic_dataset(data_dir=data_dir, split=split)
+    # evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True)
+    
+    adapter_path = 'results/gaussian_synthetic_inf/toy_contrastive_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16/best_model.pt'
+    linear_checkpoint_path = 'results/gaussian_synthetic_inf/toy_contrastive_lr1e4_ep30_temp0.05_warmup0.05_gradnorm1_bs16/best_model_linear.pt'
+    model, tokenizer, device = load_model_local(adapter_path=adapter_path, linear_checkpoint_path=linear_checkpoint_path)
+    
+    with torch.no_grad():
+        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{split}_dataset_1b_contrastive/')
+        # batch = next(iter(dataloader))
+        # outputs = model.generate(**batch, max_new_tokens=1)
+        # print(outputs.shape)
+        all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=1, use_gt_q_embed=False, use_eos=False, compute_loss=False)
+        print(all_outputs.shape)
+        print(all_lengths)
+
+    # avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data, args.k_values)
+    results = evaluate_baseline("Trained Model", all_outputs, corpus, pairs_data, [10, 20, 50, 100, 200, 500])
 
 
 

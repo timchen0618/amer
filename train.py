@@ -54,7 +54,7 @@ def save_model(model, save_dir, step, eval_loss):
 def train():
 
     # load the configuration file
-    with open('configs/train.yaml') as f:
+    with open('configs/train_gaussian.yaml') as f:
         config_dict = yaml.safe_load(f)
 
     logger.info("Config:", config_dict=config_dict)
@@ -118,7 +118,8 @@ def train():
     
     model = model.to(device)
     
-    # save_model(model, save_dir, total_train_steps)
+    # save_model(model, save_dir, 0, 0)
+    # exit(0)
 
     best_acc = 0
     best_val_loss = 10000

@@ -16,7 +16,7 @@ import os
 from typing import Tuple, List, Dict, Any
 from scipy.linalg import qr
 import argparse
-
+import pickle
 
 def convert_to_serializable(obj):
     """
@@ -34,6 +34,19 @@ def convert_to_serializable(obj):
         return {key: convert_to_serializable(value) for key, value in obj.items()}
     else:
         return obj
+
+def save_corpus(corpus, output_dir: str):
+    """
+    Save the corpus to a file. Corpus is a numpy array of shape (n_corpus, d)
+    """
+    allids = np.arange(corpus.shape[0])
+    save_file = os.path.join(output_dir, "passages_00")
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Saving {len(corpus)} passage embeddings to {save_file}.")
+    with open(save_file, mode="wb") as f:
+        pickle.dump((allids, corpus), f)
+
+    print(f"Total passages processed {len(allids)}. Written to {save_file}.")
 
 
 class OpposingPairsSyntheticDataGenerator:
@@ -385,6 +398,8 @@ class OpposingPairsSyntheticDataGenerator:
             'corpus': self.corpus,
             'query2ground_truth_mapping': self.query2ground_truth_mapping
         }
+        
+    
 
 
 def main():
@@ -425,5 +440,22 @@ def main():
     print(f"   python baseline_evaluation.py --data-dir {args.output_dir}")
 
 
+    # Generate MSE labels
+    mse_labels = np.random.multivariate_normal(
+        mean=np.zeros(1024),
+        cov=np.eye(1024),
+        size=100000
+    )
+    np.save(os.path.join(args.output_dir, 'mse_labels.npy'), mse_labels)
+    
+    # Save corpus
+    corpus = np.load(os.path.join(args.output_dir, 'corpus.npy')) 
+    save_corpus(corpus, args.output_dir)
+
+
 if __name__ == '__main__':
     main() 
+    # python generate_data_opposing_pairs.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./opposing_pairs_data
+    
+    
+    

@@ -161,7 +161,7 @@ def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int
     
     # Macro average - mean of per-query recalls
     macro_recall = np.mean(query_recalls)
-    return macro_recall
+    return 100*macro_recall
 
 
 def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int) -> float:
@@ -198,7 +198,7 @@ def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: in
             successful_queries += 1
     
     mrecall = successful_queries / len(test_pairs)
-    return mrecall
+    return 100*mrecall
 
 
 def evaluate_baseline(baseline_name: str, predictions: np.ndarray, corpus: np.ndarray, 
@@ -274,6 +274,8 @@ def main():
     # Compute predictions for both baselines
     avg_predictions = compute_average_baseline_predictions(queries, corpus, pairs_data)
     query_predictions = compute_query_baseline_predictions(queries, pairs_data)
+    print('avg_predictions.shape', avg_predictions.shape)
+    print('query_predictions.shape', query_predictions.shape)
     
     # Evaluate both baselines
     avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data, args.k_values)
