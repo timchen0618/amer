@@ -31,14 +31,14 @@ inference_modes="all first second"
 # inference_modes="all"
 
 
-# python gen_ret_and_eval.py --data_name $data_name \
-#                             --training_data_name $training_data_name \
-#                             --suffix_list $suffix_list \
-#                             --retriever_list $retriever_list \
-#                             $use_gpu --num_shards $num_shards \
-#                             --checkpoint_num $checkpoint_num \
-#                             $max_new_tokens $use_best_model $compute_loss \
-#                             --inference_modes $inference_modes
+python gen_ret_and_eval.py --data_name $data_name \
+                            --training_data_name $training_data_name \
+                            --suffix_list $suffix_list \
+                            --retriever_list $retriever_list \
+                            $use_gpu --num_shards $num_shards \
+                            --checkpoint_num $checkpoint_num \
+                            $max_new_tokens $use_best_model $compute_loss \
+                            --inference_modes $inference_modes
 
 for suffix in $suffix_list
 do

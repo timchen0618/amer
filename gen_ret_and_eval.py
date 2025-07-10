@@ -4,7 +4,7 @@ import torch.optim as optim
 import numpy as np
 import argparse
 
-from model import load_model
+from src.model import load_model
 from tqdm import tqdm
 import os
 import json
@@ -14,20 +14,19 @@ import time
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from functools import partial
-from model import load_model
 from prettytable import PrettyTable
 
-from dataset import (
+from src.dataset import (
     load_embeddings_dataset,
     contrastive_eval_collator,
     mse_eval_collator,
     DataHandler
 )
-from utils import Config, set_seed, set_optim
+from src.utils import Config, set_seed, set_optim
 import yaml
 from pathlib import Path
 
-from retrieval_utils import Indexer, add_passages, load_passages, index_encoded_data, add_passages_single_instance
+from src.retrieval_utils import Indexer, add_passages, load_passages, index_encoded_data, add_passages_single_instance
 import sys
 from datasets import load_dataset
 

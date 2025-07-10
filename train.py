@@ -9,14 +9,14 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from dataclasses import dataclass
 
-from model import EmbeddingModel, load_model
-from dataset import (
+from src.model import EmbeddingModel, load_model
+from src.dataset import (
     load_embeddings_dataset,
     MSETrainCollator,
     ContrastiveTrainCollator,
     DataHandler
 )
-from utils import Config, set_seed, set_optim
+from src.utils import Config, set_seed, set_optim
 
 from tqdm import tqdm
 from copy import copy
