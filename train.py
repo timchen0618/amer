@@ -34,8 +34,8 @@ logger = structlog.get_logger()
 
 def save_model(model, save_dir, step, eval_loss):
     # Save the base causal language model
-    # model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
-    model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model"), safe_serialization=True)
+    model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
+    # model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model"), safe_serialization=True)
     
     # Save the linear layers
     # print(model.input_projection.state_dict())
@@ -45,8 +45,8 @@ def save_model(model, save_dir, step, eval_loss):
         'step': step,
         'loss': eval_loss
     }
-    # torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
-    torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
+    torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    # torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
     logger.info(f"saving model.", step=(step))
     
 
@@ -150,6 +150,9 @@ def train():
                     batch[k] = v.to(device)
                     if step == 0 and k == 'labels':
                         print('labels, 0', batch[k].size())
+                    # if k == 'inputs_embeds':
+                        # print('inputs_embeds, 0', batch[k][:,:1])
+                    # print(k, batch[k])
                     if step == 0:
                         logger.info(k, size=batch[k].size())
                 total_train_steps += 1
@@ -181,7 +184,7 @@ def train():
                         * configs.gradient_accumulation_steps,
                         "train/lr": scheduler.get_last_lr()[0]
                     }
-                    wandb_run.log(log_dict)
+                    wandb_run.log(log_dict, step=total_train_steps)
                     losses = []
                 pbar.set_description(
                     f"Training Epoch: {epoch+1}/{configs.num_epochs}, batch {step}/{len(train_dataloader)} "
@@ -217,7 +220,7 @@ def train():
                             log_dict = {
                                 "eval/loss": (total_loss / len(valid_loss_dataloader)),
                             }
-                            wandb_run.log(log_dict)
+                            wandb_run.log(log_dict, step=total_train_steps)
                             logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)))
                             
                             

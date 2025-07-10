@@ -1,8 +1,8 @@
 project: diverse_retrieval
 ########################################################
 save_path: results/gaussian_synthetic_inf/
-name: toy_mse_lr2e5_ep20_temp0.05_warmup0.05_gradnorm1_bs16
-train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_mse
+name: toy_contrastive_ordered_lr1e4_ep30_temp0.05_warmup0.05_gradnorm5_bs16_no_shuffle
+train_path: training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive
 
 # save and load
 save_every_n_steps: 2500
@@ -13,16 +13,18 @@ embedding_model_dim: 1024
 # linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
 adapter_path: 
 linear_checkpoint_path: 
+# adapter_path: results/gaussian_synthetic_inf/toy_mse_lr2e5_ep20_temp0.05_warmup0.05_gradnorm1_bs16/best_model
+# linear_checkpoint_path: results/gaussian_synthetic_inf/toy_mse_lr2e5_ep20_temp0.05_warmup0.05_gradnorm1_bs16/best_model_linear.pt
 
 # training
 batch_size_training: 16
 gradient_accumulation_steps: 1
-num_epochs: 20
-lr: !!float "2e-5"
+num_epochs: 30
+lr: !!float "1e-4"
 weight_decay: 0.01
 warmup_ratio: 0.05
 scheduler: linear
-max_grad_norm: 1.0
+max_grad_norm: 5.0
 
 # lora
 lora_alpha: 16
@@ -30,19 +32,19 @@ lora_r: 64
 lora_dropout: 0.1
 
 # some options 
-shuffle_sequence: True
+shuffle_sequence: False
 train_on_all_data: False
 save_only_improve: True
 take_first: False
 
 # model architecture
 temperature: 0.05
-loss_function: MSE  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
+loss_function: Contrastive  # MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive
 extra_q_embed: False
 compute_loss_on_q: False
 use_eos: False
 # data loading 
-question_only: True
+question_only: False
 
 ########################################################
 # not used that often

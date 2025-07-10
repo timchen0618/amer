@@ -404,13 +404,13 @@ class OpposingPairsSyntheticDataGenerator:
 
 def main():
     parser = argparse.ArgumentParser(description='Generate opposing pairs synthetic data for information retrieval evaluation')
-    parser.add_argument('--dimensions', '-d', type=int, default=128, 
-                       help='Dimensionality of vectors (default: 128)')
+    parser.add_argument('--dimensions', '-d', type=int, default=1024, 
+                       help='Dimensionality of vectors (default: 1024)')
     parser.add_argument('--train-queries', type=int, default=2000,
                        help='Number of training queries (default: 2000)')
     parser.add_argument('--test-queries', type=int, default=200,
                        help='Number of test queries (default: 200)')
-    parser.add_argument('--corpus-size', type=int, default=100000,
+    parser.add_argument('--corpus-size', type=int, default=50000,
                        help='Total corpus size (default: 100000)')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed (default: 42)')

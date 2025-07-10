@@ -84,6 +84,49 @@ def compute_average_baseline_predictions(queries: np.ndarray, corpus: np.ndarray
     return predictions
 
 
+def compute_second_gt_predictions(queries: np.ndarray, corpus: np.ndarray, 
+                                       pairs_data: Dict[str, Any]) -> np.ndarray:
+    print("Computing second ground truth predictions...")
+    
+    test_pairs = pairs_data['test']
+    predictions = []
+    
+    for pair in test_pairs:
+        gt_index = pair['ground_truth_indices'][1]
+        predictions.append(corpus[gt_index])
+    
+    predictions = np.array(predictions)
+    print(f"  Generated {len(predictions)} second ground truth predictions")
+    return predictions
+
+def compute_average_2nd_3rd_gt_baseline_predictions(queries: np.ndarray, corpus: np.ndarray, 
+                                       pairs_data: Dict[str, Any]) -> np.ndarray:
+    print("Computing average 2nd and 3rd ground truth predictions...")
+    
+    test_pairs = pairs_data['test']
+    predictions = []
+    
+    for pair in test_pairs:
+        gt_indices = pair['ground_truth_indices'][1:3]
+        
+        if len(gt_indices) == 0:
+            print(f"Warning: Query {pair['query_idx']} has zero ground truth vectors!")
+            # Use query vector as fallback
+            predictions.append(queries[pair['query_idx']])
+            continue
+        
+        # Get ground truth vectors from corpus
+        gt_vectors = corpus[gt_indices]
+        
+        # Compute average
+        avg_prediction = np.mean(gt_vectors, axis=0)
+        predictions.append(avg_prediction)
+    
+    predictions = np.array(predictions)
+    print(f"  Generated {len(predictions)} average 2nd and 3rd ground truth predictions")
+    return predictions
+
+
 def compute_query_baseline_predictions(queries: np.ndarray, 
                                      pairs_data: Dict[str, Any]) -> np.ndarray:
     """
@@ -134,7 +177,7 @@ def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarra
     return similarities, rankings
 
 
-def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int) -> float:
+def compute_recall_at_k(rankings: np.ndarray, test_pairs: List[Dict[str, Any]], k: int) -> float:
     """
     Compute Recall@k: percentage of ground truth vectors found in top-k results.
     Uses macro averaging - computes recall per query and averages the results.
@@ -147,7 +190,7 @@ def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int
     Returns:
         Macro-averaged Recall@k score
     """
-    test_pairs = pairs_data['test']
+    # test_pairs = pairs_data['test']
     query_recalls = []
     
     for i, pair in enumerate(test_pairs):
@@ -164,7 +207,7 @@ def compute_recall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int
     return 100*macro_recall
 
 
-def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: int) -> float:
+def compute_mrecall_at_k(rankings: np.ndarray, test_pairs: List[Dict[str, Any]], k: int) -> float:
     """
     Compute Modified Recall@k (MRecall@k):
     - If |GT| >= k: success if at least k ground truth vectors in top-k
@@ -178,7 +221,7 @@ def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: in
     Returns:
         MRecall@k score
     """
-    test_pairs = pairs_data['test']
+    # test_pairs = pairs_data['test']
     successful_queries = 0
     
     for i, pair in enumerate(test_pairs):
@@ -202,7 +245,7 @@ def compute_mrecall_at_k(rankings: np.ndarray, pairs_data: Dict[str, Any], k: in
 
 
 def evaluate_baseline(baseline_name: str, predictions: np.ndarray, corpus: np.ndarray, 
-                     pairs_data: Dict[str, Any], k_values: List[int]) -> Dict[str, float]:
+                     test_pairs: List[Dict[str, Any]], k_values: List[int]) -> Dict[str, float]:
     """
     Evaluate a baseline approach with multiple k values.
     
@@ -210,7 +253,7 @@ def evaluate_baseline(baseline_name: str, predictions: np.ndarray, corpus: np.nd
         baseline_name: Name of the baseline approach
         predictions: Predicted vectors for test queries
         corpus: Full corpus to search in
-        pairs_data: Query-ground truth mapping data
+        test_pairs: Query-ground truth mapping data
         k_values: List of k values to evaluate
         
     Returns:
@@ -225,8 +268,8 @@ def evaluate_baseline(baseline_name: str, predictions: np.ndarray, corpus: np.nd
     
     # Evaluate for each k
     for k in k_values:
-        recall = compute_recall_at_k(rankings, pairs_data, k)
-        mrecall = compute_mrecall_at_k(rankings, pairs_data, k)
+        recall = compute_recall_at_k(rankings, test_pairs, k)
+        mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
         
         results[f'recall@{k}'] = recall
         results[f'mrecall@{k}'] = mrecall
@@ -274,12 +317,18 @@ def main():
     # Compute predictions for both baselines
     avg_predictions = compute_average_baseline_predictions(queries, corpus, pairs_data)
     query_predictions = compute_query_baseline_predictions(queries, pairs_data)
+    second_gt_predictions = compute_second_gt_predictions(queries, corpus, pairs_data)
+    avg_2nd_3rd_gt_predictions = compute_average_2nd_3rd_gt_baseline_predictions(queries, corpus, pairs_data)
     print('avg_predictions.shape', avg_predictions.shape)
     print('query_predictions.shape', query_predictions.shape)
+    print('second_gt_predictions.shape', second_gt_predictions.shape)
+    print('avg_2nd_3rd_gt_predictions.shape', avg_2nd_3rd_gt_predictions.shape)
     
     # Evaluate both baselines
-    avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data, args.k_values)
-    query_results = evaluate_baseline("Query Baseline", query_predictions, corpus, pairs_data, args.k_values)
+    avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data['test'], args.k_values)
+    query_results = evaluate_baseline("Query Baseline", query_predictions, corpus, pairs_data['test'], args.k_values)
+    second_gt_results = evaluate_baseline("Second Ground Truth Baseline", second_gt_predictions, corpus, pairs_data['test'], args.k_values)
+    avg_2nd_3rd_gt_results = evaluate_baseline("Average 2nd and 3rd Ground Truth Baseline", avg_2nd_3rd_gt_predictions, corpus, pairs_data['test'], args.k_values)
     
     # Print comparison table
     print("\n" + "="*60)

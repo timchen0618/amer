@@ -32,8 +32,8 @@ def load_synthetic_data(data_dir: str) -> Dict:
         # Load data files
         corpus = np.load(os.path.join(data_dir, 'corpus.npy'))
         queries = np.load(os.path.join(data_dir, 'queries.npy'))
-        rotation_matrices = np.load(os.path.join(data_dir, 'rotation_matrices.npy'))
-        ground_truth_indices = np.load(os.path.join(data_dir, 'ground_truth_indices.npy'))
+        transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))
+        # ground_truth_indices = np.load(os.path.join(data_dir, 'ground_truth_indices.npy'))
         
         # Load query-ground truth pairs
         with open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r') as f:
@@ -45,8 +45,7 @@ def load_synthetic_data(data_dir: str) -> Dict:
             'config': config,
             'corpus': corpus,
             'queries': queries,
-            'rotation_matrices': rotation_matrices,
-            'ground_truth_indices': ground_truth_indices,
+            'transformation_matrices': transformation_matrices,
             'pairs_data': pairs_data
         }
         
@@ -73,8 +72,8 @@ def validate_data_integrity(data: Dict) -> bool:
     config = data['config']
     corpus = data['corpus']
     queries = data['queries']
-    rotation_matrices = data['rotation_matrices']
-    ground_truth_indices = data['ground_truth_indices']
+    transformation_matrices = data['transformation_matrices']
+    # ground_truth_indices = data['ground_truth_indices']
     pairs_data = data['pairs_data']
     
     validation_passed = True
@@ -82,7 +81,7 @@ def validate_data_integrity(data: Dict) -> bool:
     # Check dimensions
     expected_corpus_shape = (config['corpus_size'], config['dimensions'])
     expected_queries_shape = (config['n_train_queries'] + config['n_test_queries'], config['dimensions'])
-    expected_rotations_shape = (config['n_rotations'], config['dimensions'], config['dimensions'])
+    expected_rotations_shape = (config['n_transformations'], config['dimensions'], config['dimensions'])
     
     if corpus.shape != expected_corpus_shape:
         print(f"❌ Corpus shape mismatch: expected {expected_corpus_shape}, got {corpus.shape}")
@@ -96,27 +95,27 @@ def validate_data_integrity(data: Dict) -> bool:
     else:
         print(f"✓ Queries shape: {queries.shape}")
     
-    if rotation_matrices.shape != expected_rotations_shape:
-        print(f"❌ Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {rotation_matrices.shape}")
+    if transformation_matrices.shape != expected_rotations_shape:
+        print(f"❌ Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {transformation_matrices.shape}")
         validation_passed = False
     else:
-        print(f"✓ Rotation matrices shape: {rotation_matrices.shape}")
+        print(f"✓ Rotation matrices shape: {transformation_matrices.shape}")
     
-    # Check ground truth indices
-    if len(ground_truth_indices) != config['corpus_size']:
-        print(f"❌ Ground truth indices length mismatch: expected {config['corpus_size']}, got {len(ground_truth_indices)}")
-        validation_passed = False
-    else:
-        print(f"✓ Ground truth indices length: {len(ground_truth_indices)}")
+    # # Check ground truth indices
+    # if len(ground_truth_indices) != config['corpus_size']:
+    #     print(f"❌ Ground truth indices length mismatch: expected {config['corpus_size']}, got {len(ground_truth_indices)}")
+    #     validation_passed = False
+    # else:
+    #     print(f"✓ Ground truth indices length: {len(ground_truth_indices)}")
     
-    # Check number of ground truth vectors
-    expected_gt_count = (config['n_train_queries'] + config['n_test_queries']) * config['n_rotations']
-    actual_gt_count = np.sum(ground_truth_indices)
-    if actual_gt_count != expected_gt_count:
-        print(f"❌ Ground truth count mismatch: expected {expected_gt_count}, got {actual_gt_count}")
-        validation_passed = False
-    else:
-        print(f"✓ Ground truth vectors count: {actual_gt_count}")
+    # # Check number of ground truth vectors
+    # expected_gt_count = (config['n_train_queries'] + config['n_test_queries']) * config['n_transformations']
+    # actual_gt_count = np.sum(ground_truth_indices)
+    # if actual_gt_count != expected_gt_count:
+    #     print(f"❌ Ground truth count mismatch: expected {expected_gt_count}, got {actual_gt_count}")
+    #     validation_passed = False
+    # else:
+    #     print(f"✓ Ground truth vectors count: {actual_gt_count}")
     
     # Check train/test split
     if len(pairs_data['train']) != config['n_train_queries']:
@@ -132,7 +131,7 @@ def validate_data_integrity(data: Dict) -> bool:
         print(f"✓ Test pairs count: {len(pairs_data['test'])}")
     
     # Check that each query has the expected number of ground truth vectors
-    expected_gt_per_query = config['n_rotations']
+    expected_gt_per_query = config['n_transformations']
     for split_name, pairs in [('train', pairs_data['train']), ('test', pairs_data['test'])]:
         for pair in pairs:
             if len(pair['ground_truth_indices']) != expected_gt_per_query:
@@ -147,7 +146,7 @@ def validate_data_integrity(data: Dict) -> bool:
         print(f"✓ Each query has {expected_gt_per_query} ground truth vectors")
     
     # Verify rotation matrices are orthogonal
-    for i, rot_matrix in enumerate(rotation_matrices):
+    for i, rot_matrix in enumerate(transformation_matrices):
         # Check if matrix is orthogonal: R @ R^T = I
         identity_check = rot_matrix @ rot_matrix.T
         if not np.allclose(identity_check, np.eye(config['dimensions']), atol=1e-10):
@@ -185,7 +184,8 @@ def compute_cosine_distance(v1: np.ndarray, v2: np.ndarray) -> float:
     if norms == 0:
         return 1.0  # Perpendicular vectors
     cosine_sim = dot_product / norms
-    return 1.0 - cosine_sim
+    return cosine_sim
+    # return 1.0 - cosine_sim
 
 
 def compute_distance_statistics(data: Dict, n_samples: int = 1000, distance_metric: str = 'euclidean') -> Dict:
@@ -244,6 +244,26 @@ def compute_distance_statistics(data: Dict, n_samples: int = 1000, distance_metr
     statistics['std_distance_same_query_gt'] = np.std(same_query_distances)
     print(f"  Mean: {statistics['avg_distance_same_query_gt']:.4f}")
     print(f"  Std:  {statistics['std_distance_same_query_gt']:.4f}")
+    
+    # Average distance between the second and the third ground truth vector from the same query
+    print("Computing: Distance between second and third ground truth vectors from same query...")
+    second_third_query_distances = []
+    
+    for _ in range(n_samples):
+        # pick out the second and the third ground truth vector from the same query
+        query_idx = random.choice(query_indices)
+        gt_indices = query_to_gt_indices[query_idx]
+        idx1, idx2 = gt_indices[1], gt_indices[2]
+        distance = distance_fn(corpus[idx1], corpus[idx2])
+        second_third_query_distances.append(distance)
+    
+    statistics['avg_distance_second_third_query_gt'] = np.mean(second_third_query_distances)
+    statistics['std_distance_second_third_query_gt'] = np.std(second_third_query_distances)
+    print(f"  Mean: {statistics['avg_distance_second_third_query_gt']:.4f}")
+    print(f"  Std:  {statistics['std_distance_second_third_query_gt']:.4f}")
+    
+    
+    
     
     # 2. Average distance between two random ground truth vectors from different queries
     print("Computing: Distance between ground truth vectors from different queries...")
@@ -384,7 +404,7 @@ def main():
         print(f"  - {data['config']['n_test_queries']} test queries") 
         print(f"  - {data['config']['corpus_size']} corpus vectors")
         print(f"  - {data['config']['dimensions']} dimensions")
-        print(f"  - {data['config']['n_rotations']} rotation matrices")
+        print(f"  - {data['config']['n_transformations']} rotation matrices")
         
     except Exception as e:
         print(f"❌ Validation failed: {e}")

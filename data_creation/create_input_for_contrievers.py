@@ -639,11 +639,11 @@ if __name__ == '__main__':
             for i in range(len(pairs)):
                 positive = batch['positive_embeddings'][i]  # (k, d)
                 negative = batch['negative_embeddings'][i]  # (k, d)
-                print('positive.shape, negative.shape', positive.shape, negative.shape)
-                print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
+                # print('positive.shape, negative.shape', positive.shape, negative.shape)
+                # print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
 
-                dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][0].cpu().numpy(), 
-                                    "attention_mask": batch['attention_mask'][0].cpu().numpy(), 
+                dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][i].cpu().numpy(), 
+                                    "attention_mask": batch['attention_mask'][i].cpu().numpy(), 
                                     "positive_embeddings": positive, 
                                     "negative_embeddings": negative})
                                 
@@ -660,39 +660,42 @@ if __name__ == '__main__':
                 mse_data = mse_data[10000:]
             for i in range(len(mse_data)):
                 query_vector = mse_data[i]
-                ground_truth_embeddings = mse_data[i]
+                # print('query_vector.shape', query_vector)
+                ground_truth_embeddings = query_vector
                 batch['inputs_embeds'].append(query_vector)
                 batch['attention_mask'].append(np.zeros(LENGTH))
                 batch['labels'].append(ground_truth_embeddings)
-
+            # print('inputs_embeds', torch.tensor(batch['inputs_embeds'])[0])
             batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).float().unsqueeze(1).expand(-1, LENGTH, -1)  # (bsz, LENGTH, d)
+            # print('inputs_embeds', batch['inputs_embeds'][0])
             batch['attention_mask'] = torch.tensor(batch['attention_mask']).long()             # (bsz, LENGTH). Only the first token is 1, the rest are 0.
             batch['attention_mask'][:, 0] = 1
+            # print('attention_mask', batch['attention_mask'][0])
             batch['labels'] = torch.tensor(batch['labels']).float()  # (bsz, k, d), LENGTH > k
-                        
+            # print('labels', batch['labels'][0])
             dataset_dicts = []
             for i in range(len(mse_data)):
                 label = batch['labels'][i]  # (k, d)
-                # print('label.shape', label.shape)
+                # print('label.shape', label.unsqueeze(0).shape, 'inputembed', batch['inputs_embeds'][i])
                 # print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
 
-                dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][0].cpu().numpy(), 
-                                    "attention_mask": batch['attention_mask'][0].cpu().numpy(), 
+                dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][i].cpu().numpy(), 
+                                    "attention_mask": batch['attention_mask'][i].cpu().numpy(), 
                                     "labels": label.unsqueeze(0)})
                                 
             safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
 
             print('actual data size: ', len(dataset_dicts))
             
-        LENGTH = 16
+        LENGTH = 8
         data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data/')
         pairs = data['pairs_data'][split]
-        create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive', 
+        create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive_sm', 
                                  pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
         
-        mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
-        create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 
-                           mse_data=mse_data, LENGTH=LENGTH, split=split)
+        # mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
+        # create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 
+        #                    mse_data=mse_data, LENGTH=LENGTH, split=split)
             
     if generate_split == 'contrastive_sequence':
         

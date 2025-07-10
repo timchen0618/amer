@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="ambiguous_qe"
-training_data_name="ambiguous_qe"
+data_name="qampari"
+training_data_name="qampari"
 # suffix_list="hypersearch_lr1e-4_temp0.05_batch16_ep20_warmup0.05 hypersearch_lr1e-4_temp0.05_batch16_ep10_warmup0.05"
-# suffix_list="toy_contrastive"
-suffix_list="test_save"
+# suffix_list="toy_contrastive_from_stage1_lr2e5_ep20_temp0.05/"
+suffix_list="toy_contrastive_from_stage1_lr2e5_ep20_temp0.05 toy_contrastive_4_gpus_from_stage2_lr1e4_ep20_temp0.05_warmup0.05 toy_contrastive_lr2e5_ep30_temp0.05_warmup0.05_gradnorm1_hn"
 
 retriever_list="inf"
 use_gpu="--use_gpu"
@@ -25,20 +25,20 @@ compute_loss="--compute_loss"
 
 # EVALUATE ARGS
 topk_list="100 10"
-# has_gold_id="--has-gold-id"
-has_gold_id=""
-# inference_modes="all first second"
-inference_modes="all"
+has_gold_id="--has-gold-id"
+# has_gold_id=""
+inference_modes="all first second"
+# inference_modes="all"
 
 
-python gen_ret_and_eval.py --data_name $data_name \
-                            --training_data_name $training_data_name \
-                            --suffix_list $suffix_list \
-                            --retriever_list $retriever_list \
-                            $use_gpu --num_shards $num_shards \
-                            --checkpoint_num $checkpoint_num \
-                            $max_new_tokens $use_best_model $compute_loss \
-                            --inference_modes $inference_modes
+# python gen_ret_and_eval.py --data_name $data_name \
+#                             --training_data_name $training_data_name \
+#                             --suffix_list $suffix_list \
+#                             --retriever_list $retriever_list \
+#                             $use_gpu --num_shards $num_shards \
+#                             --checkpoint_num $checkpoint_num \
+#                             $max_new_tokens $use_best_model $compute_loss \
+#                             --inference_modes $inference_modes
 
 for suffix in $suffix_list
 do
