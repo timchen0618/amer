@@ -252,59 +252,6 @@ class DataHandler:
         )
         return valid_loss_dataloader
     
-    
-    
-
-
-      
-# def load_data(full_dataset, collator, batch_size_training, return_full_dataset = False, val_only = False):
-#     if return_full_dataset:
-#         return torch.utils.data.DataLoader(
-#             full_dataset,
-#             num_workers=1,
-#             shuffle=False,
-#             pin_memory=True,
-#             batch_size=batch_size_training,
-#             collate_fn=collator,
-#             sampler=SequentialSampler(full_dataset),
-#         )
-    
-    
-#     train_size = int(0.9 * len(full_dataset))
-#     val_size = len(full_dataset) - train_size
-    
-#     dataset_train = torch.utils.data.Subset(full_dataset, range(train_size))
-#     dataset_loss_val = torch.utils.data.Subset(full_dataset, range(train_size, len(full_dataset)))
-
-#     valid_loss_dataloader = torch.utils.data.DataLoader(
-#         dataset_loss_val,
-#         num_workers=1,
-#         shuffle=False,
-#         pin_memory=True,
-#         batch_size=batch_size_training,
-#         collate_fn=collator,
-#         sampler=SequentialSampler(dataset_loss_val),
-#     )
-#     if not val_only:
-#         train_dataloader = torch.utils.data.DataLoader(
-#             dataset_train,
-#             num_workers=1,
-#             shuffle=False,
-#             pin_memory=True,
-#             batch_size=batch_size_training,
-#             collate_fn=collator,
-#             sampler=RandomSampler(dataset_train),
-#         )
-#         return train_dataloader, valid_loss_dataloader
-#     else:
-#         return valid_loss_dataloader
-
-
-
-def load_embeddings_dataset(dataset_path='autoregressive_dev_dataset'):
-    dataset = load_from_disk(dataset_path)
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    return dataset
 
 
 def safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=10000):

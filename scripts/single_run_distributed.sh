@@ -5,7 +5,7 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/gaussian_config.sh"
+CONFIG_FILE="sbatch_configs/hypersearch_config_qampari.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
@@ -23,7 +23,7 @@ NUM_EPOCHS=${NUM_EPOCHS_LIST[0]}
 WARMUP_RATIO=${WARMUP_RATIOS[0]}
 
 # Generate experiment name
-EXP_NAME="${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+EXP_NAME="single_run_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
 
 # Set paths
 SAVE_PATH="${BASE_SAVE_PATH}"
@@ -55,10 +55,8 @@ ARGS="--project ${BASE_PROJECT} \
       --scheduler ${SCHEDULER} \
       --max_grad_norm ${MAX_GRAD_NORM} \
       --loss_function ${LOSS_FUNCTION} \
-      ${SHUFFLE_SEQUENCE} \
-      ${SAVE_ONLY_IMPROVE} \
-      ${TAKE_FIRST} \
-      ${QUESTION_ONLY} \
+      --shuffle_sequence \
+      --save_only_improve \
       --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
       --save_every_n_steps ${SAVE_EVERY_N_STEPS}"
 
@@ -76,7 +74,7 @@ echo "Starting training at $(date)"
 echo "Logging output to: $OUTPUT_LOG"
 
 # Use accelerate launch for distributed training support
-HF_TOKEN="$HF_TOKEN" python train.py $ARGS 2>&1 | tee "$OUTPUT_LOG"
+HF_TOKEN="$HF_TOKEN" accelerate launch train_distributed.py $ARGS 2>&1 | tee "$OUTPUT_LOG"
 
 EXIT_CODE=${PIPESTATUS[0]}
 
@@ -92,3 +90,7 @@ else
     echo "Training failed with exit code: $EXIT_CODE"
     echo "Check the output log for details: $OUTPUT_LOG"
 fi
+
+echo ""
+echo "To analyze results, you can run:"
+echo "python analyze_results.py --save_path $SAVE_PATH" 
