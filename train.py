@@ -37,8 +37,10 @@ logger = structlog.get_logger()
 
 
 def train(configs):
-
-    logger.info("Config:", config_dict=vars(configs))
+    if not configs.debug:
+        log_with_wandb = True
+    else:
+        log_with_wandb = False
 
     set_seed(configs.seed)
     save_dir = os.path.join(configs.save_path, configs.name)
@@ -46,32 +48,14 @@ def train(configs):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
-    model, tokenizer = load_model(train_lora=True,
-                                  base_model_id=configs.model_id, 
-                                  adapter_path=configs.adapter_path, 
-                                  linear_checkpoint_path=configs.linear_checkpoint_path,
-                                  embedding_model_dim=configs.embedding_model_dim, 
-                                  weight_tying=configs.weight_tying, 
-                                  loss_function=configs.loss_function, 
-                                  temperature=configs.temperature,
-                                  extra_q_embed=configs.extra_q_embed,
-                                  compute_loss_on_q=configs.compute_loss_on_q,
-                                  use_eos=configs.use_eos)
-
-    total_train_steps = 0
-    if not configs.debug and not configs.only_eval:        
-        
+    # tracking
+    if log_with_wandb:        
         os.environ['WANDB_INIT_TIMEOUT'] = '600'
         os.environ['WANDB_DEBUG'] = 'true'
         ttt = configs.save_path.strip('/').split('/')[-1]
         logger.info('tags', wandb_tag=ttt)
         wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt])
-        wandb_run.config.update(vars(configs), allow_val_change=True)
-        text_table = wandb.Table(columns=["step", "text"])
-
+        wandb_run.config.update(configs, allow_val_change=True)
     else:
         wandb_run = None
 
@@ -91,17 +75,28 @@ def train(configs):
     
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     
+    # model loading
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model, tokenizer = load_model(train_lora=True,
+                                  base_model_id=configs.model_id, 
+                                  adapter_path=configs.adapter_path, 
+                                  linear_checkpoint_path=configs.linear_checkpoint_path,
+                                  embedding_model_dim=configs.embedding_model_dim, 
+                                  weight_tying=configs.weight_tying, 
+                                  loss_function=configs.loss_function, 
+                                  temperature=configs.temperature,
+                                  extra_q_embed=configs.extra_q_embed,
+                                  compute_loss_on_q=configs.compute_loss_on_q,
+                                  use_eos=configs.use_eos)
+    model = model.to(device)
+    
     # optimize and scheduler    
     configs.total_steps = total_length * configs.num_epochs
     configs.warmup_steps = total_length * configs.num_epochs * configs.warmup_ratio
     optimizer, scheduler = set_optim(configs, model)
-    
-    model = model.to(device)
-    
-    # save_model(model, save_dir, 0, 0)
-    # exit(0)
 
-    best_acc = 0
+    
+    total_train_steps = 0
     best_val_loss = 10000
     losses = []
     for epoch in range(configs.resume, configs.num_epochs):
@@ -144,7 +139,7 @@ def train(configs):
                 # clip gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=configs.max_grad_norm)
                 
-                if wandb_run:
+                if log_with_wandb:
                     losses.append(loss.detach().float())
                     
                     
@@ -156,7 +151,7 @@ def train(configs):
                     optimizer.zero_grad()
                     pbar.update(1)
 
-                if wandb_run and (step) % 100 == 0:
+                if log_with_wandb and (step) % 100 == 0:
                     log_dict = {
                         "train/epoch": epoch + 1,
                         "train/step": epoch * len(train_dataloader) + step,
@@ -196,7 +191,7 @@ def train(configs):
                             loss = outputs.loss
                             total_loss += loss.item()
 
-                        if wandb_run:
+                        if log_with_wandb:
                             log_dict = {
                                 "eval/loss": (total_loss / len(valid_loss_dataloader)),
                             }
@@ -226,7 +221,7 @@ def train(configs):
         
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train autoregressive model")
+    parser = argparse.ArgumentParser(description="Train autoregressive model on a single GPU")
     
     # Main configuration
     parser.add_argument("--project", type=str, default="diverse_retrieval", help="Project name")
