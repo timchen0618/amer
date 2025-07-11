@@ -93,14 +93,14 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
         return torch.cat(all_outputs, dim=0).cpu().numpy(), None, None, all_lengths
 
 
-def load_input_data(loss_function, question_only, batch_size_training, get_split, input_data_path):
+def load_input_data(loss_function, first_label_only, batch_size_training, get_split, input_data_path):
     use_contrastive_data = 'Contrastive' in loss_function
     logger.info('use_contrastive_data', more_than_strings=use_contrastive_data)
     # Load dataset
     if use_contrastive_data:
         collator = contrastive_eval_collator
     else:
-        collator = partial(mse_eval_collator, question_only=question_only)
+        collator = partial(mse_eval_collator, first_label_only=first_label_only)
     full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
     data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev')
     
@@ -115,7 +115,7 @@ def load_input_data(loss_function, question_only, batch_size_training, get_split
         raise ValueError(f"Invalid split: {get_split}")
     return dataloader
 
-def generate_input_data(loss_function, question_only, input_data_path, tokenizer):
+def generate_input_data(loss_function, first_label_only, input_data_path, tokenizer):
         # Tokenize dataset
     def tokenize_function(examples):
         if 'question' in examples:
@@ -161,7 +161,7 @@ def generate_input_data(loss_function, question_only, input_data_path, tokenizer
     # if use_contrastive_data:
     #     collator = contrastive_eval_collator
     # else:
-    #     collator = partial(mse_eval_collator, question_only=question_only)
+    #     collator = partial(mse_eval_collator, first_label_only=first_label_only)
     full_dataset = tokenized_datasets['train']
     data_handler = DataHandler(full_dataset, data_collator, 1, 'dev')
     dataloader = data_handler.get_full_dataloader()
@@ -179,7 +179,7 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
          embedding_model_dim = 1536,
          compute_loss = True,
          loss_function = 'Contrastive',
-         question_only = False,
+         first_label_only = False,
          batch_size_training = 1,
          use_gt_q_embed = False,
          use_eos = False):
@@ -200,10 +200,10 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
     # always not predict question for evaluation    
     if Path(input_data_path).is_dir():
         logger.info(f"Loading input data from {input_data_path}, using the question embedding")
-        dataloader = load_input_data(loss_function, question_only, batch_size_training, get_split, input_data_path)
+        dataloader = load_input_data(loss_function, first_label_only, batch_size_training, get_split, input_data_path)
     else:
         logger.info(f"Generating input data from {input_data_path}, using the raw text")
-        dataloader = generate_input_data(loss_function, question_only, input_data_path, tokenizer)
+        dataloader = generate_input_data(loss_function, first_label_only, input_data_path, tokenizer)
 
 
     with torch.no_grad():
@@ -558,7 +558,7 @@ def parse_args():
     # Config parameters (previously from config file)
     parser.add_argument('--loss_function', type=str, default='Hungarian_Contrastive',
                        help='Loss function to use')
-    parser.add_argument('--question_only', action='store_true', default=True,
+    parser.add_argument('--first_label_only', action='store_true', default=False,
                        help='Whether to use question only')
     parser.add_argument('--batch_size_training', type=int, default=1,
                        help='Batch size for training')
@@ -725,7 +725,7 @@ if __name__ == "__main__":
                 embedding_model_dim=passage_embeddings_map[retriever]["embedding_dim"],
                 compute_loss=args.compute_loss,
                 loss_function=args.loss_function,
-                question_only=args.question_only,
+                first_label_only=args.first_label_only,
                 batch_size_training=args.batch_size_training,
                 use_gt_q_embed=args.use_gt_q_embed,
                 use_eos=args.use_eos

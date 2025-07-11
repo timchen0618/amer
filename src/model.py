@@ -464,3 +464,66 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
         model.output_projection.load_state_dict(linear_layers['output_projection'])
     
     return model, tokenizer
+
+
+from collections import OrderedDict
+def save_model_distributed(model, save_dir, step, accelerator, logger, save_best_model=False):
+    # Save the base causal language model
+    state_dict = accelerator.get_state_dict(model)
+    if accelerator.is_main_process:
+        linear_layers = {
+            'input_projection': OrderedDict({'weight': state_dict['input_projection.weight']}),
+            'output_projection': OrderedDict({'weight': state_dict['output_projection.weight']})
+        }
+    else:
+        linear_layers = None
+    
+    if save_best_model:
+        save_dir = os.path.join(save_dir, f"best_model")
+    else:
+        save_dir = os.path.join(save_dir, f"checkpoint_{step}")
+    
+    unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_model.base_causallm.save_pretrained(
+        save_dir, 
+        safe_serialization=True,
+        is_main_process=accelerator.is_main_process,
+        save_function=accelerator.save,
+        state_dict={
+            k.replace("base_causallm.", ""): v 
+            for k, v in state_dict.items() 
+            if k.startswith("base_causallm.")
+        }
+    )
+    
+    # Save the linear layers
+    if linear_layers is not None:
+        if save_best_model:
+            accelerator.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
+        else:
+            accelerator.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+        logger.info(f"saving model.", step=(step), process_index=accelerator.process_index)
+    # accelerator.save_model(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    # accelerator.save_model(model.input_projection, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    
+    
+def save_model_single(model, save_dir, step, eval_loss, logger, save_best_model=False):
+    # Save the base causal language model
+    if save_best_model:
+        model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model"), safe_serialization=True)
+    else:
+        model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
+    
+    # Save the linear layers
+    # print(model.input_projection.state_dict())
+    linear_layers = {
+        'input_projection': model.input_projection.state_dict(),
+        'output_projection': model.output_projection.state_dict(),
+        'step': step,
+        'loss': eval_loss
+    }
+    if save_best_model:
+        torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
+    else:
+        torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    logger.info(f"saving model.", step=(step))

@@ -19,7 +19,7 @@ from collections import Counter
 
 @dataclass
 class MSETrainCollator:
-    def __call__(self, features, shuffle=False, question_only=False):
+    def __call__(self, features, shuffle=False, first_label_only=False):
         batch = {}
         for k in features[0].keys():
             if shuffle:  # train data
@@ -32,7 +32,7 @@ class MSETrainCollator:
                     
                     question_labels = torch.tensor(question_labels)
                     list_of_labels = torch.tensor(list_of_labels)
-                    if question_only:
+                    if first_label_only:
                         batch[k] = question_labels
                     else:
                         batch[k] = torch.cat((question_labels, list_of_labels), dim=1)
@@ -40,7 +40,7 @@ class MSETrainCollator:
                 else:
                     batch[k] = torch.tensor([f[k] for f in features])
             else:    # eval data
-                if k == 'labels' and question_only:
+                if k == 'labels' and first_label_only:
                     question_labels = [features[j]['labels'][:1] for j in range(len(features))]
                     batch[k] = torch.tensor(question_labels)
                 else:
@@ -121,7 +121,7 @@ def contrastive_eval_collator(features):
             exit(0)
     return batch
     
-def mse_eval_collator(features, question_only=False):
+def mse_eval_collator(features, first_label_only=False):
     """
     """
     batch = {'input_ids': [], 'attention_mask':[], 'question_embeddings': [], 'labels': []}
@@ -132,7 +132,7 @@ def mse_eval_collator(features, question_only=False):
             if k in ['input_ids', 'attention_mask']:
                 batch[k].append(torch.tensor(inst[k][:input_len]).unsqueeze(0))
             elif k in ['labels']: # get the question embeddings
-                if question_only:
+                if first_label_only:
                     batch['question_embeddings'].append(torch.tensor(inst[k])[0].unsqueeze(0))
                     batch['labels'].append(torch.tensor(inst[k])[:1].unsqueeze(0))
                 else:

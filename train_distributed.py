@@ -29,7 +29,7 @@ def train(configs):
         log_with_string = 'wandb'
     else:
         log_with_wandb = False
-        log_with_string = None
+        log_with_string = None  
         
     # Initialize accelerator
     accelerator = Accelerator(gradient_accumulation_steps=configs.gradient_accumulation_steps, log_with=log_with_string, mixed_precision='fp16')
@@ -57,7 +57,7 @@ def train(configs):
 
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
-        collator = functools.partial(MSETrainCollator(), shuffle=True, question_only=configs.question_only)
+        collator = functools.partial(MSETrainCollator(), shuffle=True, first_label_only=configs.first_label_only)
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_eos", action="store_true", default=False, help="Use EOS token")
     
     # Data loading
-    parser.add_argument("--question_only", action="store_true", default=False, help="Use questions only")
+    parser.add_argument("--first_label_only", action="store_true", default=False, help="Use first label (question) only")
     
     # Debug and advanced options
     parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode")
