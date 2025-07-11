@@ -17,7 +17,7 @@ from src.dataset import (
     DataHandler
 )
 from src.utils import Config, set_seed, set_optim
-
+from src.model import save_model_single
 from tqdm import tqdm
 from copy import copy
 import os, sys
@@ -32,34 +32,14 @@ import structlog
 logger = structlog.get_logger()
 
 
-def save_model(model, save_dir, step, eval_loss):
-    # Save the base causal language model
-    model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
-    # model.base_causallm.save_pretrained(os.path.join(save_dir, f"best_model"), safe_serialization=True)
-    
-    # Save the linear layers
-    # print(model.input_projection.state_dict())
-    linear_layers = {
-        'input_projection': model.input_projection.state_dict(),
-        'output_projection': model.output_projection.state_dict(),
-        'step': step,
-        'loss': eval_loss
-    }
-    torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
-    # torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
-    logger.info(f"saving model.", step=(step))
+
     
 
 
-def train():
+def train(configs):
 
-    # load the configuration file
-    with open('configs/train_gaussian.yaml') as f:
-        config_dict = yaml.safe_load(f)
+    logger.info("Config:", config_dict=vars(configs))
 
-    logger.info("Config:", config_dict=config_dict)
-
-    configs = Config(config_dict)
     set_seed(configs.seed)
     save_dir = os.path.join(configs.save_path, configs.name)
 
@@ -89,7 +69,7 @@ def train():
         ttt = configs.save_path.strip('/').split('/')[-1]
         logger.info('tags', wandb_tag=ttt)
         wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt])
-        wandb_run.config.update(configs, allow_val_change=True)
+        wandb_run.config.update(vars(configs), allow_val_change=True)
         text_table = wandb.Table(columns=["step", "text"])
 
     else:
@@ -200,7 +180,7 @@ def train():
                         and not configs.only_eval
                     ):  
                         ## if save every n steps, save the model
-                        save_model(model, save_dir, total_train_steps-1, 0)
+                        save_model_single(model, save_dir, total_train_steps-1, 0, logger, configs.save_best_model)
 
                         gc.collect()
                         torch.cuda.empty_cache()
@@ -235,7 +215,7 @@ def train():
                         and not configs.only_eval
                     ):
                         best_val_loss = total_loss / len(valid_loss_dataloader)
-                        save_model(model, save_dir, total_train_steps, best_val_loss)
+                        save_model_single(model, save_dir, total_train_steps, best_val_loss, logger, configs.save_best_model)
 
                         gc.collect()
                         torch.cuda.empty_cache()
@@ -246,6 +226,72 @@ def train():
         
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser(description="Train autoregressive model")
+    
+    # Main configuration
+    parser.add_argument("--project", type=str, default="diverse_retrieval", help="Project name")
+    parser.add_argument("--save_path", type=str, default="results/ambiguous_qe_inf/", help="Directory to save results")
+    parser.add_argument("--name", type=str, default="toy_contrastive_4_gpus_from_stage2_lr2e5_ep20_temp0.05_warmup0.05", help="Experiment name")
+    parser.add_argument("--train_path", type=str, default="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/", help="Path to training dataset")
+    
+    # Save and load configuration
+    parser.add_argument("--save_every_n_steps", type=int, default=50, help="Save model every n steps")
+    parser.add_argument("--save_best_model", action="store_true", default=False, help="Save best model")
+    parser.add_argument("--embedding_model_dim", type=int, default=1536, help="Embedding model dimension")
+    parser.add_argument("--adapter_path", type=str, default="results/nq_inf/toy_contrastive/checkpoint_70000", help="Path to adapter checkpoint")
+    parser.add_argument("--linear_checkpoint_path", type=str, default="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt", help="Path to linear checkpoint")
+
+    # Training configuration
+    parser.add_argument("--batch_size_training", type=int, default=32, help="Training batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of training epochs")
+    parser.add_argument("--lr", type=float, default=2e-5, help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
+    parser.add_argument("--warmup_ratio", type=float, default=0.05, help="Warmup ratio")
+    parser.add_argument("--scheduler", type=str, default="linear", help="Learning rate scheduler")
+    parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm for clipping")
+    
+    # Training options
+    parser.add_argument("--shuffle_sequence", action="store_true", default=True, help="Shuffle sequence during training")
+    parser.add_argument("--train_on_all_data", action="store_true", default=False, help="Train on all available data")
+    parser.add_argument("--save_only_improve", action="store_true", default=True, help="Save only when validation improves")
+    parser.add_argument("--take_first", action="store_true", default=False, help="Take first sequence")
+    parser.add_argument("--only_eval", action="store_true", default=False, help="Only run evaluation, skip training")
+    
+    # Model architecture
+    parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")
+    parser.add_argument("--loss_function", type=str, default="Hungarian_Contrastive", 
+                       choices=["MSE", "Hungarian_MSE", "Contrastive", "Hungarian_Contrastive"],
+                       help="Loss function to use")
+    parser.add_argument("--extra_q_embed", action="store_true", default=False, help="Use extra question embedding")
+    parser.add_argument("--compute_loss_on_q", action="store_true", default=False, help="Compute loss on questions")
+    parser.add_argument("--use_eos", action="store_true", default=False, help="Use EOS token")
+    
+    # Data loading
+    parser.add_argument("--question_only", action="store_true", default=False, help="Use questions only")
+    
+    # Debug and advanced options
+    parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode")
+    parser.add_argument("--epochs_per_stage", type=int, default=3, help="Epochs per stage")
+    parser.add_argument("--max_latent_stage", type=int, default=3, help="Maximum latent stage")
+    parser.add_argument("--pad_latent_to_max", action="store_true", default=True, help="Pad latent to maximum")
+    parser.add_argument("--uniform_prob", type=float, default=0.0, help="Uniform probability")
+    parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="Model ID")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--resume", type=int, default=0, help="Resume from epoch")
+    parser.add_argument("--reset_optimizer", action="store_true", default=True, help="Reset optimizer")
+    
+    # Optimizer configuration
+    parser.add_argument("--beta1", type=float, default=0.9, help="Adam beta1")
+    parser.add_argument("--beta2", type=float, default=0.98, help="Adam beta2")
+    parser.add_argument("--optim", type=str, default="adamw", help="Optimizer type")
+    parser.add_argument("--lr_min_ratio", type=float, default=0.0, help="Minimum learning rate ratio")
+    parser.add_argument("--eps", type=float, default=1e-6, help="Optimizer epsilon")
+    parser.add_argument("--weight_tying", action="store_true", default=False, help="Use weight tying")
+    
+    args = parser.parse_args()
+    
+    logger.info("Config:", args=args)
+    train(args)
     
     
