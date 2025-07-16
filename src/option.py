@@ -1,5 +1,11 @@
 import argparse
 
+def none_or_str(value):
+    if value == "None":
+        return None
+    return value
+
+
 def get_training_args():
     """
     Create and return argument parser for training configuration.
@@ -17,8 +23,8 @@ def get_training_args():
     parser.add_argument("--save_every_n_steps", type=int, default=50, help="Save model every n steps")
     parser.add_argument("--save_best_model", action="store_true", default=False, help="Save best model")
     parser.add_argument("--embedding_model_dim", type=int, default=1536, help="Embedding model dimension")
-    parser.add_argument("--adapter_path", type=str, default="results/nq_inf/toy_contrastive/checkpoint_70000", help="Path to adapter checkpoint")
-    parser.add_argument("--linear_checkpoint_path", type=str, default="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt", help="Path to linear checkpoint")
+    parser.add_argument("--adapter_path", type=none_or_str, default="results/nq_inf/toy_contrastive/checkpoint_70000", help="Path to adapter checkpoint")
+    parser.add_argument("--linear_checkpoint_path", type=none_or_str, default="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt", help="Path to linear checkpoint")
     # adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
     # linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
     # adapter_path: 
@@ -34,6 +40,7 @@ def get_training_args():
     parser.add_argument("--warmup_ratio", type=float, default=0.05, help="Warmup ratio")
     parser.add_argument("--scheduler", type=str, default="linear", help="Learning rate scheduler")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm for clipping")
+    parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning")
     
     # Training options
     parser.add_argument("--shuffle_sequence", action="store_true", default=False, help="Shuffle sequence during training")
@@ -44,12 +51,12 @@ def get_training_args():
     # Model architecture
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")
     parser.add_argument("--loss_function", type=str, default="Hungarian_Contrastive", 
-                       choices=["MSE", "Hungarian_MSE", "Contrastive", "Hungarian_Contrastive"],
+                       choices=["MSE", "Hungarian_MSE", "Contrastive", "Hungarian_Contrastive", "Contrastive_wo_seq"],
                        help="Loss function to use")
     parser.add_argument("--extra_q_embed", action="store_true", default=False, help="Use extra question embedding")
     parser.add_argument("--compute_loss_on_q", action="store_true", default=False, help="Compute loss on questions")
     parser.add_argument("--use_eos", action="store_true", default=False, help="Use EOS token")
-    
+    parser.add_argument("--model_type", type=str, default="EmbeddingModel", help="Model type")
     # Data loading
     parser.add_argument("--first_label_only", action="store_true", default=False, help="Use first label (question) only")
     

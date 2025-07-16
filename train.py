@@ -62,7 +62,7 @@ def train(configs):
 
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
-        collator = functools.partial(MSETrainCollator(), shuffle=True, first_label_only=configs.first_label_only)
+        collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only)
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
@@ -78,7 +78,7 @@ def train(configs):
     
     # model loading
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model, tokenizer = load_model(train_lora=True,
+    model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                   base_model_id=configs.model_id, 
                                   adapter_path=configs.adapter_path, 
                                   linear_checkpoint_path=configs.linear_checkpoint_path,
@@ -88,7 +88,8 @@ def train(configs):
                                   temperature=configs.temperature,
                                   extra_q_embed=configs.extra_q_embed,
                                   compute_loss_on_q=configs.compute_loss_on_q,
-                                  use_eos=configs.use_eos)
+                                  use_eos=configs.use_eos,
+                                  model_type=configs.model_type)
     model = model.to(device)
     
     # optimize and scheduler    
