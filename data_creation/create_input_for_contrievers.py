@@ -588,17 +588,20 @@ if __name__ == '__main__':
     if generate_split == 'gaussian_synthetic':
         import sys
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
-        split='test'  # ['train', 'test']
         
-        def load_synthetic_dataset(data_dir='./synthetic_data'):
+        def load_synthetic_dataset(data_dir='./synthetic_data', normalize=False):
             
             # 1. Load configuration (metadata about the dataset)
             with open(os.path.join(data_dir, 'config.json'), 'r') as f:
                 config = json.load(f)
             
             # 2. Load the main data arrays
-            corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
-            queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
+            if normalize:
+                corpus = np.load(os.path.join(data_dir, 'normalized_corpus.npy'))              # Shape: (corpus_size, dimensions)
+                queries = np.load(os.path.join(data_dir, 'normalized_queries.npy'))            # Shape: (total_queries, dimensions)
+            else:
+                corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
+                queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
             transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))  # Shape: (n_rotations, dimensions, dimensions)
             
             # 3. Load query-ground truth mappings
@@ -614,20 +617,28 @@ if __name__ == '__main__':
             }
             
             
-        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH):
+        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH, hard_negatives=None):
             batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+            use_hard_negatives = hard_negatives is not None
+            if use_hard_negatives:
+                assert len(hard_negatives) == len(pairs)
+                assert len(hard_negatives[0]) == len(pairs[0]['ground_truth_indices'])
             for i in range(len(pairs)):
                 query_vector = queries[pairs[i]['query_idx']]
                 ground_truth_indices = pairs[i]['ground_truth_indices']
-                # create random negative indices that are not in ground_truth_indices
-                random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
-                while np.any(np.isin(random_indices, ground_truth_indices)):
+                if not use_hard_negatives:
+                    # create random negative indices that are not in ground_truth_indices
                     random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
+                    while np.any(np.isin(random_indices, ground_truth_indices)):
+                        random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
 
                 batch['inputs_embeds'].append(query_vector)
                 batch['attention_mask'].append(np.zeros(LENGTH))
                 batch['positive_embeddings'].append(corpus[ground_truth_indices])
-                batch['negative_embeddings'].append(corpus[random_indices])
+                if use_hard_negatives:
+                    batch['negative_embeddings'].append(corpus[hard_negatives[i]])
+                else:
+                    batch['negative_embeddings'].append(corpus[random_indices])
 
             batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).float().unsqueeze(1).expand(-1, LENGTH, -1)  # (bsz, LENGTH, d)
             batch['attention_mask'] = torch.tensor(batch['attention_mask']).long()             # (bsz, LENGTH). Only the first token is 1, the rest are 0.
@@ -686,12 +697,24 @@ if __name__ == '__main__':
             safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
 
             print('actual data size: ', len(dataset_dicts))
-            
+        
+        split='train'  # ['train', 'test']
         LENGTH = 8
-        data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data/')
+        normalize = False
+        
+        # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
+        hard_negatives = None
+        
+        data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data_2048/', normalize=normalize)
         pairs = data['pairs_data'][split]
-        create_synthetic_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_contrastive_sm', 
-                                 pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
+        
+        normalized_str = '_normalized' if normalize else ''
+        hard_negatives_str = '' if hard_negatives is None else '_hn'
+        out_data_path = f'gaussian_synthetic_{split}_dataset_1b_contrastive_sm_2048{normalized_str}{hard_negatives_str}' 
+        
+        
+        create_synthetic_dataset(out_dataset_path=out_data_path, 
+                                 pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH, hard_negatives=hard_negatives)
         
         # mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
         # create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 

@@ -1,4 +1,5 @@
 from logging import config
+from operator import index
 from re import A
 import torch
 import torch.distributed
@@ -33,8 +34,9 @@ import structlog
 logger = structlog.get_logger()
 import numpy as np
 
-from data_creation.gaussian.baseline_evaluation import evaluate_baseline
+from data_creation.gaussian.eval_utils import compute_similarities_and_rankings, compute_recall_at_k, compute_mrecall_at_k
 from gen_ret_and_eval import evaluate_loop
+from typing import List, Dict, Any
 
 # def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True):
 
@@ -82,7 +84,7 @@ from gen_ret_and_eval import evaluate_loop
 #         return torch.cat(all_outputs, dim=0).cpu().numpy(), None, None, all_lengths
 
 
-def load_synthetic_dataset(data_dir='./synthetic_data', split='test'):
+def load_synthetic_dataset(data_dir='./synthetic_data', split='test', normalize=False, indexed_corpus=None):
     """
     Load the complete synthetic dataset.
     
@@ -98,45 +100,44 @@ def load_synthetic_dataset(data_dir='./synthetic_data', split='test'):
         config = json.load(f)
     
     # 2. Load the main data arrays
-    corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
-    queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
-    transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))  # Shape: (n_rotations, dimensions, dimensions)
+    if normalize: # normalized_corpus.npy
+        assert indexed_corpus is None
+        corpus = np.load(os.path.join(data_dir, 'normalized_corpus.npy'))              # Shape: (corpus_size, dimensions)
+        queries = np.load(os.path.join(data_dir, 'normalized_queries.npy'))            # Shape: (total_queries, dimensions)
+    else:
+        if indexed_corpus is None:
+            corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
+        else:
+            corpus = np.load(os.path.join(data_dir, f'indexed_corpus_{indexed_corpus}.npy')) 
+        queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
     
     # 3. Load query-ground truth mappings
     with open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r') as f:
         pairs_data = json.load(f)
     
     pairs_data = pairs_data[split]
-    # data = load_synthetic_dataset(data_dir='./data/opposing_pairs_data/')
     
-    print(len(pairs_data)) # dict_keys(['query_idx', 'query_vector', 'ground_truth_indices'])
-    print(pairs_data[0]['query_idx']) 
-    print(np.array(pairs_data[0]['query_vector']).shape)
-    print(np.array(pairs_data[0]['ground_truth_indices']).shape)
+    print('number of queries', len(pairs_data)) # dict_keys(['query_idx', 'query_vector', 'ground_truth_indices'])
+    print('first query idx', pairs_data[0]['query_idx']) 
+    print('first query vector', np.array(pairs_data[0]['query_vector']).shape)
+    print('first ground truth indices', np.array(pairs_data[0]['ground_truth_indices']).shape)
     return pairs_data, queries, corpus
-    
-    # return {
-    #     'config': config,
-    #     'corpus': corpus,
-    #     'queries': queries,
-    #     'transformation_matrices': transformation_matrices,
-    #     'pairs_data': pairs_data
-    # }
 
 
-def load_model_local(adapter_path=None, linear_checkpoint_path=None):
+def load_model_local(base_model_id="meta-llama/Llama-3.2-1B-Instruct", adapter_path=None, linear_checkpoint_path=None, model_type="EmbeddingModel", embedding_model_dim=1024):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, tokenizer = load_model(train_lora=True,
-                                    base_model_id="meta-llama/Llama-3.2-1B-Instruct", 
+                                    base_model_id=base_model_id, 
                                     adapter_path=adapter_path, 
                                     linear_checkpoint_path=linear_checkpoint_path,
-                                    embedding_model_dim=1024, 
+                                    embedding_model_dim=embedding_model_dim, 
                                     weight_tying=False, 
                                     loss_function='Hungarian_Contrastive', 
                                     temperature=0.05,
                                     extra_q_embed=False,
                                     compute_loss_on_q=False,
-                                    use_eos=False)
+                                    use_eos=False,
+                                    model_type=model_type)
     model.to(device)
     return model, tokenizer, device
 
@@ -150,85 +151,185 @@ def load_input_data(input_data_path):
     return dataloader
 
 
-def aggregate_outputs(all_outputs, max_new_tokens):
+def aggregate_rankings(all_rankings, max_new_tokens, max_k):
     if max_new_tokens == 1:
-        return all_outputs
-    # all_outputs is a list of numpy arrays. Size (max_new_tokens * num_samples, topk)
+        return all_rankings
+    all_rankings = all_rankings[:, :max_k]
+    
+    # all_rankings is a list of numpy arrays. Size (max_new_tokens * num_samples, topk)
     new_outputs = []
-    assert len(all_outputs) % max_new_tokens == 0
-    topk = all_outputs[0].shape[1]
+    assert len(all_rankings) % max_new_tokens == 0
+    print(len(all_rankings), len(all_rankings) // max_new_tokens, max_k) # 5000, 1000, 100
     # Take tokens from outputs in a round robin fashion
-    for i in range(len(all_outputs) // max_new_tokens):
-        all_outputs_chunk = all_outputs[i * max_new_tokens:(i + 1) * max_new_tokens,:topk // max_new_tokens]
+    for i in range(len(all_rankings) // max_new_tokens):
+        all_outputs_chunk = all_rankings[i * max_new_tokens:(i + 1) * max_new_tokens,:max_k // max_new_tokens]
         new_output_inst = []
-        for j in range(topk // max_new_tokens):
+        for j in range(max_k // max_new_tokens):
             new_output_inst.append(all_outputs_chunk[:, j])
         new_outputs.append(np.concatenate(new_output_inst, axis=0))
     return np.array(new_outputs)
 
+
+def evaluate_baseline_with_aggregation(baseline_name: str, predictions: np.ndarray, corpus: np.ndarray, 
+                     test_pairs: List[Dict[str, Any]], k_values: List[int], max_new_tokens: int) -> Dict[str, float]:
+    """
+    Evaluate a baseline approach with multiple k values.
     
-command = 'simple_eval'
+    Args:
+        baseline_name: Name of the baseline approach
+        predictions: Predicted vectors for test queries
+        corpus: Full corpus to search in
+        test_pairs: Query-ground truth mapping data
+        k_values: List of k values to evaluate
+        
+    Returns:
+        Dictionary of metric results
+    """
+    print(f"\n=== Evaluating {baseline_name} ===")
+    
+    # Compute similarities and rankings
+    similarities, rankings = compute_similarities_and_rankings(predictions, corpus)
+    print(similarities.shape, rankings.shape)
+    max_k = max(k_values)
+    if max_new_tokens > 1:
+        rankings = aggregate_rankings(rankings, max_new_tokens, max_k)
+        print('aggregated rankings', rankings.shape)
+    
+    results = {}
+    # Evaluate for each k
+    for k in k_values:
+        recall = compute_recall_at_k(rankings, test_pairs, k)
+        mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
+        
+        results[f'recall@{k}'] = recall
+        results[f'mrecall@{k}'] = mrecall
+        
+        print(f"  Recall@{k}: {recall:.4f}")
+        print(f"  MRecall@{k}: {mrecall:.4f}")
+    
+    return results, rankings
 
 
+def write_tsv(data: List[List[str]], file_path: str):
+    import csv
+    with open(file_path, 'w') as f:
+        writer = csv.writer(f, delimiter='\t')
+        writer.writerows(data)
 
-
-if command == 'simple_train':
-    test_pairs, queries, corpus = load_synthetic_dataset(data_dir='./data_creation/gaussian/data/opposing_pairs_data_large/')
-    model, tokenizer, device = load_model_local()
+# if command == 'simple_train':
+#     test_pairs, queries, corpus = load_synthetic_dataset(data_dir='./data_creation/gaussian/data/opposing_pairs_data_large/')
+#     model, tokenizer, device = load_model_local()
     
 
-    batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+#     batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
 
-    LENGTH = 16
-    for i in range(len(test_pairs)):
-        query_vector = queries[test_pairs[i]['query_idx']]
-        ground_truth_indices = test_pairs[i]['ground_truth_indices']
-        ground_truth_embeddings = corpus[ground_truth_indices]
-        batch['inputs_embeds'].append(query_vector)
-        batch['attention_mask'].append(np.zeros(LENGTH))
-        batch['positive_embeddings'].append(ground_truth_embeddings)
-        batch['negative_embeddings'].append(ground_truth_embeddings)
+#     LENGTH = 16
+#     for i in range(len(test_pairs)):
+#         query_vector = queries[test_pairs[i]['query_idx']]
+#         ground_truth_indices = test_pairs[i]['ground_truth_indices']
+#         ground_truth_embeddings = corpus[ground_truth_indices]
+#         batch['inputs_embeds'].append(query_vector)
+#         batch['attention_mask'].append(np.zeros(LENGTH))
+#         batch['positive_embeddings'].append(ground_truth_embeddings)
+#         batch['negative_embeddings'].append(ground_truth_embeddings)
 
-    batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
-    batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
-    batch['attention_mask'][:, 0] = 1
-    batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
-    batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
-    print('input embeds', batch['inputs_embeds'].size(), 'attention mask', batch['attention_mask'].size(), 'positive embeddings', batch['positive_embeddings'].size(), 'negative embeddings', batch['negative_embeddings'].size())
+#     batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
+#     batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
+#     batch['attention_mask'][:, 0] = 1
+#     batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
+#     batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
+#     print('input embeds', batch['inputs_embeds'].size(), 'attention mask', batch['attention_mask'].size(), 'positive embeddings', batch['positive_embeddings'].size(), 'negative embeddings', batch['negative_embeddings'].size())
     
-    outputs = model(**batch)
-    print('loss', outputs.loss)
+#     outputs = model(**batch)
+#     print('loss', outputs.loss)
+def random_baseline(pairs_data, corpus, topk):
+    # set seed
+    np.random.seed(42)
+    rankings = []
+    for _ in range(len(pairs_data)):
+        rankings.append(np.random.randint(0, len(corpus), size=topk))
+    return np.array(rankings)
     
-    
-elif command == 'simple_eval':
-    split = 'test'
-    data_dir = './data_creation/gaussian/data/opposing_pairs_data_large/'
-    MAX_NEW_TOKENS = 1
-    
-    pairs_data = json.load(open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r'))
-    test_pairs, queries, corpus = load_synthetic_dataset(data_dir=data_dir, split=split)
+def main(args):
+    # load data
+    pairs_data = json.load(open(os.path.join(args.data_dir, 'query_ground_truth_pairs.json'), 'r'))
+    test_pairs, queries, corpus = load_synthetic_dataset(data_dir=args.data_dir, split=args.split, normalize=args.normalize, indexed_corpus=args.indexed_corpus)
     # evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True)
-    model_path = 'results/gaussian_synthetic_inf/toy_contrastive_from_stage1_lr1e4_ep30_temp0.05_warmup0.05_gradnorm5_bs16_takefirst/'
-    
-    adapter_path = os.path.join(model_path, 'checkpoint_1')
-    linear_checkpoint_path = os.path.join(model_path, 'checkpoint_1_linear.pt')
-    model, tokenizer, device = load_model_local(adapter_path=adapter_path, linear_checkpoint_path=linear_checkpoint_path)
-    
-    with torch.no_grad():
-        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{split}_dataset_1b_contrastive/')
-        print(len(dataloader))
-        # batch = next(iter(dataloader))
-        # outputs = model.generate(**batch, max_new_tokens=1)
-        # print(outputs.shape)
-        all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=MAX_NEW_TOKENS, use_gt_q_embed=False, use_eos=False, compute_loss=False)
-        print(all_outputs.shape)
-        # print(all_lengths)
-        all_outputs = aggregate_outputs(all_outputs, MAX_NEW_TOKENS)
-        print(all_outputs.shape)
 
-    # avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data, args.k_values)
-    results = evaluate_baseline("Trained Model", all_outputs, corpus, pairs_data[split], [10, 20, 50, 100, 200, 500])
+    all_results = [['model_name', 'mrecall@100', 'recall@100', 'mrecall@10', 'recall@10']]
+    if args.run_random_baseline:
+        random_rankings = random_baseline(test_pairs, corpus, args.k_values[-1])
+        print('random rankings', random_rankings.shape)
+        model_path = args.model_paths[0]
+        results = {}
+        # Evaluate for each k
+        for k in args.k_values:
+            recall = compute_recall_at_k(random_rankings, test_pairs, k)
+            mrecall = compute_mrecall_at_k(random_rankings, test_pairs, k)
+            
+            results[f'recall@{k}'] = recall
+            results[f'mrecall@{k}'] = mrecall
+            print(f"  Recall@{k}: {recall:.4f}")
+            print(f"  MRecall@{k}: {mrecall:.4f}")
+        np.save(os.path.join(model_path, f'random_baseline_rankings.npy'), random_rankings)
+        all_results.append([model_path+f'_random_baseline', results['mrecall@100'], results['recall@100'], results['mrecall@10'], results['recall@10']])
+    else:
+        for model_path in args.model_paths:
+            # load model
+            if args.full_finetuning:
+                base_model_id = os.path.join(model_path, args.checkpoint_name)
+                adapter_path = None
+            else:
+                base_model_id = "meta-llama/Llama-3.2-1B-Instruct"
+                adapter_path = os.path.join(model_path, args.checkpoint_name)
+            linear_checkpoint_path = os.path.join(model_path, f'{args.checkpoint_name}_linear.pt')
+            model, _, device = load_model_local(base_model_id=base_model_id, 
+                                                adapter_path=adapter_path, 
+                                                linear_checkpoint_path=linear_checkpoint_path, 
+                                                model_type=args.model_type,
+                                                embedding_model_dim=args.embedding_model_dim)
 
+            for max_new_tokens in args.max_new_tokens_list:
+                with torch.no_grad():
+                    # Create data loader
+                    if args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_large/':
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive/')
+                    elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data/':
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm/')
+                    elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_2048/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data_2048/':
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm_2048/')
+                    else:
+                        raise ValueError(f'Invalid data directory: {args.data_dir}')
+
+                    # Evaluate model
+                    all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
+                    print('all outputs', all_outputs.shape)
+
+                    # Evaluate Results
+                    results, rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
+                    print('rankings', rankings.shape)
+                    np.save(os.path.join(model_path, f'max_new_tokens_{max_new_tokens}_rankings.npy'), rankings)
+                    all_results.append([model_path+f'_max_new_tokens_{max_new_tokens}', results['mrecall@100'], results['recall@100'], results['mrecall@10'], results['recall@10']])
+
+    write_tsv(all_results, 'results.tsv')
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_paths", type=str, nargs='+', default=['results/gaussian_synthetic_inf/gaussian_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep30_warmup0.05/'])
+    parser.add_argument("--split", type=str, default='train')
+    parser.add_argument("--data_dir", "-d", type=str, default='./data_creation/gaussian/data/opposing_pairs_data_large/')
+    parser.add_argument("--k_values", type=int, nargs='+', default=[10, 20, 50, 100, 200, 500]) # 10, 20, 50, 100, 200, 500
+    parser.add_argument("--checkpoint_name", "-c", type=str, default='checkpoint_2001')
+    parser.add_argument("--max_new_tokens_list", "-n", type=int, nargs='+', default=[5])
+    parser.add_argument("--normalize", action='store_true')
+    parser.add_argument("--indexed_corpus", type=str, default=None)
+    parser.add_argument("--model_type", type=str, default="EmbeddingModel")
+    parser.add_argument("--run_random_baseline", action='store_true')
+    parser.add_argument("--full_finetuning", action='store_true')
+    parser.add_argument("--embedding_model_dim", type=int, default=1024)
+    args = parser.parse_args()
+    main(args)
 
 
 
