@@ -9,7 +9,7 @@
 
 # Learning rates to test
 # LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
-LEARNING_RATES=(5e-5)
+LEARNING_RATES=(2e-5)
 
 # Temperature values for contrastive loss
 # TEMPERATURES=(0.03 0.1)
@@ -17,15 +17,18 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(32)
+BATCH_SIZES=(512)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(30)
+NUM_EPOCHS_LIST=(1000)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
+
+# LR min ratios
+LR_MIN_RATIO=0.1
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -35,7 +38,7 @@ WARMUP_RATIOS=(0.05)
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="hungarian_contrastive"
+MODE="contrastive_first_label"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -59,6 +62,11 @@ elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
+    LOSS_FUNCTION="Contrastive_wo_seq"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
@@ -68,12 +76,17 @@ elif [ "$MODE" == "mse_first_label" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
-    QUESTION_ONLY="--question_only"
+    QUESTION_ONLY="--first_label_only"
+elif [ "$MODE" == "mse_all_labels" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
 fi
 
 
 SAVE_ONLY_IMPROVE="--save_only_improve"
-
+SAVE_BEST_MODEL="--save_best_model"
 
 # =================================================================
 # BASE CONFIGURATION
@@ -83,19 +96,22 @@ SAVE_ONLY_IMPROVE="--save_only_improve"
 BASE_PROJECT="diverse_retrieval"
 
 # Experiment prefix
-EXP_PREFIX="gaussian_${MODE}"
+# EXP_PREFIX="sm_${MODE}"
+EXP_PREFIX="sm_second"
+MODEL_TYPE="EmbeddingModel"
+FULL_FINETUNING="" # FULL_FINETUNING="--full_finetuning"
 
 # Base directory for saving results
 BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 
 # Training dataset path
-BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
+BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
 
 # Model checkpoints
-# BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
-# BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
-BASE_ADAPTER_PATH=""
-BASE_LINEAR_CHECKPOINT_PATH=""
+# BASE_ADAPTER_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501"
+# BASE_LINEAR_CHECKPOINT_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501_linear.pt"
+BASE_ADAPTER_PATH=None
+BASE_LINEAR_CHECKPOINT_PATH=None
 
 # =================================================================
 # FIXED HYPERPARAMETERS
@@ -105,7 +121,7 @@ BASE_LINEAR_CHECKPOINT_PATH=""
 EMBEDDING_MODEL_DIM=1024
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=2000
+SAVE_EVERY_N_STEPS=200
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -117,7 +133,7 @@ WEIGHT_DECAY=0.01
 SCHEDULER="linear"
 
 # Maximum gradient norm for clipping
-MAX_GRAD_NORM=1.0
+MAX_GRAD_NORM=5.0
 
 # =================================================================
 # SLURM CONFIGURATION

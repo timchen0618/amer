@@ -55,12 +55,16 @@ ARGS="--project ${BASE_PROJECT} \
       --scheduler ${SCHEDULER} \
       --max_grad_norm ${MAX_GRAD_NORM} \
       --loss_function ${LOSS_FUNCTION} \
+      --lr_min_ratio ${LR_MIN_RATIO} \
       ${SHUFFLE_SEQUENCE} \
       ${SAVE_ONLY_IMPROVE} \
       ${TAKE_FIRST} \
       ${QUESTION_ONLY} \
       --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
-      --save_every_n_steps ${SAVE_EVERY_N_STEPS}"
+      --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
+      --model_type ${MODEL_TYPE} \
+      ${FULL_FINETUNING} \
+      ${SAVE_BEST_MODEL}"
 
 echo "Training arguments:"
 echo "$ARGS"
@@ -76,7 +80,7 @@ echo "Starting training at $(date)"
 echo "Logging output to: $OUTPUT_LOG"
 
 # Use accelerate launch for distributed training support
-HF_TOKEN="$HF_TOKEN" python train.py $ARGS 2>&1 | tee "$OUTPUT_LOG"
+HF_TOKEN="$HF_TOKEN" PYTHONPATH=. python train.py $ARGS 2>&1 | tee "$OUTPUT_LOG"
 
 EXIT_CODE=${PIPESTATUS[0]}
 
