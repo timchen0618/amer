@@ -126,7 +126,7 @@ def load_synthetic_dataset(data_dir='./synthetic_data', split='test', normalize=
 
 def load_model_local(base_model_id="meta-llama/Llama-3.2-1B-Instruct", adapter_path=None, linear_checkpoint_path=None, model_type="EmbeddingModel", embedding_model_dim=1024):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model, tokenizer = load_model(train_lora=True,
+    model, tokenizer = load_model(train_lora=False,
                                     base_model_id=base_model_id, 
                                     adapter_path=adapter_path, 
                                     linear_checkpoint_path=linear_checkpoint_path,
@@ -141,11 +141,18 @@ def load_model_local(base_model_id="meta-llama/Llama-3.2-1B-Instruct", adapter_p
     model.to(device)
     return model, tokenizer, device
 
-def load_input_data(input_data_path):
+def load_input_data(input_data_path, use_ground_truth_for_eval=False):
     # Load dataset
-    collator = contrastive_eval_collator
+    if use_ground_truth_for_eval:
+        collator = ContrastiveTrainCollator()
+    else:
+        collator = contrastive_eval_collator
     full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
-    data_handler = DataHandler(full_dataset, collator, 1, 'dev')
+    
+    if use_ground_truth_for_eval:
+        data_handler = DataHandler(full_dataset, collator, 128, 'dev')
+    else:
+        data_handler = DataHandler(full_dataset, collator, 1, 'dev')
     
     dataloader = data_handler.get_full_dataloader()
     return dataloader
@@ -195,19 +202,58 @@ def evaluate_baseline_with_aggregation(baseline_name: str, predictions: np.ndarr
         rankings = aggregate_rankings(rankings, max_new_tokens, max_k)
         print('aggregated rankings', rankings.shape)
     
+    return rankings
+    # results = {}
+    # # Evaluate for each k
+    # for k in k_values:
+    #     recall = compute_recall_at_k(rankings, test_pairs, k)
+    #     mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
+        
+    #     results[f'recall@{k}'] = recall
+    #     results[f'mrecall@{k}'] = mrecall
+        
+    #     print(f"  Recall@{k}: {recall:.4f}")
+    #     print(f"  MRecall@{k}: {mrecall:.4f}")
+    
+    # return results, rankings
+
+
+def eval_metrics(rankings, test_pairs, k_values, _print=True):
     results = {}
-    # Evaluate for each k
     for k in k_values:
         recall = compute_recall_at_k(rankings, test_pairs, k)
         mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
         
         results[f'recall@{k}'] = recall
         results[f'mrecall@{k}'] = mrecall
+        if _print:
+            print(f"  Recall@{k}: {recall:.4f}")
+            print(f"  MRecall@{k}: {mrecall:.4f}")
+    return results
+
+def eval_on_each_gt(rankings, test_pairs, k_values, _print=True):
+    ### Evaluate on each GT
+    all_results = []
+    for i in range(5):
+        new_test_pairs = []
+        for t in test_pairs:
+            new_test_pairs.append(t.copy())
+            new_test_pairs[-1]['ground_truth_indices'] = [t['ground_truth_indices'][i]]
+        result_per_gt = eval_metrics(rankings, new_test_pairs, k_values, _print=False)
+        all_results.append(result_per_gt)
+    scores = [['Metric', 'GT 1', 'GT 2', 'GT 3', 'GT 4', 'GT 5']]
+    for k in k_values:
+        scores.append([f'Recall@{k}'] + ['%2.2f' % all_results[i][f'recall@{k}'] for i in range(5)])
         
-        print(f"  Recall@{k}: {recall:.4f}")
-        print(f"  MRecall@{k}: {mrecall:.4f}")
+    if _print:
+        import prettytable
+        table = prettytable.PrettyTable()
+        table.field_names = scores[0]
+        for row in scores[1:]:
+            table.add_row(row)
+        print(table)
     
-    return results, rankings
+    return all_results, scores
 
 
 def write_tsv(data: List[List[str]], file_path: str):
@@ -277,6 +323,7 @@ def main(args):
         for model_path in args.model_paths:
             # load model
             if args.full_finetuning:
+                print('doing full finetuning')
                 base_model_id = os.path.join(model_path, args.checkpoint_name)
                 adapter_path = None
             else:
@@ -293,20 +340,42 @@ def main(args):
                 with torch.no_grad():
                     # Create data loader
                     if args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_large/':
-                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive/')
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data/':
-                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm/')
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_2048/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data_2048/':
-                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm_2048/')
+                        dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm_2048/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     else:
                         raise ValueError(f'Invalid data directory: {args.data_dir}')
 
-                    # Evaluate model
-                    all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
-                    print('all outputs', all_outputs.shape)
+
+                    if args.use_ground_truth_for_eval:
+                        all_losses = []
+                        i = 0
+                        all_outputs = []
+                        for batch in tqdm(dataloader):
+                            for k, v in batch.items():
+                                if i == 0:
+                                    print(k, v.shape)
+                                batch[k] = v.to(device)
+
+                            output = model(**batch)
+                            all_losses.append(output.loss.item())
+                            all_outputs.append(output.last_hidden_states[:, :max_new_tokens].view(-1, output.last_hidden_states.size(-1)))
+                            i += 1
+                        print('all losses', sum(all_losses) / len(all_losses))
+                        all_outputs = torch.cat(all_outputs, dim=0).cpu().numpy()
+                        print('all outputs', all_outputs.shape)
+                    else:
+                        # Evaluate model
+                        all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
+                        print('all outputs', all_outputs.shape)
 
                     # Evaluate Results
-                    results, rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
+                    rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
+                    results = eval_metrics(rankings, pairs_data[args.split], args.k_values)
+                    eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True)
+                    
                     print('rankings', rankings.shape)
                     np.save(os.path.join(model_path, f'max_new_tokens_{max_new_tokens}_rankings.npy'), rankings)
                     all_results.append([model_path+f'_max_new_tokens_{max_new_tokens}', results['mrecall@100'], results['recall@100'], results['mrecall@10'], results['recall@10']])
@@ -328,6 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_random_baseline", action='store_true')
     parser.add_argument("--full_finetuning", action='store_true')
     parser.add_argument("--embedding_model_dim", type=int, default=1024)
+    parser.add_argument("--use_ground_truth_for_eval", action='store_true')
     args = parser.parse_args()
     main(args)
 

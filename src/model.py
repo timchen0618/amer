@@ -309,6 +309,7 @@ class EmbeddingModel(nn.Module):
             
             # [1, 257, 2048], [1, 3, 2048], [1, 3, 1536]
             output_len = labels[i].size(0)
+            # print('input_start_for_output', input_start_for_output, 'output_len', output_len, 'inputs', inputs['hidden_states'].shape, 'labels', labels.shape)
             inputs['hidden_states'][i][input_start_for_output:input_start_for_output+output_len,:] = self.input_projection(labels[i].float())
             
             # ignore the first token, which is the question representation using embedding model
@@ -434,7 +435,8 @@ class EmbeddingModel(nn.Module):
             
             next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
             next_embs.append(next_emb)
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
+            new_inputs_embeds = torch.cat((inputs['hidden_states'], self.input_projection(self.output_projection(next_emb))), dim=1)  
+            # new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
             max_new_tokens = max_new_tokens - 1
 
         # generate the rest of the tokens
@@ -448,7 +450,8 @@ class EmbeddingModel(nn.Module):
                     print("EOS token generated")
                     break
             next_embs.append(next_emb)
-            new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
+            # new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
+            new_inputs_embeds = torch.cat((new_inputs_embeds, self.input_projection(self.output_projection(next_emb))), dim=1)
         
         out_embs = torch.cat(next_embs, dim=1)
         

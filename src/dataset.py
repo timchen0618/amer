@@ -23,9 +23,9 @@ class MSETrainCollator:
         batch = {}
         for k in features[0].keys():
             if shuffle:  # train data
-                if k == 'labels':
-                    question_labels = [features[j]['labels'][:1] for j in range(len(features))]
-                    list_of_labels = [features[j]['labels'][1:] for j in range(len(features))]
+                if k == 'labels' or k == 'positive_embeddings':
+                    question_labels = [features[j][k][:1] for j in range(len(features))]
+                    list_of_labels = [features[j][k][1:] for j in range(len(features))]
                     # randomly shuffle the remaining labels
                     for j in range(len(list_of_labels)):
                         random.shuffle(list_of_labels[j])
@@ -40,12 +40,16 @@ class MSETrainCollator:
                 else:
                     batch[k] = torch.tensor([f[k] for f in features])
             else:    # eval data
-                if k == 'labels' and first_label_only:
-                    question_labels = [features[j]['labels'][:1] for j in range(len(features))]
+                if (k == 'labels' or k == 'positive_embeddings') and first_label_only:
+                    question_labels = [features[j][k][:1] for j in range(len(features))]
                     batch[k] = torch.tensor(question_labels)
                 else:
                     batch[k] = torch.tensor([f[k] for f in features])
-
+        if 'negative_embeddings' in batch:
+            del batch['negative_embeddings']
+        if 'positive_embeddings' in batch:
+            batch['labels'] = batch['positive_embeddings']
+            del batch['positive_embeddings']
         return batch
     
 
@@ -81,6 +85,8 @@ class ContrastiveTrainCollator:
                 if take_first:
                     features[i]['positive_embeddings'] = features[i]['positive_embeddings'][:1]
                     features[i]['negative_embeddings'] = features[i]['negative_embeddings'][:1]
+                    # features[i]['positive_embeddings'] = features[i]['positive_embeddings'][1:2]
+                    # features[i]['negative_embeddings'] = features[i]['negative_embeddings'][1:2]
             
         for k in features[0].keys():  # loop through the keys => ['input_ids', 'attention_mask', 'positive_embeddings', 'negative_embeddings', 'length']
             # len(features[0][k]) -> length
