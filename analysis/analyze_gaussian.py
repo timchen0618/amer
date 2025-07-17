@@ -1,6 +1,7 @@
 from pathlib import Path
 import numpy as np
-from test import load_synthetic_dataset
+from test import load_synthetic_dataset, eval_metrics, eval_on_each_gt
+from data_creation.gaussian.eval_utils import compute_recall_at_k, compute_mrecall_at_k
 from tqdm import tqdm
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -34,6 +35,20 @@ def compute_prediction_similarity(rankings, corpus, test_pairs, topks):
             
         similarities.append(sum(topk_similarities) / len(topk_similarities))
     return similarities
+
+
+# def eval_metrics(rankings, test_pairs, k_values, _print=True):
+#     results = {}
+#     for k in k_values:
+#         recall = compute_recall_at_k(rankings, test_pairs, k)
+#         mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
+        
+#         results[f'recall@{k}'] = recall
+#         results[f'mrecall@{k}'] = mrecall
+#         if _print:
+#             print(f"  Recall@{k}: {recall:.4f}")
+#             print(f"  MRecall@{k}: {mrecall:.4f}")
+#     return results
 
 if __name__ == '__main__':
     folder_list = ['sm_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch64_ep100_warmup0.05/',
@@ -118,6 +133,40 @@ if __name__ == '__main__':
         import pandas as pd
         results = pd.DataFrame(results, columns=['model'] + [f'{k}' for k in topks])
         results.to_csv('results/gaussian_synthetic_inf/prediction_similarity.csv', index=False)
+    
+    elif args.command == 'see_predictions':
+        ### Initialization
+        max_new_tokens = 5
+        TOPK = 10
+        results = []
+        folder = 'sm_full_finetuning_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch128_ep500_warmup0.05/'
+        
+        ### Get results
+        model_path = Path(args.rootdir) / folder
+        _id = '_'.join(folder.split('lr')[0].split('_')[1:-1])
+        if folder == 'random_baseline/':
+            rankings = np.load(model_path / f'random_baseline_rankings.npy')
+        else:
+            rankings = np.load(model_path / f'max_new_tokens_{max_new_tokens}_rankings.npy')
+        for i in range(len(test_pairs)):
+            ranking = rankings[i, :TOPK]
+            gt = test_pairs[i]['ground_truth_indices']
+            results.append([i, ', '.join(str(x) for x in ranking), ', '.join(str(x) for x in gt)])
+
+        # Evaluate on all GTs
+        eval_metrics(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
+        
+        ### Evaluate on each GT
+        _, scores = eval_on_each_gt(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
+        
+        import pandas as pd
+        ### Record Results     
+        score_results = pd.DataFrame(scores)
+        score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
+        
+        
+        results = pd.DataFrame(results, columns=['query_id', 'predictions', 'ground_truth'])
+        results.to_csv('results/gaussian_synthetic_inf/predictions.csv', index=False)
 
     elif args.command == 'get_best_model':
         # folder_list = ['sm_hn_hungarian_contrastive_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/', 
