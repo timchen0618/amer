@@ -85,8 +85,6 @@ class ContrastiveTrainCollator:
                 if take_first:
                     features[i]['positive_embeddings'] = features[i]['positive_embeddings'][:1]
                     features[i]['negative_embeddings'] = features[i]['negative_embeddings'][:1]
-                    # features[i]['positive_embeddings'] = features[i]['positive_embeddings'][1:2]
-                    # features[i]['negative_embeddings'] = features[i]['negative_embeddings'][1:2]
             
         for k in features[0].keys():  # loop through the keys => ['input_ids', 'attention_mask', 'positive_embeddings', 'negative_embeddings', 'length']
             # len(features[0][k]) -> length

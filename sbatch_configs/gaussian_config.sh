@@ -17,11 +17,11 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(512)
+BATCH_SIZES=(16)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(1000)
+NUM_EPOCHS_LIST=(100)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -38,7 +38,7 @@ LR_MIN_RATIO=0.1
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="contrastive_first_label"
+MODE="mse_all_labels"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -96,11 +96,11 @@ SAVE_BEST_MODEL="--save_best_model"
 BASE_PROJECT="diverse_retrieval"
 
 # Experiment prefix
-# EXP_PREFIX="sm_${MODE}"
-EXP_PREFIX="sm_second"
-MODEL_TYPE="EmbeddingModel"
-FULL_FINETUNING="" # FULL_FINETUNING="--full_finetuning"
-
+EXP_PREFIX="sm_full_finetuning_SS_${MODE}"
+MODEL_TYPE="EmbeddingModelSS"
+FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
+TRAIN_ON_ALL_DATA="--train_on_all_data" # TRAIN_ON_ALL_DATA=""
+SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING=""
 # Base directory for saving results
 BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 
@@ -121,7 +121,7 @@ BASE_LINEAR_CHECKPOINT_PATH=None
 EMBEDDING_MODEL_DIM=1024
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=200
+SAVE_EVERY_N_STEPS=500
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1

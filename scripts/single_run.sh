@@ -64,7 +64,9 @@ ARGS="--project ${BASE_PROJECT} \
       --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
       --model_type ${MODEL_TYPE} \
       ${FULL_FINETUNING} \
-      ${SAVE_BEST_MODEL}"
+      ${SAVE_BEST_MODEL} \
+      ${SCHEDULE_SAMPLING} \
+      ${TRAIN_ON_ALL_DATA}"
 
 echo "Training arguments:"
 echo "$ARGS"

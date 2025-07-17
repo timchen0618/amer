@@ -41,6 +41,7 @@ def get_training_args():
     parser.add_argument("--scheduler", type=str, default="linear", help="Learning rate scheduler")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm for clipping")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning")
+    parser.add_argument("--schedule_sampling", action="store_true", default=False, help="Schedule sampling")
     
     # Training options
     parser.add_argument("--shuffle_sequence", action="store_true", default=False, help="Shuffle sequence during training")

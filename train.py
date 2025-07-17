@@ -77,6 +77,7 @@ def train(configs):
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     
     # model loading
+    assert configs.schedule_sampling == (configs.model_type == 'EmbeddingModelSS'), 'Schedule sampling is only supported for EmbeddingModelSS'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                   base_model_id=configs.model_id, 
@@ -131,6 +132,10 @@ def train(configs):
                 if step == 0:
                     logger.info(k, size=batch[k].size())
             total_train_steps += 1
+            
+            if configs.schedule_sampling:
+                batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                
             outputs = model(**batch)
 
             loss = outputs.loss / configs.gradient_accumulation_steps
@@ -186,7 +191,11 @@ def train(configs):
                     for step, batch in enumerate(tqdm(valid_loss_dataloader)):
                         for k, v in batch.items():
                             batch[k] = v.to(device)
+                        
+                        if configs.schedule_sampling:
+                            batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
                         outputs = model(**batch)
+                        
                         loss = outputs.loss
                         total_loss += loss.item()
 
