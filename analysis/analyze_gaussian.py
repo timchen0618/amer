@@ -139,7 +139,7 @@ if __name__ == '__main__':
         max_new_tokens = 5
         TOPK = 10
         results = []
-        folder = 'sm_full_finetuning_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch128_ep500_warmup0.05/'
+        folder = 'sm_full_finetuning_SS_mse_all_labels_lr2e-5_temp0.05_batch16_ep100_warmup0.05/'
         
         ### Get results
         model_path = Path(args.rootdir) / folder
@@ -181,9 +181,17 @@ if __name__ == '__main__':
         #                'sm_hn_from_stage3_contrastive_all_labels_ordered_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
         #                'sm_hn_from_stage3_contrastive_all_labels_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
         #                'sm_hn_from_stage3_contrastive_one_label_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/']
+        folder_list = [l.strip('\n') for l in open('files.txt')]
         for folder in folder_list:
             model_path = Path(args.rootdir) / folder
+            if ((model_path / 'best_model').exists() and (model_path / 'best_model_linear.pt').exists()) or ((model_path / 'best_model').exists() and '2048' in folder):
+                print(f'{folder} already has best model')
+                continue
             all_paths = list(model_path.glob('checkpoint_*'))
+            if len(all_paths) == 0:
+                print(f'{folder} has no checkpoints')
+                continue
+            print('folder', folder, 'all_paths', all_paths)
             base_lms = []
             linears = []
             for path in all_paths:
@@ -194,31 +202,35 @@ if __name__ == '__main__':
             base_lms = sorted(base_lms, key=lambda x: int(x.split('_')[1]))
             linears = sorted(linears, key=lambda x: int(x.split('_')[1]))
             best_base_lm_path = model_path / base_lms[-1]
-            best_linear_path = model_path / linears[-1]
+            if len(linears) > 0:
+                best_linear_path = model_path / linears[-1]
+
 
             import shutil
             shutil.copytree(best_base_lm_path, model_path / 'best_model', dirs_exist_ok=True)
-            shutil.copy(best_linear_path, model_path / 'best_model_linear.pt')
+            if len(linears) > 0:
+                shutil.copy(best_linear_path, model_path / 'best_model_linear.pt')
     elif args.command == 'delete_models':
         import shutil
         import os
-        folder_list = ['sm_hn_hungarian_contrastive_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/', 
-                       'sm_hn_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_hn_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_hn_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_normalized_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_normalized_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_normalized_hungarian_contrastive_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_normalized_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
-                       'sm_hn_from_stage3_hungarian_contrastive_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
-                       'sm_hn_from_stage3_contrastive_all_labels_ordered_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
-                       'sm_hn_from_stage3_contrastive_all_labels_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
-                       'sm_hn_from_stage3_contrastive_one_label_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/']
+        # folder_list = ['sm_hn_hungarian_contrastive_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/', 
+        #                'sm_hn_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_hn_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_hn_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_normalized_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_normalized_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_normalized_hungarian_contrastive_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_normalized_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch512_ep1000_warmup0.05/',
+        #                'sm_hn_from_stage3_hungarian_contrastive_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
+        #                'sm_hn_from_stage3_contrastive_all_labels_ordered_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
+        #                'sm_hn_from_stage3_contrastive_all_labels_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/',
+        #                'sm_hn_from_stage3_contrastive_one_label_shuffled_lr5e-6_temp0.05_batch512_ep100_warmup0.05/']
+        folder_list = [l.strip('\n') for l in open('files.txt')]
         for folder in folder_list:
             model_path = Path(args.rootdir) / folder
             all_linear_paths = list(model_path.glob('checkpoint_*.pt'))
             all_base_lm_paths = list(model_path.glob('checkpoint_*'))
-            if (model_path / 'best_model').exists() and (model_path / 'best_model_linear.pt').exists():
+            if ((model_path / 'best_model').exists() and (model_path / 'best_model_linear.pt').exists()) or ((model_path / 'best_model').exists() and '2048' in folder):
                 # print(model_path / 'best_model')
                 # print(model_path / 'best_model_linear.pt')
                 for path in all_linear_paths:

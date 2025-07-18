@@ -339,7 +339,7 @@ def main(args):
             for max_new_tokens in args.max_new_tokens_list:
                 with torch.no_grad():
                     # Create data loader
-                    if args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_large/':
+                    if args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_large/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data_large/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data/':
                         dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)

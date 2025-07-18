@@ -38,7 +38,7 @@ LR_MIN_RATIO=0.1
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="mse_all_labels"
+MODE="hungarian_contrastive"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -96,11 +96,11 @@ SAVE_BEST_MODEL="--save_best_model"
 BASE_PROJECT="diverse_retrieval"
 
 # Experiment prefix
-EXP_PREFIX="sm_full_finetuning_SS_${MODE}"
-MODEL_TYPE="EmbeddingModelSS"
+EXP_PREFIX="sm_full_finetuning_SSVariable_${MODE}"
+MODEL_TYPE="EmbeddingModelSSVariable"
 FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
-TRAIN_ON_ALL_DATA="--train_on_all_data" # TRAIN_ON_ALL_DATA=""
-SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING=""
+TRAIN_ON_ALL_DATA="--train_on_all_data" # TRAIN_ON_ALL_DATA="--train_on_all_data"
+SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING="--schedule_sampling"
 # Base directory for saving results
 BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 
@@ -121,7 +121,7 @@ BASE_LINEAR_CHECKPOINT_PATH=None
 EMBEDDING_MODEL_DIM=1024
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=500
+SAVE_EVERY_N_STEPS=200
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1

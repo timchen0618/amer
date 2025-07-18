@@ -571,7 +571,7 @@ class EmbeddingModelSS(nn.Module):
             all_outputs.append(next_emb.unsqueeze(1))
             
             # do the sampling 
-            use_predicted = (torch.rand(current_input.size(0), 1) < sampling_rate).to(current_input.device)
+            use_predicted = (torch.rand(current_input.size(0), 1, 1) < sampling_rate).to(current_input.device)
             # if random.random() < sampling_rate:
             #     current_input = torch.cat((current_input, self.input_projection(self.output_projection(next_emb)).unsqueeze(1)), dim=1)
             # else:
@@ -579,22 +579,23 @@ class EmbeddingModelSS(nn.Module):
             predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)
             teacher = self.input_projection(labels[:, j].float()).unsqueeze(1)
             next_input = torch.where(use_predicted, predicted, teacher)
+            # print('next_input', next_input.size(), 'predicted', predicted.size(), 'teacher', teacher.size())
             current_input = torch.cat((current_input, next_input), dim=1)
-
+            # print('current_input', current_input.size())
             # fill out the loss mask: ignore the first token, which is the question representation using embedding model
             if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
-                loss_mask[:,:input_start_for_output] = 0
-                loss_mask[:,input_start_for_output:(input_start_for_output+output_len-1)] = 1
+                loss_mask[:,:1] = 0
+                loss_mask[:,1:output_len] = 1
                 assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
             else:
-                loss_mask[:,:input_start_for_output-1] = 0
-                loss_mask[:,(input_start_for_output-1):(input_start_for_output+output_len-1)] = 1
+                # loss_mask[:,:input_start_for_output-1] = 0
+                loss_mask[:,:output_len] = 1
                 assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
             # out_hidden_states_per_inst = torch.cat(all_outputs_per_inst, dim=1) # (1, output_len, hidden_size)
             # out_hidden_states.append(out_hidden_states_per_inst)
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
-        
+        # print('out_hidden_states', out_hidden_states.size())
         # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
         # # hidden_states = outputs.last_hidden_state
         # out_hidden_states = outputs.hidden_states[-1]
@@ -641,78 +642,327 @@ class EmbeddingModelSS(nn.Module):
             return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
         
 
+        
+class EmbeddingModelSSVariable(EmbeddingModel):
 
-    def generate(
+    def __init__(
         self,
-        max_new_tokens=16, 
-        use_gt_q_embed=False,
-        use_eos=False,
-        **inputs
+        base_causallm,
+        start_latent_id,
+        eos_token_id,
+        embedding_model_dim,
+        weight_tying=False,
+        loss_function='Hungarian_MSE',
+        temperature=0.05,
+        extra_q_embed=False,
+        compute_loss_on_q=False,
+        use_eos=False
     ):
-        self.gen_forward_cnt = 0
-        if 'input_ids' in inputs:
-            input_ids = inputs['input_ids']
-            assert input_ids.shape[0] == 1, "only support batch_size == 1 now"
-        elif 'inputs_embeds' in inputs:
-            inputs_embeds = inputs['inputs_embeds']
-            assert inputs_embeds.shape[0] == 1, "only support batch_size == 1 now"
-        else:
-            hidden_states = inputs['hidden_states']
-            assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
+        super(EmbeddingModelSSVariable, self).__init__(
+            base_causallm=base_causallm,
+            start_latent_id=start_latent_id,
+            eos_token_id=eos_token_id,
+            embedding_model_dim=embedding_model_dim,
+            weight_tying=weight_tying,
+            loss_function=loss_function,
+            temperature=temperature,
+            extra_q_embed=extra_q_embed,
+            compute_loss_on_q=compute_loss_on_q,
+            use_eos=use_eos
+        )
+
+    def forward(self, **inputs):
+        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
+        if has_label:  # the labels could be either used for MSE loss or contrastive loss
+            if 'labels' in inputs:
+                labels = inputs.pop("labels")
+                label_type = 'labels'
+            else:
+                labels = inputs.pop("positive_embeddings")
+                label_type = 'positive_embeddings'
         
+        assert has_label, "only support training now"
+        loss_mask = inputs['attention_mask'].detach().clone()
         
-        # HC Implementation
-        next_embs = []
-        
-        assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
-        if 'input_ids' in inputs:
-            assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
-        else:
-            assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
-        
-        # predict the first pass; also get the input embeddings from the base causal language model
+        # get the input embeddings from the base causal language model
         if 'input_ids' in inputs:
             outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
         else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0]
+            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
+        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
+        # print(inputs['attention_mask'].size()) # [1, 257]
+        # print(loss_mask.size()) # [1, 257]
+        # print(labels.size()) # [1, 257]
         
+        # assign the labels to the hidden states as input
+        inputs['inputs_embeds'] = inputs['hidden_states']
+        del inputs['hidden_states']
         
-        if use_gt_q_embed: # use the ground truth question embeddings; the first step doesn't count, generate the rest of the tokens
-            question_embeddings = self.input_projection(inputs['question_embeddings'])  
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], question_embeddings.unsqueeze(1)), dim=1)
-        else:              # do not use the ground truth question embeddings; the first step counts, generate the rest of the tokens
-            if max_new_tokens == 1:  # only predict the question embeddings
-                out_embs = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-                return self.output_projection(out_embs)
+        ## Use Generation Instead of Forward Pass
+        sampling_rate = inputs['sampling_rate']
+        output_len = labels[0].size(0)
+        for i in range(labels.size(0)):
+            assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
+        
+        start_indices = inputs['attention_mask'].sum(dim=1)
+        input_start_index = start_indices.min()
+        input_end_index = start_indices.max() + output_len   
+        # print('number of tokens to generate', input_end_index - input_start_index)    
+        num_toks_to_generate = input_end_index - input_start_index
+        
+        out_hidden_states = []
+
+        # start from the input start index and generate the output tokens         
+        current_input = inputs['inputs_embeds'][:, :input_start_index] # (batch, input_start_index, hidden_size)
+        
+        # Generate the output tokens, starting from the input start index - 1
+        all_outputs = []
+        for j in range(num_toks_to_generate):
+            next_input_index = input_start_index+j 
             
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            next_embs.append(next_emb)
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], self.input_projection(self.output_projection(next_emb))), dim=1)  
-            # new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
-            max_new_tokens = max_new_tokens - 1
+            # Generate the next token
+            outputs = self.base_causallm(inputs_embeds=current_input, output_hidden_states=True)
+            next_emb = outputs.hidden_states[-1][:, next_input_index-1, :] # (batch_size, hidden_size)
+            all_outputs.append(next_emb.unsqueeze(1))                         # (batch_size, 1, hidden_size)
+            
+            # do the sampling 
+            use_predicted = (torch.rand(current_input.size(0), 1, 1) < sampling_rate).to(current_input.device)                 # (batch_size, 1)
 
-        # generate the rest of the tokens
-        for _ in range(max_new_tokens):
-            outputs = self.base_causallm(inputs_embeds=new_inputs_embeds, output_hidden_states=True)
-            self.gen_forward_cnt += 1
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            if use_eos:
-                print("next_emb", next_emb.shape, (next_emb - 0.5).abs().mean(), next_emb)
-                if (next_emb - 0.5).abs().mean() < 1e-4:
-                    print("EOS token generated")
-                    break
-            next_embs.append(next_emb)
-            # new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
-            new_inputs_embeds = torch.cat((new_inputs_embeds, self.input_projection(self.output_projection(next_emb))), dim=1)
-        
-        out_embs = torch.cat(next_embs, dim=1)
-        
-        out_embs = self.output_projection(out_embs)
-        return out_embs
-    
+            predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)                                # (batch_size, 1, hidden_size)
+            # print('<', (start_indices <= next_input_index), (start_indices <= next_input_index).size())
+            # print('>', (start_indices > next_input_index - output_len), (start_indices > next_input_index - output_len).size())
+            # print('next_input_index', next_input_index, 'j', j, '&', (start_indices <= next_input_index) & (start_indices > next_input_index - output_len), ((start_indices <= next_input_index) & (start_indices > next_input_index - output_len)).size())
+            teacher_token_is_label = ((start_indices <= next_input_index) & (start_indices > next_input_index - output_len)).view(-1, 1, 1) # (batch_size, 1, 1)
+            # print('teacher_token_is_label', teacher_token_is_label, teacher_token_is_label.size())
+            label_idx = ((next_input_index - start_indices) % output_len).view(-1, 1, 1).expand(-1, 1, labels.size(-1))                   # (batch_size, 1, hidden_size)
+            label_token_as_input = self.input_projection(torch.gather(labels, dim=1, index=label_idx).float())                            # (batch_size, 1, hidden_size)
+            input_token_as_input = inputs['inputs_embeds'][:, next_input_index, :].unsqueeze(1)                                           # (batch_size, 1, hidden_size)
+            # print('label_token_as_input', label_token_as_input.size(), 'input_token_as_input', input_token_as_input.size(), 'predicted', predicted.size(), 'use_predicted', use_predicted.size())
+            # also select the correct teacher token
+            next_input_label = torch.where(use_predicted, predicted, label_token_as_input)       # (batch_size, 1, hidden_size)
+            # print('next_input_label', next_input_label.size())
+            next_input = torch.where(teacher_token_is_label, next_input_label, input_token_as_input)
+            # print('next_input', next_input.size())
+            current_input = torch.cat((current_input, next_input), dim=1)
 
-    
+        
+        # fill out the loss mask: ignore the first token, which is the question representation using embedding model
+        if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
+            for i in range(labels.size(0)):
+                start_idx_i = inputs['attention_mask'][i].sum() - input_start_index
+                loss_mask[i, :start_idx_i+1] = 0
+                loss_mask[i, (start_idx_i+1):(start_idx_i+output_len)] = 1
+            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+        else:
+            for i in range(labels.size(0)):
+                start_idx_i = inputs['attention_mask'][i].sum() - input_start_index
+                loss_mask[i, :start_idx_i] = 0
+                loss_mask[i, (start_idx_i):(start_idx_i+output_len)] = 1
+            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)            
+        
+        out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
+        
+
+        if has_label:
+            if self.extra_q_embed and not self.compute_loss_on_q:
+                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
+            # Get indices where loss_mask is 1
+            # mask_indices = loss_mask.nonzero().squeeze()
+            if len(loss_mask.nonzero().size()) > 2:
+                mask_indices = loss_mask.nonzero().squeeze()
+            else:
+                mask_indices = loss_mask.nonzero()
+            # print(mask_indices.size(), mask_indices)
+            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
+            # Select only the hidden states where mask is 1
+            selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
+            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
+            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
+            
+            if label_type == 'labels':
+                #########################################################
+                # MSE loss
+                #########################################################
+                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
+                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
+            elif label_type == 'positive_embeddings':
+                #########################################################
+                # Contrastive loss
+                #########################################################
+                positive_embeddings = labels
+                negative_embeddings = inputs.pop("negative_embeddings")
+                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
+                if self.use_eos:
+                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
+                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
+                    
+                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
+                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
+            else:
+                raise ValueError("No positive embeddings found")
+                
+        else:
+            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
+        
+   
+
+        
+class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
+
+    def __init__(
+        self,
+        base_causallm,
+        start_latent_id,
+        eos_token_id,
+        embedding_model_dim,
+        weight_tying=False,
+        loss_function='Hungarian_MSE',
+        temperature=0.05,
+        extra_q_embed=False,
+        compute_loss_on_q=False,
+        use_eos=False
+    ):
+        super(EmbeddingModelSSVariableLeftPad, self).__init__(
+            base_causallm=base_causallm,
+            start_latent_id=start_latent_id,
+            eos_token_id=eos_token_id,
+            embedding_model_dim=embedding_model_dim,
+            weight_tying=weight_tying,
+            loss_function=loss_function,
+            temperature=temperature,
+            extra_q_embed=extra_q_embed,
+            compute_loss_on_q=compute_loss_on_q,
+            use_eos=use_eos
+        )
+
+    def forward(self, **inputs):
+        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
+        if has_label:  # the labels could be either used for MSE loss or contrastive loss
+            if 'labels' in inputs:
+                labels = inputs.pop("labels")
+                label_type = 'labels'
+            else:
+                labels = inputs.pop("positive_embeddings")
+                label_type = 'positive_embeddings'
+        
+        assert has_label, "only support training now"
+        loss_mask = inputs['attention_mask'].detach().clone()
+        
+        # get the input embeddings from the base causal language model
+        if 'input_ids' in inputs:
+            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        else:
+            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
+        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
+        # print(inputs['attention_mask'].size()) # [1, 257]
+        # print(loss_mask.size()) # [1, 257]
+        # print(labels.size()) # [1, 257]
+        
+        # assign the labels to the hidden states as input
+        inputs['inputs_embeds'] = inputs['hidden_states']
+        del inputs['hidden_states']
+        
+        ## Use Generation Instead of Forward Pass
+        sampling_rate = inputs['sampling_rate']
+        output_len = labels[0].size(0)
+        for i in range(labels.size(0)):
+            assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
+        
+        start_indices = inputs['attention_mask'].sum(dim=1)
+        input_start_index = start_indices.min()
+        input_end_index = start_indices.max() + output_len   
+        print('number of tokens to generate', input_end_index - input_start_index)    
+        num_toks_to_generate = input_end_index - input_start_index
+        
+        out_hidden_states = []
+
+        # start from the input start index and generate the output tokens         
+        current_input = inputs['inputs_embeds'][:, :input_start_index] # (batch, input_start_index, hidden_size)
+        
+        # Generate the output tokens, starting from the input start index - 1
+        all_outputs = []
+        for j in range(num_toks_to_generate):
+            next_input_index = input_start_index+j 
+            
+            # Generate the next token
+            outputs = self.base_causallm(inputs_embeds=current_input, output_hidden_states=True)
+            next_emb = outputs.hidden_states[-1][:, next_input_index-1, :] # (batch_size, hidden_size)
+            all_outputs.append(next_emb.unsqueeze(1))                         # (batch_size, 1, hidden_size)
+            
+            # do the sampling 
+            use_predicted = (torch.rand(current_input.size(0), 1) < sampling_rate).to(current_input.device)                 # (batch_size, 1)
+
+            predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)                                # (batch_size, 1, hidden_size)
+            
+            teacher_token_is_label = (start_indices <= next_input_index) & (start_indices > next_input_index - output_len).view(-1, 1)  # (batch_size, 1)
+            label_idx = ((next_input_index - start_indices) % output_len).view(-1, 1)                                                   # (batch_size, 1)
+            label_token_as_input = self.input_projection(torch.gather(labels, dim=1, index=label_idx) .float()).unsqueeze(1)            # (batch_size, 1, hidden_size)
+            input_token_as_input = inputs['inputs_embeds'][:, next_input_index, :].unsqueeze(1)                                         # (batch_size, 1, hidden_size)
+                        
+            # also select the correct teacher token
+            next_input_label = torch.where(use_predicted, predicted, label_token_as_input)       # (batch_size, 1, hidden_size)
+            next_input = torch.where(teacher_token_is_label, next_input_label, input_token_as_input)
+
+            current_input = torch.cat((current_input, next_input), dim=1)
+
+        
+        # fill out the loss mask: ignore the first token, which is the question representation using embedding model
+        if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
+            loss_mask[:,:input_start_for_output] = 0
+            loss_mask[:,input_start_for_output:(input_start_for_output+output_len-1)] = 1
+            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+        else:
+            loss_mask[:,:input_start_for_output-1] = 0
+            loss_mask[:,(input_start_for_output-1):(input_start_for_output+output_len-1)] = 1
+            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+        
+        out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
+        
+
+        if has_label:
+            if self.extra_q_embed and not self.compute_loss_on_q:
+                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
+            # Get indices where loss_mask is 1
+            # mask_indices = loss_mask.nonzero().squeeze()
+            if len(loss_mask.nonzero().size()) > 2:
+                mask_indices = loss_mask.nonzero().squeeze()
+            else:
+                mask_indices = loss_mask.nonzero()
+            # print(mask_indices.size(), mask_indices)
+            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
+            # Select only the hidden states where mask is 1
+            selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
+            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
+            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
+            
+            if label_type == 'labels':
+                #########################################################
+                # MSE loss
+                #########################################################
+                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
+                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
+            elif label_type == 'positive_embeddings':
+                #########################################################
+                # Contrastive loss
+                #########################################################
+                positive_embeddings = labels
+                negative_embeddings = inputs.pop("negative_embeddings")
+                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
+                if self.use_eos:
+                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
+                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
+                    
+                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
+                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
+            else:
+                raise ValueError("No positive embeddings found")
+                
+        else:
+            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
+        
+      
 
 class EmbeddingModelNoLinear(nn.Module):
 
@@ -1250,6 +1500,10 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
         linear_checkpoint_path = None
     elif model_type == "EmbeddingModelDual":
         model_class = EmbeddingModelDual
+    elif model_type == "EmbeddingModelSSVariable":
+        model_class = EmbeddingModelSSVariable
+    elif model_type == "EmbeddingModelSSVariableLeftPad":
+        model_class = EmbeddingModelSSVariableLeftPad
     else:
         raise ValueError(f"Model type {model_type} not supported")
     
