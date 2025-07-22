@@ -19,13 +19,22 @@ from collections import Counter
 
 @dataclass
 class MSETrainCollator:
-    def __call__(self, features, shuffle=False, first_label_only=False):
+    def __call__(self, features, shuffle=False, first_label_only=False, left_padding=False):
         batch = {}
+        label_str = 'labels' if 'labels' in features[0] else 'positive_embeddings'
+        lens_cnt = Counter(len(f[label_str]) for f in features)
+        majority_len = max(lens_cnt, key=lens_cnt.get)
+        
+        keep_feature_indices = []
+        for i in range(len(features)):
+            if len(features[i][label_str]) == majority_len:
+                keep_feature_indices.append(i)
+        
         for k in features[0].keys():
             if shuffle:  # train data
                 if k == 'labels' or k == 'positive_embeddings':
-                    question_labels = [features[j][k][:1] for j in range(len(features))]
-                    list_of_labels = [features[j][k][1:] for j in range(len(features))]
+                    question_labels = [features[j][k][:1] for j in range(len(features)) if j in keep_feature_indices]
+                    list_of_labels = [features[j][k][1:] for j in range(len(features)) if j in keep_feature_indices]
                     # randomly shuffle the remaining labels
                     for j in range(len(list_of_labels)):
                         random.shuffle(list_of_labels[j])
@@ -38,24 +47,36 @@ class MSETrainCollator:
                         batch[k] = torch.cat((question_labels, list_of_labels), dim=1)
                     
                 else:
-                    batch[k] = torch.tensor([f[k] for f in features])
+                    batch[k] = torch.tensor([features[j][k] for j in range(len(features)) if j in keep_feature_indices])
             else:    # eval data
                 if (k == 'labels' or k == 'positive_embeddings') and first_label_only:
-                    question_labels = [features[j][k][:1] for j in range(len(features))]
+                    question_labels = [features[j][k][:1] for j in range(len(features)) if j in keep_feature_indices]
                     batch[k] = torch.tensor(question_labels)
                 else:
-                    batch[k] = torch.tensor([f[k] for f in features])
+                    batch[k] = torch.tensor([features[j][k] for j in range(len(features)) if j in keep_feature_indices])
         if 'negative_embeddings' in batch:
             del batch['negative_embeddings']
         if 'positive_embeddings' in batch:
             batch['labels'] = batch['positive_embeddings']
             del batch['positive_embeddings']
+            
+        if left_padding:
+            max_length = int(batch['attention_mask'].sum(dim=1).max().item())
+            for k in batch.keys():
+                if k in ['input_ids', 'attention_mask', 'inputs_embeds']:
+                    for i in range(len(batch[k])):
+                        current_length = int(batch['attention_mask'][i].sum().item())
+                        batch[k][i] = torch.roll(batch[k][i], shifts=(max_length-current_length), dims=0)
+                        
+            position_ids = batch['attention_mask'].cumsum(dim=1) - 1
+            position_ids = position_ids.clamp(min=0)
+            batch['position_ids'] = position_ids
         return batch
     
 
 @dataclass
 class ContrastiveTrainCollator:
-    def __call__(self, features, shuffle=False, take_first=False, use_eos=False):
+    def __call__(self, features, shuffle=False, take_first=False, use_eos=False, left_padding=False):
         """
             Data Shape:
             positive_embeddings: (batch_size, length, embedding_dim)
@@ -94,6 +115,18 @@ class ContrastiveTrainCollator:
                 # only keep the features with the majority length
                 batch_features = [f[k] for j, f in enumerate(features) if j in keep_feature_indices]
                 batch[k] = torch.tensor(batch_features)
+        
+        if left_padding:
+            max_length = int(batch['attention_mask'].sum(dim=1).max().item())
+            for k in batch.keys():
+                if k in ['input_ids', 'attention_mask', 'inputs_embeds']:
+                    for i in range(len(batch[k])):
+                        current_length = int(batch['attention_mask'][i].sum().item())
+                        batch[k][i] = torch.roll(batch[k][i], shifts=(max_length-current_length), dims=0)
+            
+            position_ids = batch['attention_mask'].cumsum(dim=1) - 1
+            position_ids = position_ids.clamp(min=0)
+            batch['position_ids'] = position_ids
         
         return batch    
     
@@ -166,6 +199,7 @@ class DataHandler:
     collator: Callable
     batch_size: int
     split: str
+    num_workers: int
     # a few scenarios 
     # 1. read the training dataset
     # 1-a. return only the train dataset
@@ -188,6 +222,7 @@ class DataHandler:
                 self.dataset = self.dataset.add_column('length', lengths)
             full_dataset = self.dataset.train_test_split(test_size=0.1, seed=42)
             self.train_dataset, self.dev_dataset = full_dataset['train'], full_dataset['test']
+            self.group_data_by_length()
             
     def get_train_dev_dataloader(self, random_train_loader=False):
         if random_train_loader:
@@ -223,7 +258,7 @@ class DataHandler:
     def get_random_train_dataloader(self):
         train_dataloader = torch.utils.data.DataLoader(
             self.train_dataset,
-            num_workers=1,
+            num_workers=self.num_workers,
             shuffle=False,
             pin_memory=True,
             batch_size=self.batch_size,
@@ -235,7 +270,7 @@ class DataHandler:
     def get_sequential_train_dataloader(self):
         train_dataloader = torch.utils.data.DataLoader(
             self.train_dataset,
-            num_workers=1,
+            num_workers=self.num_workers,
             shuffle=False,
             pin_memory=True,
             batch_size=self.batch_size,
@@ -247,7 +282,7 @@ class DataHandler:
     def get_dev_dataloader(self):
         valid_loss_dataloader = torch.utils.data.DataLoader(
             self.dev_dataset,
-            num_workers=1,
+            num_workers=self.num_workers,
             shuffle=False,
             pin_memory=True,
             batch_size=self.batch_size,

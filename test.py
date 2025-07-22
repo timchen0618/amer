@@ -150,9 +150,9 @@ def load_input_data(input_data_path, use_ground_truth_for_eval=False):
     full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
     
     if use_ground_truth_for_eval:
-        data_handler = DataHandler(full_dataset, collator, 128, 'dev')
+        data_handler = DataHandler(full_dataset, collator, 128, 'dev', 4)
     else:
-        data_handler = DataHandler(full_dataset, collator, 1, 'dev')
+        data_handler = DataHandler(full_dataset, collator, 1, 'dev', 4)
     
     dataloader = data_handler.get_full_dataloader()
     return dataloader
@@ -195,7 +195,7 @@ def evaluate_baseline_with_aggregation(baseline_name: str, predictions: np.ndarr
     print(f"\n=== Evaluating {baseline_name} ===")
     
     # Compute similarities and rankings
-    similarities, rankings = compute_similarities_and_rankings(predictions, corpus)
+    similarities, rankings = compute_similarities_and_rankings(predictions, corpus, max(k_values))
     print(similarities.shape, rankings.shape)
     max_k = max(k_values)
     if max_new_tokens > 1:

@@ -38,7 +38,7 @@ LR_MIN_RATIO=0.1
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="hungarian_contrastive"
+MODE="mse_one_label_shuffled"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -47,23 +47,13 @@ if [ "$MODE" == "hungarian_contrastive" ]; then
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_first_label" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE=""
-    TAKE_FIRST="--take_first"
-    QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE="--shuffle_sequence"
-    TAKE_FIRST="--take_first"
-    QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
-    LOSS_FUNCTION="Contrastive_wo_seq"
+elif [ "$MODE" == "mse_all_labels" ]; then
+    LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
@@ -72,13 +62,38 @@ elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "mse_all_labels_shuffled" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "hungarian_contrastive_no_shuffle" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "mse_one_label_shuffled" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY="--first_label_only"
+elif [ "$MODE" == "contrastive_first_label" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
 elif [ "$MODE" == "mse_first_label" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY="--first_label_only"
-elif [ "$MODE" == "mse_all_labels" ]; then
-    LOSS_FUNCTION="MSE"
+elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
+    LOSS_FUNCTION="Contrastive_wo_seq"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
@@ -94,18 +109,49 @@ SAVE_BEST_MODEL="--save_best_model"
 
 # Project name (will be used in wandb)
 BASE_PROJECT="diverse_retrieval"
+full_finetuning=true
+all_data=false
+MODEL_TYPE="EmbeddingModel"
+
+
+if [ "$full_finetuning" = true ]; then
+    FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
+    FINETUNING_STR="_full_finetuning"
+else
+    FINETUNING_STR=""
+    FULL_FINETUNING=""
+fi
 
 # Experiment prefix
-EXP_PREFIX="sm_full_finetuning_SSVariable_${MODE}"
-MODEL_TYPE="EmbeddingModelSSVariable"
-FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
-TRAIN_ON_ALL_DATA="--train_on_all_data" # TRAIN_ON_ALL_DATA="--train_on_all_data"
-SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING="--schedule_sampling"
+if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
+    MODEL_STR=""
+    SCHEDULE_SAMPLING=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSS" ]; then
+    MODEL_STR="_SS"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
+    MODEL_STR="_SSVariable"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
+    MODEL_STR="_SSVariableLeftPad"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+fi
+
+if [ "$all_data" = true ]; then
+    TRAIN_ON_ALL_DATA="--train_on_all_data"
+else
+    TRAIN_ON_ALL_DATA=""
+fi
+
+EXP_PREFIX="orca_gaussian${FINETUNING_STR}${MODEL_STR}_${MODE}"
+
+
+
 # Base directory for saving results
 BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 
 # Training dataset path
-BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
+BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
 
 # Model checkpoints
 # BASE_ADAPTER_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501"
@@ -121,7 +167,7 @@ BASE_LINEAR_CHECKPOINT_PATH=None
 EMBEDDING_MODEL_DIM=1024
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=200
+SAVE_EVERY_N_STEPS=500
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -143,16 +189,16 @@ MAX_GRAD_NORM=5.0
 MAX_CONCURRENT_JOBS=100
 
 # SLURM job time limit
-TIME_LIMIT="1:00:00"
+TIME_LIMIT="24:00:00"
 
 # Memory per job
-MEMORY="150GB"
+MEMORY="200GB"
 
 # Number of CPUs per task
 CPUS_PER_TASK=5
 
 # GPU configuration
-GPU_TYPE="a100"
+# GPU_TYPE="a100"
 GPUS_PER_NODE=1
 
 # Email for notifications
@@ -233,12 +279,13 @@ generate_custom_exp_name() {
     local batch=$3
     local epochs=$4
     local warmup=$5
-    local prefix=$6
+    local use_hard_negatives=$6
+    local prefix=$7
     
-    # Default naming scheme
-    echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
-    
-    # Alternative naming schemes (uncomment one if desired):
-    # echo "exp_$(date +%Y%m%d)_lr${lr}_t${temp}_b${batch}_e${epochs}_w${warmup}"
-    # echo "${loss_function}_lr${lr}_temp${temp}_${batch}batch_${epochs}ep"
+    # Default naming scheme    
+    if [ "$use_hard_negatives" = true ]; then
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
+    else
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+    fi
 } 

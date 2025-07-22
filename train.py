@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from dataclasses import dataclass
 
-from src.model import EmbeddingModel, load_model
+from src.model import EmbeddingModel, load_model, save_model_single
 from src.dataset import (
     load_embeddings_dataset,
     MSETrainCollator,
@@ -17,7 +17,6 @@ from src.dataset import (
     DataHandler
 )
 from src.utils import Config, set_seed, set_optim
-from src.model import save_model_single
 from src.option import get_training_args
 from tqdm import tqdm
 from copy import copy
@@ -62,11 +61,11 @@ def train(configs):
 
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
-        collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only)
+        collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only, left_padding=configs.left_padding)
     else:
-        collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos)
+        collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos, left_padding=configs.left_padding)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
-    data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train')
+    data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train', 4)
         
     if configs.train_on_all_data:
         train_dataloader = data_handler.get_full_dataloader()
@@ -219,8 +218,8 @@ def train(configs):
                     best_val_loss = total_loss / len(valid_loss_dataloader)
                     save_model_single(model, save_dir, total_train_steps, best_val_loss, logger, configs.save_best_model)
 
-                    gc.collect()
-                    torch.cuda.empty_cache()
+                gc.collect()
+                torch.cuda.empty_cache()
         pbar.close()
 
             

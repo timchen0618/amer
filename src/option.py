@@ -48,7 +48,7 @@ def get_training_args():
     parser.add_argument("--train_on_all_data", action="store_true", default=False, help="Train on all available data")
     parser.add_argument("--save_only_improve", action="store_true", default=False, help="Save only when validation improves")
     parser.add_argument("--take_first", action="store_true", default=False, help="Take first sequence")
-    
+    parser.add_argument("--left_padding", action="store_true", default=False, help="Left padding")
     # Model architecture
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")
     parser.add_argument("--loss_function", type=str, default="Hungarian_Contrastive", 

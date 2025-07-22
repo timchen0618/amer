@@ -102,7 +102,7 @@ def load_input_data(loss_function, first_label_only, batch_size_training, get_sp
     else:
         collator = partial(mse_eval_collator, first_label_only=first_label_only)
     full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
-    data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev')
+    data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev', 4)
     
     # load the corresponding split
     if get_split == 'train-held-out':
@@ -163,7 +163,7 @@ def generate_input_data(loss_function, first_label_only, input_data_path, tokeni
     # else:
     #     collator = partial(mse_eval_collator, first_label_only=first_label_only)
     full_dataset = tokenized_datasets['train']
-    data_handler = DataHandler(full_dataset, data_collator, 1, 'dev')
+    data_handler = DataHandler(full_dataset, data_collator, 1, 'dev', 4)
     dataloader = data_handler.get_full_dataloader()
     return dataloader
 

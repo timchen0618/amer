@@ -5,13 +5,13 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="hypersearch_config_qampari.sh"
+CONFIG_FILE="sbatch_configs/qampari_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from hypersearch_config.sh"
+    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
     exit 1
 fi
 
@@ -28,9 +28,10 @@ generate_exp_name() {
     local epochs=$4
     local warmup=$5
     local use_hard_negatives=$6
+    local prefix=$7
 
     if declare -f generate_custom_exp_name > /dev/null; then
-        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$use_hard_negatives"
+        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$use_hard_negatives" "$prefix"
     else
         echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn${use_hard_negatives}"
     fi
@@ -61,7 +62,7 @@ create_sbatch_file() {
 #SBATCH --mail-type=END
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
-#SBATCH --gres=gpu:${GPUS_PER_NODE}
+#SBATCH --gres=gpu:${GPU_STRING}
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}
@@ -83,10 +84,18 @@ ARGS="--project ${BASE_PROJECT} \\
       --scheduler ${SCHEDULER} \\
       --max_grad_norm ${MAX_GRAD_NORM} \\
       --loss_function ${LOSS_FUNCTION} \\
-      --shuffle_sequence \\
-      --save_only_improve \\
+      ${SHUFFLE_SEQUENCE} \\
+      ${SAVE_ONLY_IMPROVE} \\
+      ${TAKE_FIRST} \\
+      ${QUESTION_ONLY} \\
       --embedding_model_dim ${EMBEDDING_MODEL_DIM} \\
-      --save_every_n_steps ${SAVE_EVERY_N_STEPS}"
+      --save_every_n_steps ${SAVE_EVERY_N_STEPS} \\
+      --model_type ${MODEL_TYPE} \\
+      ${FULL_FINETUNING} \\
+      ${SAVE_BEST_MODEL} \\
+      ${SCHEDULE_SAMPLING} \\
+      ${TRAIN_ON_ALL_DATA} \\
+      ${LEFT_PADDING}"
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} accelerate launch train_distributed.py \$ARGS & wait)"
 EOF
@@ -158,7 +167,7 @@ for lr in "${LEARNING_RATES[@]}"; do
                         continue
                     fi
                     
-                    exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$USE_HARD_NEGATIVES")
+                    exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$USE_HARD_NEGATIVES" "$EXP_PREFIX")
                     
                     echo "Creating experiment: $exp_name"
                     

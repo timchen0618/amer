@@ -139,31 +139,40 @@ if __name__ == '__main__':
         max_new_tokens = 5
         TOPK = 10
         results = []
-        folder = 'sm_full_finetuning_SS_mse_all_labels_lr2e-5_temp0.05_batch16_ep100_warmup0.05/'
-        
-        ### Get results
-        model_path = Path(args.rootdir) / folder
-        _id = '_'.join(folder.split('lr')[0].split('_')[1:-1])
-        if folder == 'random_baseline/':
-            rankings = np.load(model_path / f'random_baseline_rankings.npy')
-        else:
-            rankings = np.load(model_path / f'max_new_tokens_{max_new_tokens}_rankings.npy')
-        for i in range(len(test_pairs)):
-            ranking = rankings[i, :TOPK]
-            gt = test_pairs[i]['ground_truth_indices']
-            results.append([i, ', '.join(str(x) for x in ranking), ', '.join(str(x) for x in gt)])
+        all_scores = []
+        folder_list = ['orca_gaussian_full_finetuning_SS_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep100_warmup0.05/', 
+                       'orca_gaussian_full_finetuning_SS_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch16_ep100_warmup0.05/', 
+                       'orca_gaussian_full_finetuning_SS_mse_all_labels_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_SS_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/']
+        for folder in folder_list:
+            ### Get results
+            model_path = Path(args.rootdir) / folder
+            _id = '_'.join(folder.split('lr')[0].split('_')[1:-1])
+            if folder == 'random_baseline/':
+                rankings = np.load(model_path / f'random_baseline_rankings.npy')
+            else:
+                rankings = np.load(model_path / f'max_new_tokens_{max_new_tokens}_rankings.npy')
+            for i in range(len(test_pairs)):
+                ranking = rankings[i, :TOPK]
+                gt = test_pairs[i]['ground_truth_indices']
+                results.append([i, ', '.join(str(x) for x in ranking), ', '.join(str(x) for x in gt)])
 
-        # Evaluate on all GTs
-        eval_metrics(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
-        
-        ### Evaluate on each GT
-        _, scores = eval_on_each_gt(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
+            # Evaluate on all GTs
+            results_all = eval_metrics(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
+            
+            ### Evaluate on each GT
+            _, scores = eval_on_each_gt(rankings, test_pairs, [1, 5, 10, 20, 50, 100, 500])
+            scores[0].append('MRecall')
+            for j, k in enumerate([1, 5, 10, 20, 50, 100, 500]):
+                scores[j+1].append(results_all[f'mrecall@{k}'])
+            
+            all_scores.append([folder.split('lr')[0].split('finetuning')[1].strip('_')])
+            all_scores.extend(scores)
         
         import pandas as pd
         ### Record Results     
-        score_results = pd.DataFrame(scores)
+        score_results = pd.DataFrame(all_scores)
         score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
-        
         
         results = pd.DataFrame(results, columns=['query_id', 'predictions', 'ground_truth'])
         results.to_csv('results/gaussian_synthetic_inf/predictions.csv', index=False)

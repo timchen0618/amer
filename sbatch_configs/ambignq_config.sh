@@ -8,27 +8,86 @@
 # =================================================================
 
 # Learning rates to test
-# LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
-LEARNING_RATES=(1e-4)
+# LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
+LEARNING_RATES=(5e-5)
 
 # Temperature values for contrastive loss
 # TEMPERATURES=(0.03 0.1)
 TEMPERATURES=(0.05)
 
 # Batch sizes
-# BATCH_SIZES=(16 8 32)
+# BATCH_SIZES=(8 16 32)
 BATCH_SIZES=(16)
 
 # Number of epochs
-# NUM_EPOCHS_LIST=(20 10 30 40)
+# NUM_EPOCHS_LIST=(10 20 30)
 NUM_EPOCHS_LIST=(30)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
-# Use hard negatives
-USE_HARD_NEGATIVES=true
+
+# LR min ratios
+LR_MIN_RATIO=0.1
+
+# MODES -> 
+# 1. hungarian_contrastive
+# 2. contrastive_first_label
+# 3. contrastive_one_label_shuffled
+# 4. contrastive_all_labels_ordered
+# 5. contrastive_all_labels_shuffled
+# 6. mse_first_label
+
+MODE="mse_all_labels"
+# # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
+# LOSS_FUNCTION="Hungarian_Contrastive"
+
+if [ "$MODE" == "hungarian_contrastive" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_first_label" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
+    LOSS_FUNCTION="Contrastive_wo_seq"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "mse_first_label" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY="--first_label_only"
+elif [ "$MODE" == "mse_all_labels" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+fi
+
+
+SAVE_ONLY_IMPROVE="--save_only_improve"
+SAVE_BEST_MODEL="--save_best_model"
 
 # =================================================================
 # BASE CONFIGURATION
@@ -37,32 +96,33 @@ USE_HARD_NEGATIVES=true
 # Project name (will be used in wandb)
 BASE_PROJECT="diverse_retrieval"
 
+# Experiment prefix
+EXP_PREFIX="ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_${MODE}"
+MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
+FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
+TRAIN_ON_ALL_DATA="" # TRAIN_ON_ALL_DATA="--train_on_all_data"
+SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING="--schedule_sampling"
+LEFT_PADDING="--left_padding" # LEFT_PADDING="--left_padding"
+
 # Base directory for saving results
-BASE_SAVE_PATH="results/qampari_inf"
+BASE_SAVE_PATH="results/ambiguous_qe_inf/"
 
 # Training dataset path
-if [ "$USE_HARD_NEGATIVES" = true ]; then
-    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
-else
-    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
-fi
+BASE_TRAIN_PATH="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
 
 # Model checkpoints
-BASE_ADAPTER_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
-BASE_LINEAR_CHECKPOINT_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
+BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
 
 # =================================================================
 # FIXED HYPERPARAMETERS
 # =================================================================
 
-# Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
-LOSS_FUNCTION="Hungarian_Contrastive"
-
 # Model embedding dimension
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=500
+SAVE_EVERY_N_STEPS=250
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -74,14 +134,14 @@ WEIGHT_DECAY=0.01
 SCHEDULER="linear"
 
 # Maximum gradient norm for clipping
-MAX_GRAD_NORM=1.0
+MAX_GRAD_NORM=5.0
 
 # =================================================================
 # SLURM CONFIGURATION
 # =================================================================
 
 # Maximum number of concurrent jobs
-MAX_CONCURRENT_JOBS=40
+MAX_CONCURRENT_JOBS=100
 
 # SLURM job time limit
 TIME_LIMIT="4:00:00"
@@ -90,11 +150,12 @@ TIME_LIMIT="4:00:00"
 MEMORY="300GB"
 
 # Number of CPUs per task
-CPUS_PER_TASK=20
+CPUS_PER_TASK=40
 
 # GPU configuration
 GPU_TYPE="a100"
 GPUS_PER_NODE=4
+GPU_STRING="a100:4"
 
 # Email for notifications
 EMAIL="hc3337@nyu.edu"
@@ -114,10 +175,10 @@ WORK_DIR="/scratch/hc3337/projects/autoregressive"
 # =================================================================
 
 # Directory for SBATCH files
-SBATCH_DIR="sbatch_jobs_qampari"
+SBATCH_DIR="sbatch_jobs"
 
 # Directory for job output logs
-JOB_OUTPUT_DIR="sbatch_outputs_qampari"
+JOB_OUTPUT_DIR="sbatch_outputs"
 
 # =================================================================
 # ADVANCED OPTIONS
@@ -175,15 +236,12 @@ generate_custom_exp_name() {
     local epochs=$4
     local warmup=$5
     local use_hard_negatives=$6
-
-    # Default naming scheme
-    if [ "$use_hard_negatives" = true ]; then
-        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
-    else
-        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
-    fi
+    local prefix=$7
     
-    # Alternative naming schemes (uncomment one if desired):
-    # echo "exp_$(date +%Y%m%d)_lr${lr}_t${temp}_b${batch}_e${epochs}_w${warmup}"
-    # echo "${loss_function}_lr${lr}_temp${temp}_${batch}batch_${epochs}ep"
+    # Default naming scheme    
+    if [ "$use_hard_negatives" = true ]; then
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
+    else
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+    fi
 } 
