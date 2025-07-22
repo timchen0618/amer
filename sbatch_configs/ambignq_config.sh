@@ -31,6 +31,22 @@ WARMUP_RATIOS=(0.05)
 # LR min ratios
 LR_MIN_RATIO=0.1
 
+
+# =================================================================
+# BASE CONFIGURATION
+# =================================================================
+
+# Project name (will be used in wandb)
+BASE_PROJECT="diverse_retrieval"
+full_finetuning=true            # whether to use full finetuning
+all_data=false                  # whether to train on all data
+multiple_gpus=true              # whether to use multiple GPUs
+save_only_improve=true          # whether to save only improve
+save_best_model=true            # whether to save best model
+
+MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
+MODE="mse_all_labels"
+
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -39,7 +55,6 @@ LR_MIN_RATIO=0.1
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="mse_all_labels"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -86,23 +101,62 @@ elif [ "$MODE" == "mse_all_labels" ]; then
 fi
 
 
-SAVE_ONLY_IMPROVE="--save_only_improve"
-SAVE_BEST_MODEL="--save_best_model"
+# Experiment prefix
+if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
+    MODEL_STR=""
+    SCHEDULE_SAMPLING=""
+    LEFT_PADDING=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSS" ]; then
+    MODEL_STR="_SS"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
+    MODEL_STR="_SSVariable"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
+    MODEL_STR="_SSVariableLeftPad"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING="--left_padding"
+fi
+
 
 # =================================================================
-# BASE CONFIGURATION
-# =================================================================
+if [ "$full_finetuning" = true ]; then
+    FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
+    FINETUNING_STR="_full_finetuning"
+else
+    FINETUNING_STR=""
+    FULL_FINETUNING=""
+fi
 
-# Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval"
+if [ "$all_data" = true ]; then
+    TRAIN_ON_ALL_DATA="--train_on_all_data"
+else
+    TRAIN_ON_ALL_DATA=""
+fi
+
+if [ "$multiple_gpus" = true ]; then
+    GPUS_PREFIX="_4gpu"
+else
+    GPUS_PREFIX=""
+fi
+
+if [ "$save_only_improve" = true ]; then
+    SAVE_ONLY_IMPROVE="--save_only_improve"
+else
+    SAVE_ONLY_IMPROVE=""
+fi
+
+if [ "$save_best_model" = true ]; then
+    SAVE_BEST_MODEL="--save_best_model"
+else
+    SAVE_BEST_MODEL=""
+fi
+
 
 # Experiment prefix
-EXP_PREFIX="ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_${MODE}"
-MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
-TRAIN_ON_ALL_DATA="" # TRAIN_ON_ALL_DATA="--train_on_all_data"
-SCHEDULE_SAMPLING="--schedule_sampling" # SCHEDULE_SAMPLING="--schedule_sampling"
-LEFT_PADDING="--left_padding" # LEFT_PADDING="--left_padding"
+EXP_PREFIX="ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 BASE_SAVE_PATH="results/ambiguous_qe_inf/"
@@ -143,19 +197,30 @@ MAX_GRAD_NORM=5.0
 # Maximum number of concurrent jobs
 MAX_CONCURRENT_JOBS=100
 
-# SLURM job time limit
-TIME_LIMIT="4:00:00"
 
-# Memory per job
-MEMORY="300GB"
-
-# Number of CPUs per task
-CPUS_PER_TASK=40
-
-# GPU configuration
-GPU_TYPE="a100"
-GPUS_PER_NODE=4
-GPU_STRING="a100:4"
+if [ "$multiple_gpus" = true ]; then
+    # SLURM job time limit
+    TIME_LIMIT="4:00:00"
+    # Memory per job
+    MEMORY="300GB"
+    # Number of CPUs per task
+    CPUS_PER_TASK=40
+    # GPU configuration
+    GPU_TYPE="a100"
+    GPUS_PER_NODE=4
+    GPU_STRING="a100:4"
+else
+    # SLURM job time limit
+    TIME_LIMIT="8:00:00"
+    # Memory per job
+    MEMORY="200GB"
+    # Number of CPUs per task
+    CPUS_PER_TASK=20
+    # GPU configuration
+    GPU_TYPE="a100"
+    GPUS_PER_NODE=1
+    GPU_STRING="a100:1"
+fi
 
 # Email for notifications
 EMAIL="hc3337@nyu.edu"
