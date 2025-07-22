@@ -11,7 +11,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from hypersearch_config.sh"
+    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
@@ -66,7 +66,8 @@ ARGS="--project ${BASE_PROJECT} \
       ${FULL_FINETUNING} \
       ${SAVE_BEST_MODEL} \
       ${SCHEDULE_SAMPLING} \
-      ${TRAIN_ON_ALL_DATA}"
+      ${TRAIN_ON_ALL_DATA} \
+      ${LEFT_PADDING}"
 
 echo "Training arguments:"
 echo "$ARGS"

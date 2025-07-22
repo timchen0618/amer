@@ -4,11 +4,11 @@
 #SBATCH --cpus-per-task=20
 #SBATCH --time=24:00:00
 #SBATCH --mem=200GB
-#SBATCH --job-name=run_train
+#SBATCH --job-name=run_train_gaussian
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
-#SBATCH --output=run.out
-#SBATCH --gres=gpu:a100:1
+#SBATCH --output=run_train_gaussian.out
+#SBATCH --gres=gpu:1
 
 SINGULARITY_IMAGE=/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
 OVERLAY_FILE=/scratch/hc3337/envs/div.ext3

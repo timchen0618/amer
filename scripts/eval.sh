@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari"
-training_data_name="qampari"
+data_name="ambiguous_qe"
+training_data_name="ambiguous_qe"
 # suffix_list="hypersearch_lr1e-4_temp0.05_batch16_ep20_warmup0.05 hypersearch_lr1e-4_temp0.05_batch16_ep10_warmup0.05"
 # suffix_list="toy_contrastive_from_stage1_lr2e5_ep20_temp0.05/"
-suffix_list="toy_contrastive_from_stage1_lr2e5_ep20_temp0.05 toy_contrastive_4_gpus_from_stage2_lr1e4_ep20_temp0.05_warmup0.05 toy_contrastive_lr2e5_ep30_temp0.05_warmup0.05_gradnorm1_hn"
+suffix_list="ambiguous_qe_full_finetuning_SSVariable_mse_all_labels_lr5e-5_temp0.05_batch16_ep30_warmup0.05"
 
 retriever_list="inf"
 use_gpu="--use_gpu"
@@ -25,8 +25,8 @@ compute_loss="--compute_loss"
 
 # EVALUATE ARGS
 topk_list="100 10"
-has_gold_id="--has-gold-id"
-# has_gold_id=""
+# has_gold_id="--has-gold-id"
+has_gold_id=""
 inference_modes="all first second"
 # inference_modes="all"
 
