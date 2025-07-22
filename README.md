@@ -108,8 +108,13 @@ python eval.py --data-type qampari \
 
 If you were evaluating on NQ or MSMARCO for stage 1, you could use `eval_nq_msmarco.py`.  
 
+### Evaluation for Gaussian Synthetic
+Use `test.py`. There is an example script in `scripts/test_gaussian.sh`. 
+
 
 ## How to Submit Jobs
+
+
 **Submitting Jobs to SLURM**  
 If you are using SLURM, use `hyperparameter_search.sh` to submit jobs (to HPC).  
 The configs files are in `sbatch_configs/`. (For AmbigNQ and for QAMPARI)  
@@ -128,3 +133,22 @@ Use `scripts/run_dist.SBATCH` for distributed training and `scripts/run_single.S
 
 #### Run Eval 
 Use `scripts/submit_eval_jobs.sh` to submit jobs to SLURM for eval.  
+
+
+## Scripts Available
+### Config files
+`sbatch_configs/` contains specific configuration that either SLURM or shell script could take to produce a training run. 
+
+### Scripts for Shell (Interactive)
+They are under the `scripts/` folder.
+`scripts/single_run.sh` and `scripts/single_run_distributed.sh` help runs script in an interactive environment.  
+`scripts/test_gaussian.sh` help runs eval for the Gaussian Synthetic data.  
+`scripts/eval.sh` help runs normal eval.  
+`scripts/submit_eval_jobs.sh` is for submitting jobs instead of running `scripts/eval.sh`.  
+All of the eval on AmbigQA / QAMPARI are run on the `greene` cluster. 
+
+### Scripts for SLURM
+There are some simple examples in `slurm_scripts` for your reference. However, most of them are not used.  
+In order to submit jobs to *SLURM*, use `hyperparameter_search.sh` or `hyperparameter_search_single.sh`.  
+They take the config files in `sbatch_configs/` and produce `.SBATCH` files, and also automatically `sbatch ***.SBATCH` them.  
+
