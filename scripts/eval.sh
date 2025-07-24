@@ -5,7 +5,7 @@ data_name="ambiguous_qe"
 training_data_name="ambiguous_qe"
 # suffix_list="hypersearch_lr1e-4_temp0.05_batch16_ep20_warmup0.05 hypersearch_lr1e-4_temp0.05_batch16_ep10_warmup0.05"
 # suffix_list="toy_contrastive_from_stage1_lr2e5_ep20_temp0.05/"
-suffix_list="ambiguous_qe_full_finetuning_SSVariable_mse_all_labels_lr5e-5_temp0.05_batch16_ep30_warmup0.05"
+suffix_list="ambiguous_qe_full_finetuning_SSVariable_mse_all_labels_lr5e-5_temp0.05_batch16_ep30_warmup0.05/"
 
 retriever_list="inf"
 use_gpu="--use_gpu"
@@ -31,14 +31,14 @@ inference_modes="all first second"
 # inference_modes="all"
 
 
-python gen_ret_and_eval.py --data_name $data_name \
-                            --training_data_name $training_data_name \
-                            --suffix_list $suffix_list \
-                            --retriever_list $retriever_list \
-                            $use_gpu --num_shards $num_shards \
-                            --checkpoint_num $checkpoint_num \
-                            $max_new_tokens $use_best_model $compute_loss \
-                            --inference_modes $inference_modes
+# python gen_ret_and_eval.py --data_name $data_name \
+#                             --training_data_name $training_data_name \
+#                             --suffix_list $suffix_list \
+#                             --retriever_list $retriever_list \
+#                             $use_gpu --num_shards $num_shards \
+#                             --checkpoint_num $checkpoint_num \
+#                             $max_new_tokens $use_best_model $compute_loss \
+#                             --inference_modes $inference_modes
 
 for suffix in $suffix_list
 do

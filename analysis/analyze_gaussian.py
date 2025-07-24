@@ -136,14 +136,17 @@ if __name__ == '__main__':
     
     elif args.command == 'see_predictions':
         ### Initialization
-        max_new_tokens = 5
+        max_new_tokens = 1
         TOPK = 10
         results = []
         all_scores = []
-        folder_list = ['orca_gaussian_full_finetuning_SS_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep100_warmup0.05/', 
-                       'orca_gaussian_full_finetuning_SS_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch16_ep100_warmup0.05/', 
-                       'orca_gaussian_full_finetuning_SS_mse_all_labels_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_SS_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/']
+        folder_list = ['orca_gaussian_full_finetuning_mse_one_label_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_SS_hungarian_contrastive_no_shuffle_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_hungarian_contrastive_no_shuffle_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_SS_mse_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       'orca_gaussian_full_finetuning_mse_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+                       ]
         for folder in folder_list:
             ### Get results
             model_path = Path(args.rootdir) / folder

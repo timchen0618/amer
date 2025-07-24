@@ -5,13 +5,13 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/hypersearch_config_qampari.sh"
+CONFIG_FILE="sbatch_configs/qampari_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from hypersearch_config.sh"
+    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
     exit 1
 fi
 
@@ -23,7 +23,8 @@ NUM_EPOCHS=${NUM_EPOCHS_LIST[0]}
 WARMUP_RATIO=${WARMUP_RATIOS[0]}
 
 # Generate experiment name
-EXP_NAME="single_run_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+# EXP_NAME="single_run_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+EXP_NAME="test"
 
 # Set paths
 SAVE_PATH="${BASE_SAVE_PATH}"
@@ -58,7 +59,13 @@ ARGS="--project ${BASE_PROJECT} \
       --shuffle_sequence \
       --save_only_improve \
       --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
-      --save_every_n_steps ${SAVE_EVERY_N_STEPS}"
+      --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
+      --model_type ${MODEL_TYPE} \
+      ${FULL_FINETUNING} \
+      ${SAVE_BEST_MODEL} \
+      ${SCHEDULE_SAMPLING} \
+      ${TRAIN_ON_ALL_DATA} \
+      ${LEFT_PADDING}"
 
 echo "Training arguments:"
 echo "$ARGS"
