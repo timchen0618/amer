@@ -45,7 +45,7 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="mse_all_labels"
+MODE="contrastive_all_labels_ordered"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -208,7 +208,7 @@ if [ "$multiple_gpus" = true ]; then
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=4
-    GPU_STRING="a100:4"
+    GPU_STRING="4"
 else
     # SLURM job time limit
     TIME_LIMIT="8:00:00"
@@ -219,7 +219,7 @@ else
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=1
-    GPU_STRING="a100:1"
+    GPU_STRING="1"
 fi
 
 # Email for notifications

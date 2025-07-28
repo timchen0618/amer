@@ -15,6 +15,7 @@ import os
 import argparse
 from typing import Dict, List, Tuple, Any
 from eval_utils import compute_similarities_and_rankings, compute_recall_at_k, compute_mrecall_at_k
+import prettytable
 
 def load_synthetic_data(data_dir: str) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
@@ -125,6 +126,113 @@ def compute_average_2nd_3rd_gt_baseline_predictions(queries: np.ndarray, corpus:
     print(f"  Generated {len(predictions)} average 2nd and 3rd ground truth predictions")
     return predictions
 
+def compute_average_1st_2nd_3rd_gt_baseline_predictions(queries: np.ndarray, corpus: np.ndarray, 
+                                       pairs_data: Dict[str, Any]) -> np.ndarray:
+    print("Computing average 1st, 2nd and 3rd ground truth predictions...")
+    
+    test_pairs = pairs_data['test']
+    predictions = []
+
+    for pair in test_pairs:
+        gt_indices = pair['ground_truth_indices'][0:3]
+        
+        if len(gt_indices) == 0:
+            print(f"Warning: Query {pair['query_idx']} has zero ground truth vectors!")
+            # Use query vector as fallback
+            predictions.append(queries[pair['query_idx']])
+            continue
+        
+        # Get ground truth vectors from corpus
+        gt_vectors = corpus[gt_indices]
+        
+        # Compute average
+        avg_prediction = np.mean(gt_vectors, axis=0)
+        predictions.append(avg_prediction)
+    
+    predictions = np.array(predictions)
+    print(f"  Generated {len(predictions)} average 1st, 2nd and 3rd ground truth predictions")
+    return predictions
+
+def compute_average_1st_2nd_3rd_4th_gt_baseline_predictions(queries: np.ndarray, corpus: np.ndarray, 
+                                       pairs_data: Dict[str, Any]) -> np.ndarray:
+    print("Computing average 1st, 2nd, 3rd and 4th ground truth predictions...")
+    
+    test_pairs = pairs_data['test']
+    predictions = []
+
+    for pair in test_pairs:
+        gt_indices = pair['ground_truth_indices'][0:4]
+        
+        if len(gt_indices) == 0:
+            print(f"Warning: Query {pair['query_idx']} has zero ground truth vectors!")
+            # Use query vector as fallback
+            predictions.append(queries[pair['query_idx']])
+            continue
+        
+        # Get ground truth vectors from corpus
+        gt_vectors = corpus[gt_indices]
+        
+        # Compute average
+        avg_prediction = np.mean(gt_vectors, axis=0)
+        predictions.append(avg_prediction)
+    
+    predictions = np.array(predictions)
+    print('predictions.shape', predictions.shape)
+    print(f"  Generated {len(predictions)} average 1st, 2nd, 3rd and 4th ground truth predictions")
+    return predictions
+
+def compute_any_two_or_three_gt_baseline_predictions(queries: np.ndarray, corpus: np.ndarray, 
+                                       pairs_data: Dict[str, Any], k_values: List[int]) -> np.ndarray:
+    # select 3 random ground truth indices
+    # iterate over all combinations of 3 indices
+    # compute the average of the vectors at the indices
+    # append the average to the predictions
+    import itertools
+    # Define the set of 5 elements
+    elements = [0, 1, 2, 3, 4]
+    for combs in [2, 3, 4]:
+        print('0'*100)
+        # Generate combinations of 3 elements from the set
+        combinations = list(itertools.combinations(elements, combs))
+        
+        all_results = []
+        for combination in combinations:
+            test_pairs = pairs_data['test']
+            predictions = []
+
+            for pair in test_pairs:
+                gt_indices = [pair['ground_truth_indices'][c] for c in combination]
+                if len(gt_indices) == 0:
+                    print(f"Warning: Query {pair['query_idx']} has zero ground truth vectors!")
+                    # Use query vector as fallback
+                    predictions.append(queries[pair['query_idx']])
+                    continue
+                
+                # Get ground truth vectors from corpus
+                gt_vectors = corpus[gt_indices]
+                
+                # Compute average
+                avg_prediction = np.mean(gt_vectors, axis=0)
+                predictions.append(avg_prediction)
+            
+            predictions = np.array(predictions)
+            print('predictions.shape', predictions.shape)
+            results = evaluate_baseline(f"Average  Ground Truth Baseline", predictions, corpus, pairs_data['test'], k_values)
+            all_results.append((combination, results))
+            
+        # Create a table to display the results
+        table = prettytable.PrettyTable()
+        table.field_names = ["Combination", "Recall@5", "Recall@10", "Recall@20", "MRecall@5", "MRecall@10", "MRecall@20"]
+        
+        # Add rows to the table 
+        for combination, results in all_results:
+            table.add_row([combination, '%2.2f' % results['recall@5'], '%2.2f' % results['recall@10'], '%2.2f' % results['recall@20'], '%2.2f' % results['mrecall@5'], '%2.2f' % results['mrecall@10'], '%2.2f' % results['mrecall@20']])
+        
+        print(table)
+    
+    
+
+    
 
 def compute_query_baseline_predictions(queries: np.ndarray, 
                                      pairs_data: Dict[str, Any]) -> np.ndarray:
@@ -174,7 +282,7 @@ def evaluate_baseline(baseline_name: str, predictions: np.ndarray, corpus: np.nd
     print(f"\n=== Evaluating {baseline_name} ===")
     
     # Compute similarities and rankings
-    similarities, rankings = compute_similarities_and_rankings(predictions, corpus)
+    similarities, rankings = compute_similarities_and_rankings(predictions, corpus, max_k=max(k_values), _print=False)
     
     results = {}
     
@@ -231,22 +339,26 @@ def main():
     query_predictions = compute_query_baseline_predictions(queries, pairs_data)
     second_gt_predictions = compute_second_gt_predictions(queries, corpus, pairs_data)
     avg_2nd_3rd_gt_predictions = compute_average_2nd_3rd_gt_baseline_predictions(queries, corpus, pairs_data)
+    avg_1st_2nd_3rd_gt_predictions = compute_average_1st_2nd_3rd_gt_baseline_predictions(queries, corpus, pairs_data)
+    avg_1st_2nd_3rd_4th_gt_predictions = compute_average_1st_2nd_3rd_4th_gt_baseline_predictions(queries, corpus, pairs_data)
     print('avg_predictions.shape', avg_predictions.shape)
     print('query_predictions.shape', query_predictions.shape)
     print('second_gt_predictions.shape', second_gt_predictions.shape)
     print('avg_2nd_3rd_gt_predictions.shape', avg_2nd_3rd_gt_predictions.shape)
-    
+    print('avg_1st_2nd_3rd_gt_predictions.shape', avg_1st_2nd_3rd_gt_predictions.shape)
+    print('avg_1st_2nd_3rd_4th_gt_predictions.shape', avg_1st_2nd_3rd_4th_gt_predictions.shape) 
     # Evaluate both baselines
     avg_results = evaluate_baseline("Average Baseline", avg_predictions, corpus, pairs_data['test'], args.k_values)
     query_results = evaluate_baseline("Query Baseline", query_predictions, corpus, pairs_data['test'], args.k_values)
     second_gt_results = evaluate_baseline("Second Ground Truth Baseline", second_gt_predictions, corpus, pairs_data['test'], args.k_values)
     avg_2nd_3rd_gt_results = evaluate_baseline("Average 2nd and 3rd Ground Truth Baseline", avg_2nd_3rd_gt_predictions, corpus, pairs_data['test'], args.k_values)
-    
+    avg_1st_2nd_3rd_gt_results = evaluate_baseline("Average 1st, 2nd and 3rd Ground Truth Baseline", avg_1st_2nd_3rd_gt_predictions, corpus, pairs_data['test'], args.k_values)
+    avg_1st_2nd_3rd_4th_gt_results = evaluate_baseline("Average 1st, 2nd, 3rd and 4th Ground Truth Baseline", avg_1st_2nd_3rd_4th_gt_predictions, corpus, pairs_data['test'], args.k_values)
     # Print comparison table
     print("\n" + "="*60)
     print("BASELINE COMPARISON")
     print("="*60)
-    print(f"{'Metric':<15} {'Average':<12} {'Query':<12} {'Difference':<12}")
+    print(f"{'Metric':<15} {'Average':<12} {'Query':<12} {'Second GT':<12} {'Avg 2 and 3 GT':<12} {'Avg 1, 2 and 3 GT':<12} {'Avg 1, 2, 3 and 4 GT':<12}")
     print("-" * 60)
     
     for k in args.k_values:
@@ -255,21 +367,29 @@ def main():
         
         avg_recall = avg_results[recall_key]
         query_recall = query_results[recall_key]
+        second_gt_recall = second_gt_results[recall_key]
+        avg_2nd_3rd_gt_recall = avg_2nd_3rd_gt_results[recall_key]
+        avg_1st_2nd_3rd_gt_recall = avg_1st_2nd_3rd_gt_results[recall_key]
+        avg_1st_2nd_3rd_4th_gt_recall = avg_1st_2nd_3rd_4th_gt_results[recall_key]
         recall_diff = avg_recall - query_recall
         
         avg_mrecall = avg_results[mrecall_key]
         query_mrecall = query_results[mrecall_key]
+        second_gt_mrecall = second_gt_results[mrecall_key]
+        avg_2nd_3rd_gt_mrecall = avg_2nd_3rd_gt_results[mrecall_key]
+        avg_1st_2nd_3rd_gt_mrecall = avg_1st_2nd_3rd_gt_results[mrecall_key]
+        avg_1st_2nd_3rd_4th_gt_mrecall = avg_1st_2nd_3rd_4th_gt_results[mrecall_key]
         mrecall_diff = avg_mrecall - query_mrecall
         
-        print(f"{recall_key:<15} {avg_recall:<12.4f} {query_recall:<12.4f} {recall_diff:+.4f}")
-        print(f"{mrecall_key:<15} {avg_mrecall:<12.4f} {query_mrecall:<12.4f} {mrecall_diff:+.4f}")
+        print(f"{recall_key:<15} {avg_recall:<12.4f} {query_recall:<12.4f} {second_gt_recall:<12.4f} {avg_2nd_3rd_gt_recall:<12.4f} {avg_1st_2nd_3rd_gt_recall:<12.4f} {avg_1st_2nd_3rd_4th_gt_recall:<12.4f}")
+        print(f"{mrecall_key:<15} {avg_mrecall:<12.4f} {query_mrecall:<12.4f} {second_gt_mrecall:<12.4f} {avg_2nd_3rd_gt_mrecall:<12.4f} {avg_1st_2nd_3rd_gt_mrecall:<12.4f} {avg_1st_2nd_3rd_4th_gt_mrecall:<12.4f}")
     
     print("-" * 60)
     
     # Determine which baseline performs better
     avg_score = np.mean([avg_results[f'recall@{k}'] for k in args.k_values])
     query_score = np.mean([query_results[f'recall@{k}'] for k in args.k_values])
-    
+
     print(f"\nOverall Performance:")
     print(f"  Average Baseline: {avg_score:.4f}")
     print(f"  Query Baseline: {query_score:.4f}")
@@ -281,6 +401,10 @@ def main():
     else:
         print(f"  ✅ Good: Both baselines have reasonable difficulty.")
 
+    print('-'*100)
+    print('Computing any three ground truth predictions...')
+    print('-'*100)
+    compute_any_two_or_three_gt_baseline_predictions(queries, corpus, pairs_data, args.k_values)
 
 if __name__ == '__main__':
     main() 

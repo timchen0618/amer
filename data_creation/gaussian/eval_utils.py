@@ -71,7 +71,7 @@ def compute_mrecall_at_k(rankings: np.ndarray, test_pairs: List[Dict[str, Any]],
     return 100*mrecall
 
 
-def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarray, max_k: int) -> Tuple[np.ndarray, np.ndarray]:
+def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarray, max_k: int, _print: bool = True) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute cosine similarities between predictions and corpus, then rank by similarity.
     
@@ -82,19 +82,22 @@ def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarra
     Returns:
         Tuple of (similarities, rankings) where rankings[i] gives corpus indices sorted by similarity to prediction i
     """
-    print("Computing similarities and rankings...")
+    if _print:
+        print("Computing similarities and rankings...")
     batch_size = 100000
     if corpus.shape[0] <= batch_size:
         # Compute cosine similarities between all predictions and all corpus vectors
         similarities = cosine_similarity(predictions, corpus)
-        print(np.sort(similarities, axis=1)[:, ::-1][:, :10])
+        if _print:
+            print(np.sort(similarities, axis=1)[:, ::-1][:, :10])
         
         # For each prediction, get corpus indices ranked by similarity (descending)
         rankings = np.argsort(-similarities, axis=1)  # Negative for descending order
         
-        print(f"  Computed similarities: {similarities.shape}")
-        # print(similarities[:, :10])
-        print(rankings[:, :10])
+        if _print:
+            print(f"  Computed similarities: {similarities.shape}")
+            # print(similarities[:, :10])
+            print(rankings[:, :10])
         return similarities, rankings
     else:
         top_k_similarities_batch = []
@@ -114,8 +117,8 @@ def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarra
         sorted_rankings = rankings[np.arange(rankings.shape[0])[:, None], sorted_indices]
         sorted_similarities = similarities[np.arange(similarities.shape[0])[:, None], sorted_indices]
         # print('sorted_indices', sorted_indices.shape, 'sorted_rankings', sorted_rankings.shape, 'sorted_similarities', sorted_similarities.shape)
-        print(sorted_similarities[:, :10])
-        print(sorted_rankings[:, :10])
-    
-        print(f"  Computed similarities: {sorted_similarities.shape}")
+        if _print:
+            print(sorted_similarities[:, :10])
+            print(sorted_rankings[:, :10])
+            print(f"  Computed similarities: {sorted_similarities.shape}")
         return sorted_similarities, sorted_rankings

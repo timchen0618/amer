@@ -9,7 +9,7 @@
 
 # Learning rates to test
 # LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
-LEARNING_RATES=(1e-4)
+LEARNING_RATES=(2e-5)
 
 # Temperature values for contrastive loss
 # TEMPERATURES=(0.03 0.1)
@@ -28,7 +28,7 @@ NUM_EPOCHS_LIST=(30)
 WARMUP_RATIOS=(0.05)
 
 # Use hard negatives
-USE_HARD_NEGATIVES=true
+USE_HARD_NEGATIVES=false
 
 
 # LR min ratios
@@ -47,7 +47,7 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="hungarian_contrastive"
+MODE="contrastive_all_labels_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -60,7 +60,7 @@ MODE="hungarian_contrastive"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
-if [ "$MODE" == "hungarian_contrastive" ]; then
+if [ "$MODE" == "mse_all_labels" ]; then
     LOSS_FUNCTION="Hungarian_Contrastive"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
@@ -194,7 +194,7 @@ WEIGHT_DECAY=0.01
 SCHEDULER="linear"
 
 # Maximum gradient norm for clipping
-MAX_GRAD_NORM=5.0
+MAX_GRAD_NORM=1.0
 
 # =================================================================
 # SLURM CONFIGURATION

@@ -32,7 +32,10 @@ def load_synthetic_data(data_dir: str) -> Dict:
         # Load data files
         corpus = np.load(os.path.join(data_dir, 'corpus.npy'))
         queries = np.load(os.path.join(data_dir, 'queries.npy'))
-        transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))
+        if 'transformation_type' in config and config['transformation_type'] == 'diverse_mlps':
+            transformation_matrices = None
+        else:
+            transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))
         # ground_truth_indices = np.load(os.path.join(data_dir, 'ground_truth_indices.npy'))
         
         # Load query-ground truth pairs
@@ -57,7 +60,7 @@ def load_synthetic_data(data_dir: str) -> Dict:
         raise
 
 
-def validate_data_integrity(data: Dict) -> bool:
+def validate_data_integrity(data: Dict, use_mlp_transformations: bool = False) -> bool:
     """
     Validate the integrity and consistency of the loaded data.
     
@@ -72,7 +75,10 @@ def validate_data_integrity(data: Dict) -> bool:
     config = data['config']
     corpus = data['corpus']
     queries = data['queries']
-    transformation_matrices = data['transformation_matrices']
+    if use_mlp_transformations:
+        pass
+    else:        
+        transformation_matrices = data['transformation_matrices']
     # ground_truth_indices = data['ground_truth_indices']
     pairs_data = data['pairs_data']
     
@@ -95,11 +101,14 @@ def validate_data_integrity(data: Dict) -> bool:
     else:
         print(f"✓ Queries shape: {queries.shape}")
     
-    if transformation_matrices.shape != expected_rotations_shape:
-        print(f"❌ Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {transformation_matrices.shape}")
-        validation_passed = False
+    if use_mlp_transformations:
+        pass
     else:
-        print(f"✓ Rotation matrices shape: {transformation_matrices.shape}")
+        if transformation_matrices.shape != expected_rotations_shape:
+            print(f"❌ Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {transformation_matrices.shape}")
+            validation_passed = False
+        else:
+            print(f"✓ Rotation matrices shape: {transformation_matrices.shape}")
     
     # # Check ground truth indices
     # if len(ground_truth_indices) != config['corpus_size']:
@@ -145,23 +154,26 @@ def validate_data_integrity(data: Dict) -> bool:
     else:
         print(f"✓ Each query has {expected_gt_per_query} ground truth vectors")
     
-    # Verify rotation matrices are orthogonal
-    for i, rot_matrix in enumerate(transformation_matrices):
-        # Check if matrix is orthogonal: R @ R^T = I
-        identity_check = rot_matrix @ rot_matrix.T
-        if not np.allclose(identity_check, np.eye(config['dimensions']), atol=1e-10):
-            print(f"❌ Rotation matrix {i} is not orthogonal")
-            validation_passed = False
-            break
-        
-        # Check determinant is 1 (proper rotation, not reflection)
-        det = np.linalg.det(rot_matrix)
-        if not np.isclose(det, 1.0, atol=1e-10):
-            print(f"❌ Rotation matrix {i} determinant is {det}, expected 1.0")
-            validation_passed = False
-            break
+    if use_mlp_transformations:
+        pass
     else:
-        print(f"✓ All rotation matrices are proper orthogonal matrices")
+        # Verify rotation matrices are orthogonal
+        for i, rot_matrix in enumerate(transformation_matrices):
+            # Check if matrix is orthogonal: R @ R^T = I
+            identity_check = rot_matrix @ rot_matrix.T
+            if not np.allclose(identity_check, np.eye(config['dimensions']), atol=1e-10):
+                print(f"❌ Rotation matrix {i} is not orthogonal")
+                validation_passed = False
+                break
+            
+            # Check determinant is 1 (proper rotation, not reflection)
+            det = np.linalg.det(rot_matrix)
+            if not np.isclose(det, 1.0, atol=1e-10):
+                print(f"❌ Rotation matrix {i} determinant is {det}, expected 1.0")
+                validation_passed = False
+                break
+        else:
+            print(f"✓ All rotation matrices are proper orthogonal matrices")
     
     if validation_passed:
         print("\n✅ All data integrity checks passed!")
@@ -367,7 +379,8 @@ def main():
                        help='Number of samples for distance statistics (default: 1000)')
     parser.add_argument('--skip-integrity', action='store_true',
                        help='Skip data integrity validation')
-    
+    parser.add_argument('--use-mlp-transformations', action='store_true',
+                       help='Use MLP transformations')
     args = parser.parse_args()
     
     # Check if data directory exists
@@ -382,7 +395,7 @@ def main():
         
         # Validate data integrity
         if not args.skip_integrity:
-            integrity_passed = validate_data_integrity(data)
+            integrity_passed = validate_data_integrity(data, use_mlp_transformations=args.use_mlp_transformations)
             if not integrity_passed:
                 print("❌ Data integrity validation failed. Please check the data generation.")
                 return

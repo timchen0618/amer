@@ -345,6 +345,14 @@ def main(args):
                         dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/opposing_pairs_data_2048/' or args.data_dir == 'data_creation/gaussian/data/opposing_pairs_data_2048/':
                         dataloader = load_input_data(f'training_datasets/gaussian_synthetic/inf/gaussian_synthetic_{args.split}_dataset_1b_contrastive_sm_2048/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     else:
                         raise ValueError(f'Invalid data directory: {args.data_dir}')
 

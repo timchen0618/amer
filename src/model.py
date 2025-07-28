@@ -80,9 +80,12 @@ class ContrastiveLoss(nn.Module):
         negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
         
+        
         # handle distributed training
-        labels = labels + dist_utils.get_rank() * len(all_embeddings)
-        gather_fn = dist_utils.gather
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+        labels = labels + start_idx
+        gather_fn = dist_utils.varsize_gather
         gather_kemb = gather_fn(all_embeddings)
         
         similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
@@ -1534,13 +1537,13 @@ def save_model_distributed(model, save_dir, step, eval_loss, accelerator, logger
         linear_layers = None
     
     if save_best_model:
-        save_dir = os.path.join(save_dir, f"best_model")
+        base_save_dir = os.path.join(save_dir, f"best_model")
     else:
-        save_dir = os.path.join(save_dir, f"checkpoint_{step}")
+        base_save_dir = os.path.join(save_dir, f"checkpoint_{step}")
     
     unwrapped_model = accelerator.unwrap_model(model)
     unwrapped_model.base_causallm.save_pretrained(
-        save_dir, 
+        base_save_dir, 
         safe_serialization=True,
         is_main_process=accelerator.is_main_process,
         save_function=accelerator.save,

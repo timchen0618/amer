@@ -602,7 +602,7 @@ if __name__ == '__main__':
             else:
                 corpus = np.load(os.path.join(data_dir, 'corpus.npy'))              # Shape: (corpus_size, dimensions)
                 queries = np.load(os.path.join(data_dir, 'queries.npy'))            # Shape: (total_queries, dimensions)
-            transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))  # Shape: (n_rotations, dimensions, dimensions)
+            # transformation_matrices = np.load(os.path.join(data_dir, 'transformation_matrices.npy'))  # Shape: (n_rotations, dimensions, dimensions)
             
             # 3. Load query-ground truth mappings
             with open(os.path.join(data_dir, 'query_ground_truth_pairs.json'), 'r') as f:
@@ -612,7 +612,7 @@ if __name__ == '__main__':
                 'config': config,
                 'corpus': corpus,
                 'queries': queries,
-                'transformation_matrices': transformation_matrices,
+                # # 'transformation_matrices': transformation_matrices,
                 'pairs_data': pairs_data
             }
             
@@ -705,12 +705,12 @@ if __name__ == '__main__':
         # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
         
-        data = load_synthetic_dataset(data_dir='./gaussian/data/opposing_pairs_data_2048/', normalize=normalize)
+        data = load_synthetic_dataset(data_dir='./gaussian/data/diverse_mlps_sample_transformation_large/', normalize=normalize)
         pairs = data['pairs_data'][split]
         
         normalized_str = '_normalized' if normalize else ''
         hard_negatives_str = '' if hard_negatives is None else '_hn'
-        out_data_path = f'gaussian_synthetic_{split}_dataset_1b_contrastive_sm_2048{normalized_str}{hard_negatives_str}' 
+        out_data_path = f'gaussian_diverse_mlps_sample_transformation_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}' 
         
         
         create_synthetic_dataset(out_dataset_path=out_data_path, 

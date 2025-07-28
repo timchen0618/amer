@@ -17,18 +17,32 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(16)
+BATCH_SIZES=(128)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(100)
+NUM_EPOCHS_LIST=(8000)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
 # LR min ratios
-LR_MIN_RATIO=0.1
+LR_MIN_RATIO=0.0
+
+
+# Project name (will be used in wandb)
+BASE_PROJECT="diverse_retrieval"
+full_finetuning=true
+all_data=true
+dataset_name="diverse_mlps_multi_query_sm"
+multiple_gpus=false              # whether to use multiple GPUs
+save_only_improve=true          # whether to save only improve
+save_best_model=true            # whether to save best model
+
+MODEL_TYPE="EmbeddingModelSS"
+
+MODE="hungarian_contrastive"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -38,7 +52,6 @@ LR_MIN_RATIO=0.1
 # 5. contrastive_all_labels_shuffled
 # 6. mse_first_label
 
-MODE="mse_one_label_shuffled"
 # # Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
 # LOSS_FUNCTION="Hungarian_Contrastive"
 
@@ -51,6 +64,11 @@ elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_first_label" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST="--take_first"
     QUESTION_ONLY=""
 elif [ "$MODE" == "mse_all_labels" ]; then
     LOSS_FUNCTION="MSE"
@@ -82,11 +100,6 @@ elif [ "$MODE" == "mse_one_label_shuffled" ]; then
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY="--first_label_only"
-elif [ "$MODE" == "contrastive_first_label" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE=""
-    TAKE_FIRST="--take_first"
-    QUESTION_ONLY=""
 elif [ "$MODE" == "mse_first_label" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
@@ -100,27 +113,6 @@ elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
 fi
 
 
-SAVE_ONLY_IMPROVE="--save_only_improve"
-SAVE_BEST_MODEL="--save_best_model"
-
-# =================================================================
-# BASE CONFIGURATION
-# =================================================================
-
-# Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval"
-full_finetuning=true
-all_data=false
-MODEL_TYPE="EmbeddingModel"
-
-
-if [ "$full_finetuning" = true ]; then
-    FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
-    FINETUNING_STR="_full_finetuning"
-else
-    FINETUNING_STR=""
-    FULL_FINETUNING=""
-fi
 
 # Experiment prefix
 if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
@@ -137,21 +129,89 @@ elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
     SCHEDULE_SAMPLING="--schedule_sampling"
 fi
 
+# =================================================================
+# BASE CONFIGURATION
+# =================================================================
+
+
+if [ "$full_finetuning" = true ]; then
+    FULL_FINETUNING="--full_finetuning" # FULL_FINETUNING=""
+    FINETUNING_STR="_full_finetuning"
+else
+    FINETUNING_STR=""
+    FULL_FINETUNING=""
+fi
+
 if [ "$all_data" = true ]; then
     TRAIN_ON_ALL_DATA="--train_on_all_data"
 else
     TRAIN_ON_ALL_DATA=""
 fi
 
-EXP_PREFIX="orca_gaussian${FINETUNING_STR}${MODEL_STR}_${MODE}"
+if [ "$multiple_gpus" = true ]; then
+    GPUS_PREFIX="_4gpu"
+else
+    GPUS_PREFIX=""
+fi
+
+if [ "$save_only_improve" = true ]; then
+    SAVE_ONLY_IMPROVE="--save_only_improve"
+else
+    SAVE_ONLY_IMPROVE=""
+fi
+
+if [ "$save_best_model" = true ]; then
+    SAVE_BEST_MODEL="--save_best_model"
+else
+    SAVE_BEST_MODEL=""
+fi
 
 
+# Base directory for saving results & training datasets
+if [ "$dataset_name" == "linear_sm" ]; then
+    BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
+    DATA_PREFIX="gaussian"
+elif [ "$dataset_name" == "linear" ]; then
+    BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
+    DATA_PREFIX="gaussian"
+elif [ "$dataset_name" == "diverse_mlps_sm" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_train_dataset_1b_contrastive_sm"
+    DATA_PREFIX="mlps_gaussian"
+elif [ "$dataset_name" == "diverse_mlps" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_train_dataset_1b_contrastive"
+    DATA_PREFIX="large_mlps_gaussian"
+elif [ "$dataset_name" == "diverse_mlps_multi_query_sm" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_multi_query_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_train_dataset_1b_contrastive_sm"
+    DATA_PREFIX="mlps_gaussian_multi_query"
+elif [ "$dataset_name" == "diverse_mlps_multi_query" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_multi_query_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_train_dataset_1b_contrastive"
+    DATA_PREFIX="large_mlps_gaussian_multi_query"
+elif [ "$dataset_name" == "diverse_mlps_ood_sm" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_ood_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_train_dataset_1b_contrastive_sm"
+    DATA_PREFIX="mlps_gaussian_ood"
+elif [ "$dataset_name" == "diverse_mlps_ood" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_ood_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_train_dataset_1b_contrastive"
+    DATA_PREFIX="large_mlps_gaussian_ood"
+elif [ "$dataset_name" == "diverse_mlps_sample_transformation_sm" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_sample_transformation_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_train_dataset_1b_contrastive_sm"
+    DATA_PREFIX="mlps_gaussian_sample_transformation"
+elif [ "$dataset_name" == "diverse_mlps_sample_transformation" ]; then
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps_sample_transformation_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_train_dataset_1b_contrastive"
+    DATA_PREFIX="large_mlps_gaussian_sample_transformation"
+fi
 
-# Base directory for saving results
-BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
-
-# Training dataset path
-BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
+# Experiment prefix
+EXP_PREFIX="${DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Model checkpoints
 # BASE_ADAPTER_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501"
@@ -167,7 +227,7 @@ BASE_LINEAR_CHECKPOINT_PATH=None
 EMBEDDING_MODEL_DIM=1024
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=500
+SAVE_EVERY_N_STEPS=250
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -188,18 +248,30 @@ MAX_GRAD_NORM=5.0
 # Maximum number of concurrent jobs
 MAX_CONCURRENT_JOBS=100
 
-# SLURM job time limit
-TIME_LIMIT="24:00:00"
 
-# Memory per job
-MEMORY="200GB"
-
-# Number of CPUs per task
-CPUS_PER_TASK=5
-
-# GPU configuration
-# GPU_TYPE="a100"
-GPUS_PER_NODE=1
+if [ "$multiple_gpus" = true ]; then
+    # SLURM job time limit
+    TIME_LIMIT="6:00:00"
+    # Memory per job
+    MEMORY="300GB"
+    # Number of CPUs per task
+    CPUS_PER_TASK=40
+    # GPU configuration
+    GPU_TYPE="a100"
+    GPUS_PER_NODE=4
+    GPU_STRING="4"
+else
+    # SLURM job time limit
+    TIME_LIMIT="48:00:00"
+    # Memory per job
+    MEMORY="200GB"
+    # Number of CPUs per task
+    CPUS_PER_TASK=20
+    # GPU configuration
+    GPU_TYPE="a100"
+    GPUS_PER_NODE=1
+    GPU_STRING="1"
+fi
 
 # Email for notifications
 EMAIL="hc3337@nyu.edu"

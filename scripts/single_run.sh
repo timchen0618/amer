@@ -5,13 +5,13 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/qampari_config.sh"
+CONFIG_FILE="sbatch_configs/gaussian_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
+    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
