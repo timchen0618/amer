@@ -380,14 +380,14 @@ class OpposingPairsMlpSyntheticDataGenerator:
             with torch.no_grad():
                 for param in mlp_.parameters():
                     if len(param.shape) > 1:
-                            nn.init.normal_(param, 0, 0.01)
+                            nn.init.normal_(param, 0, 0.2)
                     else:
                         nn.init.zeros_(param)
             transformation_mlps.append(mlp_)
             print(f"  ✓ Added Large MLP (F) - more parameters")
             print(f"    Architecture: {self.d} → {new_hidden_dim} → {self.d}")
             print(f"    Hidden dim ratio: {new_hidden_dim/self.d:.3f}")
-            print(f"    Initialization: Normal(0, 0.01) for weights, zeros for biases")
+            print(f"    Initialization: Normal(0, 0.2) for weights, zeros for biases")
             new_hidden_dim = new_hidden_dim // 2
         
         

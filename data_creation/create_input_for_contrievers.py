@@ -698,19 +698,19 @@ if __name__ == '__main__':
 
             print('actual data size: ', len(dataset_dicts))
         
-        split='train'  # ['train', 'test']
+        split='test'  # ['train', 'test']
         LENGTH = 8
         normalize = False
         
         # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
         
-        data = load_synthetic_dataset(data_dir='./gaussian/data/diverse_mlps_sample_transformation_large/', normalize=normalize)
+        data = load_synthetic_dataset(data_dir='./gaussian/data/diverse_mlps_sample_transformation/', normalize=normalize)
         pairs = data['pairs_data'][split]
         
         normalized_str = '_normalized' if normalize else ''
         hard_negatives_str = '' if hard_negatives is None else '_hn'
-        out_data_path = f'gaussian_diverse_mlps_sample_transformation_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}' 
+        out_data_path = f'gaussian_diverse_mlps_sample_transformation_{split}_dataset_1b_contrastive_sm{normalized_str}{hard_negatives_str}' 
         
         
         create_synthetic_dataset(out_dataset_path=out_data_path, 
