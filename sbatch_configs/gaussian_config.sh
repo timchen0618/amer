@@ -34,16 +34,24 @@ LR_MIN_RATIO=0.0
 # Project name (will be used in wandb)
 BASE_PROJECT="diverse_retrieval"
 full_finetuning=true
-all_data=true
-dataset_name="diverse_mlps_multi_query_sm"
+
+# dataset configurations
+transformation_type="linear" # linear, mlps
+small=true
+hard_strategy="sample_transformation" #  "", multi_query, ood, sample_transformation
+
+
+# dataset_name="diverse_mlps_multi_query_sm"
 multiple_gpus=false              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
+all_data=$small
+
 
 MODEL_TYPE="EmbeddingModelSS"
 
-MODE="hungarian_contrastive"
 
+MODE="hungarian_contrastive"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -167,47 +175,49 @@ else
 fi
 
 
-# Base directory for saving results & training datasets
-if [ "$dataset_name" == "linear_sm" ]; then
-    BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
-    DATA_PREFIX="gaussian"
-elif [ "$dataset_name" == "linear" ]; then
-    BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
-    DATA_PREFIX="gaussian"
-elif [ "$dataset_name" == "diverse_mlps_sm" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_train_dataset_1b_contrastive_sm"
-    DATA_PREFIX="mlps_gaussian"
-elif [ "$dataset_name" == "diverse_mlps" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_train_dataset_1b_contrastive"
-    DATA_PREFIX="large_mlps_gaussian"
-elif [ "$dataset_name" == "diverse_mlps_multi_query_sm" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_multi_query_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_train_dataset_1b_contrastive_sm"
-    DATA_PREFIX="mlps_gaussian_multi_query"
-elif [ "$dataset_name" == "diverse_mlps_multi_query" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_multi_query_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_train_dataset_1b_contrastive"
-    DATA_PREFIX="large_mlps_gaussian_multi_query"
-elif [ "$dataset_name" == "diverse_mlps_ood_sm" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_ood_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_train_dataset_1b_contrastive_sm"
-    DATA_PREFIX="mlps_gaussian_ood"
-elif [ "$dataset_name" == "diverse_mlps_ood" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_ood_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_train_dataset_1b_contrastive"
-    DATA_PREFIX="large_mlps_gaussian_ood"
-elif [ "$dataset_name" == "diverse_mlps_sample_transformation_sm" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_sample_transformation_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_train_dataset_1b_contrastive_sm"
-    DATA_PREFIX="mlps_gaussian_sample_transformation"
-elif [ "$dataset_name" == "diverse_mlps_sample_transformation" ]; then
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps_sample_transformation_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_train_dataset_1b_contrastive"
-    DATA_PREFIX="large_mlps_gaussian_sample_transformation"
+
+if [ "$transformation_type" = "mlps" ]; then
+    dataset_name="diverse_mlps"
+    if [ "$small" = true ]; then
+        train_small_suffix="_sm"
+        data_large_prefix=""
+    else
+        train_small_suffix=""
+        data_large_prefix="large_"
+    fi
+    
+    if [ "$hard_strategy" = "" ]; then
+        hard_strategy_suffix=""
+    elif [ "$hard_strategy" = "multi_query" ]; then
+        hard_strategy_suffix="_multi_query"
+    elif [ "$hard_strategy" = "ood" ]; then
+        hard_strategy_suffix="_ood"
+    elif [ "$hard_strategy" = "sample_transformation" ]; then
+        hard_strategy_suffix="_sample_transformation"
+    else
+        echo "Invalid hard strategy"
+        exit 1
+    fi
+
+    dataset_name="diverse_mlps${hard_strategy_suffix}${train_small_suffix}"
+    BASE_SAVE_PATH="results/gaussian_diverse_mlps${hard_strategy_suffix}_inf/"
+    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps${hard_strategy_suffix}/inf/gaussian_diverse_mlps${hard_strategy_suffix}_train_dataset_1b_contrastive${train_small_suffix}"
+    DATA_PREFIX="${data_large_prefix}mlps_gaussian${hard_strategy_suffix}"
+
+
+elif [ "$transformation_type" = "linear" ]; then
+    if [ "$small" = true ]; then
+        BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+        BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
+        DATA_PREFIX="sm_gaussian"
+    else
+        BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+        BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
+        DATA_PREFIX="gaussian"
+    fi
+else
+    echo "Invalid transformation type"
+    exit 1
 fi
 
 # Experiment prefix
