@@ -140,12 +140,10 @@ if __name__ == '__main__':
         TOPK = 10
         results = []
         all_scores = []
-        folder_list = ['orca_gaussian_full_finetuning_mse_one_label_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_SS_hungarian_contrastive_no_shuffle_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_hungarian_contrastive_no_shuffle_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_SS_mse_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
-                       'orca_gaussian_full_finetuning_mse_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep100_warmup0.05/',
+        folder_list = [
+            # 'large_mlps_gaussian_ood_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch512_ep500_warmup0.05',
+        #                'large_mlps_gaussian_ood_full_finetuning_SS_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch512_ep500_warmup0.05',
+                       'large_mlps_gaussian_ood_full_finetuning_SS_contrastive_first_label_lr5e-5_temp0.05_batch512_ep500_warmup0.05'
                        ]
         for folder in folder_list:
             ### Get results
