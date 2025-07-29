@@ -17,6 +17,7 @@ from typing import Tuple, List, Dict, Any
 from scipy.linalg import qr
 import argparse
 import pickle
+import random
 
 def convert_to_serializable(obj):
     """
@@ -68,7 +69,10 @@ class OpposingPairsSyntheticDataGenerator:
                  n_test_queries: int = 200,
                  n_transformations: int = 5,  # Fixed to 5 for opposing pairs
                  corpus_size: int = 100000,
-                 random_seed: int = 42):
+                 random_seed: int = 42,
+                 multiple_query_distributions: bool = False,
+                 ood_distribution: bool = False,
+                 sample_transformations: bool = False):
         """
         Initialize the opposing pairs synthetic data generator.
         
@@ -79,14 +83,20 @@ class OpposingPairsSyntheticDataGenerator:
             n_transformations: Number of transformation matrices (fixed to 5)
             corpus_size: Total size of the corpus
             random_seed: Random seed for reproducibility
+            multiple_query_distributions: Whether to use multiple query distributions
+            ood_distribution: Whether to use OOD distribution
+            sample_transformations: Whether to sample transformations from the corpus
         """
         self.d = d
         self.n_train_queries = n_train_queries
         self.n_test_queries = n_test_queries
         self.n_total_queries = n_train_queries + n_test_queries
-        self.n_transformations = 5  # Always 5 for opposing pairs approach
+        self.n_transformations = n_transformations  # Always 5 for opposing pairs approach
         self.corpus_size = corpus_size
         self.random_seed = random_seed
+        self.multiple_query_distributions = multiple_query_distributions
+        self.ood_distribution = ood_distribution
+        self.sample_transformations = sample_transformations
         
         # Set random seed
         np.random.seed(random_seed)
@@ -99,7 +109,7 @@ class OpposingPairsSyntheticDataGenerator:
         self.query2ground_truth_mapping = None
         
         
-    def _generate_standard_gaussian(self, n_queries: int) -> np.ndarray:
+    def _generate_standard_gaussian_queries(self, n_queries: int) -> np.ndarray:
         """Generate queries from standard Gaussian N(0, I)"""
         return np.random.multivariate_normal(
             mean=np.zeros(self.d),
@@ -107,7 +117,7 @@ class OpposingPairsSyntheticDataGenerator:
             size=n_queries
         )
     
-    def _generate_highvar_gaussian(self, n_queries: int) -> np.ndarray:
+    def _generate_highvar_gaussian_queries(self, n_queries: int) -> np.ndarray:
         """Generate queries from high-variance Gaussian N(0, 4I)"""
         return np.random.multivariate_normal(
             mean=np.zeros(self.d),
@@ -115,7 +125,7 @@ class OpposingPairsSyntheticDataGenerator:
             size=n_queries
         )
     
-    def _generate_correlated_gaussian(self, n_queries: int) -> np.ndarray:
+    def _generate_correlated_gaussian_queries(self, n_queries: int) -> np.ndarray:
         """Generate queries from correlated Gaussian with random covariance"""
         A = np.random.randn(self.d, self.d)
         cov_matrix = 0.5 * (A @ A.T) + 0.1 * np.eye(self.d)
@@ -125,13 +135,13 @@ class OpposingPairsSyntheticDataGenerator:
             size=n_queries
         )
     
-    def _generate_uniform(self, n_queries: int) -> np.ndarray:
+    def _generate_uniform_queries(self, n_queries: int) -> np.ndarray:
         """Generate queries from uniform distribution [-2, 2]^d"""
         return np.random.uniform(
             low=-2.0, high=2.0, size=(n_queries, self.d)
         )
     
-    def _generate_laplace_gaussian(self, n_queries: int) -> np.ndarray:
+    def _generate_laplace_gaussian_queries(self, n_queries: int) -> np.ndarray:
         """Generate queries from Laplace + Gaussian noise"""
         laplace_queries = np.random.laplace(
             loc=0.0, scale=1.0, size=(n_queries, self.d)
@@ -151,11 +161,11 @@ class OpposingPairsSyntheticDataGenerator:
             
             # Define distribution generators and names
             generators = [
-                (self._generate_standard_gaussian, "Standard Gaussian N(0, I)"),
-                (self._generate_highvar_gaussian, "High-variance Gaussian N(0, 4I)"),
-                (self._generate_correlated_gaussian, "Correlated Gaussian with random covariance"),
-                (self._generate_uniform, "Uniform distribution [-2, 2]^d"),
-                (self._generate_laplace_gaussian, "Laplace + Gaussian noise")
+                (self._generate_standard_gaussian_queries, "Standard Gaussian N(0, I)"),
+                (self._generate_highvar_gaussian_queries, "High-variance Gaussian N(0, 4I)"),
+                (self._generate_correlated_gaussian_queries, "Correlated Gaussian with random covariance"),
+                (self._generate_uniform_queries, "Uniform distribution [-2, 2]^d"),
+                (self._generate_laplace_gaussian_queries, "Laplace + Gaussian noise")
             ]
             
             if self.ood_distribution:
@@ -217,7 +227,7 @@ class OpposingPairsSyntheticDataGenerator:
             
         else:
             print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...")
-            queries = self._generate_standard_gaussian(self.n_total_queries)
+            queries = self._generate_standard_gaussian_queries(self.n_total_queries)
             
         self.queries = queries
         return queries
@@ -239,19 +249,12 @@ class OpposingPairsSyntheticDataGenerator:
         transformation_matrices.append(identity)
         print("  ✓ Added identity matrix (I)")
         
-        # 2. Generate 2 linear transformations using QR decomposition
+        # 2. Generate 2 linear transformations using the selected method
         linear_transforms = []
         for i in range(2):
-            # Generate random matrix and get orthogonal matrix via QR decomposition
-            random_matrix = np.random.randn(self.d, self.d)
-            q, r = qr(random_matrix)
-            
-            # Ensure determinant is 1 (proper rotation, not reflection)
-            if np.linalg.det(q) < 0:
-                q[:, 0] *= -1
-            
-            linear_transforms.append(q)
-            transformation_matrices.append(q)
+            transform = self._generate_single_linear_transformation(method='orthogonal_qr')
+            linear_transforms.append(transform)
+            transformation_matrices.append(transform)
             print(f"  ✓ Added linear transformation {chr(65+i)} (matrix {i+2})")
         
         # 3. Add negative versions of the linear transformations
@@ -264,7 +267,144 @@ class OpposingPairsSyntheticDataGenerator:
         print(f"Generated {len(transformation_matrices)} transformation matrices")
         self._print_matrix_relationships()
         self._test_opposing_pairs_effect()
+        
+        if self.sample_transformations:
+            return self.generate_additional_transformation_matrices()
         return transformation_matrices
+    
+    def _generate_single_linear_transformation(self, method: str = 'orthogonal_qr') -> np.ndarray:
+        """
+        Generate a single linear transformation matrix using the specified method.
+        
+        Args:
+            method: Type of transformation to generate
+                - 'orthogonal_qr': Orthogonal matrix via QR decomposition (current default)
+                - 'orthogonal_svd': Orthogonal matrix via SVD  
+                - 'diagonal_scaling': Diagonal scaling matrix
+                - 'random_dense': Random dense matrix
+                - 'sparse_random': Sparse random matrix
+                - 'low_rank': Low-rank transformation
+                - 'circulant': Circulant matrix
+                - 'symmetric': Symmetric matrix
+                - 'skew_symmetric': Skew-symmetric matrix
+        
+        Returns:
+            Transformation matrix of shape (d, d)
+        """
+        if method == 'orthogonal_qr':
+            return self._generate_orthogonal_qr_matrix()
+        elif method == 'orthogonal_svd':
+            return self._generate_orthogonal_svd_matrix()
+        elif method == 'diagonal_scaling':
+            return self._generate_diagonal_scaling_matrix()
+        elif method == 'random_dense':
+            return self._generate_random_dense_matrix()
+        elif method == 'sparse_random':
+            return self._generate_sparse_random_matrix()
+        elif method == 'low_rank':
+            return self._generate_low_rank_matrix()
+        elif method == 'circulant':
+            return self._generate_circulant_matrix()
+        elif method == 'symmetric':
+            return self._generate_symmetric_matrix()
+        elif method == 'skew_symmetric':
+            return self._generate_skew_symmetric_matrix()
+        else:
+            raise ValueError(f"Unknown transformation method: {method}")
+    
+    def _generate_orthogonal_qr_matrix(self) -> np.ndarray:
+        """Generate orthogonal matrix using QR decomposition (current method)."""
+        random_matrix = np.random.randn(self.d, self.d)
+        q, r = qr(random_matrix)
+        
+        # Ensure determinant is 1 (proper rotation, not reflection)
+        if np.linalg.det(q) < 0:
+            q[:, 0] *= -1
+            
+        return q
+    
+    def _generate_orthogonal_svd_matrix(self) -> np.ndarray:
+        """Generate orthogonal matrix using SVD decomposition."""
+        random_matrix = np.random.randn(self.d, self.d)
+        u, s, vt = np.linalg.svd(random_matrix)
+        
+        # Create orthogonal matrix from U or V
+        q = u if np.random.random() < 0.5 else vt
+        
+        # Ensure determinant is 1
+        if np.linalg.det(q) < 0:
+            q[:, 0] *= -1
+            
+        return q
+    
+    def _generate_diagonal_scaling_matrix(self) -> np.ndarray:
+        """Generate diagonal scaling matrix with random positive scaling factors."""
+        # Random scaling factors between 0.5 and 2.0
+        scales = np.random.uniform(0.5, 2.0, self.d)
+        return np.diag(scales)
+    
+    def _generate_random_dense_matrix(self) -> np.ndarray:
+        """Generate random dense matrix (not necessarily orthogonal)."""
+        return np.random.randn(self.d, self.d) * 0.5  # Scale down to avoid explosion
+    
+    def _generate_sparse_random_matrix(self, sparsity: float = 0.9) -> np.ndarray:
+        """Generate sparse random matrix."""
+        matrix = np.random.randn(self.d, self.d) * 0.5
+        # Create random mask for sparsity
+        mask = np.random.random((self.d, self.d)) < sparsity
+        matrix[mask] = 0
+        return matrix
+    
+    def _generate_low_rank_matrix(self, rank: int = None) -> np.ndarray:
+        """Generate low-rank transformation matrix."""
+        if rank is None:
+            rank = max(1, self.d // 4)  # Default to d/4 rank
+        
+        # Generate two random matrices and multiply for low-rank structure
+        A = np.random.randn(self.d, rank) * 0.5
+        B = np.random.randn(rank, self.d) * 0.5
+        return A @ B
+    
+    def _generate_circulant_matrix(self) -> np.ndarray:
+        """Generate circulant matrix (useful for modeling periodic transformations)."""
+        # First row of the circulant matrix
+        first_row = np.random.randn(self.d) * 0.5
+        
+        # Create circulant matrix
+        matrix = np.zeros((self.d, self.d))
+        for i in range(self.d):
+            matrix[i] = np.roll(first_row, i)
+            
+        return matrix
+    
+    def _generate_symmetric_matrix(self) -> np.ndarray:
+        """Generate symmetric matrix."""
+        A = np.random.randn(self.d, self.d) * 0.5
+        return (A + A.T) / 2
+    
+    def _generate_skew_symmetric_matrix(self) -> np.ndarray:
+        """Generate skew-symmetric matrix (A^T = -A)."""
+        A = np.random.randn(self.d, self.d) * 0.5
+        return (A - A.T) / 2
+    
+    def generate_additional_transformation_matrices(self) -> List[np.ndarray]:
+        """
+        Generate transformation matrices using different methods for variety.
+        Creates opposing pairs structure with mixed transformation types.
+        
+        """
+        transformation_matrices = []
+        # Generate different linear transformations
+        linear_transforms = []
+        for i, method in enumerate(['orthogonal_svd', 'diagonal_scaling', 'random_dense', 'sparse_random', 'low_rank', 'symmetric', 'skew_symmetric', 'circulant']):
+            transform = self._generate_single_linear_transformation(method=method)
+            linear_transforms.append(transform)
+            transformation_matrices.append(transform)
+            print(f"  ✓ Added {method} transformation {chr(65+i)} (matrix {i+2})")
+        
+        self.transformation_matrices += transformation_matrices
+        print(f"Added {len(transformation_matrices)} additional transformation matrices")
+        return self.transformation_matrices
     
     def _print_matrix_relationships(self):
         """Print relationships between transformation matrices."""
@@ -319,13 +459,24 @@ class OpposingPairsSyntheticDataGenerator:
         
         ground_truth_vectors = []
         
+        if self.sample_transformations:
+            print(f"Sampling from {len(self.transformation_matrices)} transformation matrices for each query")
         # Generate ground truth vectors organized by query:
         # [Q0T0, Q0T1, Q0T2, Q0T3, Q0T4, Q1T0, Q1T1, Q1T2, Q1T3, Q1T4, ...]
         for query_idx, query in enumerate(self.queries):
-            for transform_idx, transformation_matrix in enumerate(self.transformation_matrices):
-                # Apply transformation to this specific query
-                transformed_query = query @ transformation_matrix.T
-                ground_truth_vectors.append(transformed_query)
+            if self.sample_transformations:
+                # Sample a random transformation matrix
+                random_integers = random.sample(list(range(len(self.transformation_matrices))), self.n_transformations)
+                sampled_transformation_matrices = [self.transformation_matrices[i] for i in random_integers]
+                for transformation_matrix in sampled_transformation_matrices:
+                    transformed_query = query @ transformation_matrix.T
+                    ground_truth_vectors.append(transformed_query)
+
+            else:
+                for transform_idx, transformation_matrix in enumerate(self.transformation_matrices[:self.n_transformations]):
+                    # Apply transformation to this specific query
+                    transformed_query = query @ transformation_matrix.T
+                    ground_truth_vectors.append(transformed_query)
         
         # Convert to numpy array
         self.ground_truth_vectors = np.array(ground_truth_vectors)
@@ -524,6 +675,14 @@ def main():
                        help='Random seed (default: 42)')
     parser.add_argument('--output-dir', '-o', type=str, default='./opposing_pairs_data',
                        help='Output directory (default: ./opposing_pairs_data)')
+    parser.add_argument('--multiple-query-distributions', action='store_true',
+                       help='Use different query distributions')
+    parser.add_argument('--ood-distribution', action='store_true',
+                       help='Use OOD distribution')
+    parser.add_argument('--sample-transformations', action='store_true',
+                       help='Sample transformations from the corpus')
+    parser.add_argument('--generate-mse-labels', action='store_true',
+                       help='Generate MSE labels')
     
     args = parser.parse_args()
     
@@ -533,7 +692,10 @@ def main():
         n_train_queries=args.train_queries,
         n_test_queries=args.test_queries,
         corpus_size=args.corpus_size,
-        random_seed=args.seed
+        random_seed=args.seed,
+        multiple_query_distributions=args.multiple_query_distributions,
+        ood_distribution=args.ood_distribution,
+        sample_transformations=args.sample_transformations,
     )
     
     # Generate all data
@@ -547,14 +709,14 @@ def main():
     print(f"   Run baseline evaluation to compare:")
     print(f"   python baseline_evaluation.py --data-dir {args.output_dir}")
 
-
-    # Generate MSE labels
-    mse_labels = np.random.multivariate_normal(
-        mean=np.zeros(1024),
-        cov=np.eye(1024),
-        size=100000
-    )
-    np.save(os.path.join(args.output_dir, 'mse_labels.npy'), mse_labels)
+    if args.generate_mse_labels:
+        # Generate MSE labels
+        mse_labels = np.random.multivariate_normal(
+            mean=np.zeros(1024),
+            cov=np.eye(1024),
+            size=100000
+        )
+        np.save(os.path.join(args.output_dir, 'mse_labels.npy'), mse_labels)
     
     # Save corpus
     corpus = np.load(os.path.join(args.output_dir, 'corpus.npy')) 
@@ -565,5 +727,28 @@ if __name__ == '__main__':
     main() 
     # python generate_data_opposing_pairs.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./opposing_pairs_data
     
+    """
     
+    TRANSFORMATION TYPE DESCRIPTIONS:
     
+    - orthogonal_qr: Orthogonal matrices via QR decomposition (preserves distances/angles)
+    - orthogonal_svd: Orthogonal matrices via SVD decomposition (preserves distances/angles)  
+    - diagonal_scaling: Diagonal matrices that scale each dimension independently
+    - random_dense: Random dense matrices (general linear transformations)
+    - sparse_random: Sparse random matrices (90% zeros by default)
+    - low_rank: Low-rank matrices (rank = d/4 by default)
+    - circulant: Circulant matrices (useful for periodic/shift-like transformations)
+    - symmetric: Symmetric matrices (A = A^T)
+    - skew_symmetric: Skew-symmetric matrices (A^T = -A, diagonal is zeros)
+    
+    Each method creates different geometric transformations that affect retrieval difficulty differently:
+    - Orthogonal transformations preserve all geometric relationships
+    - Diagonal scaling changes relative importance of dimensions
+    - Low-rank transformations project to lower-dimensional subspaces
+    - Sparse transformations create structured sparsity patterns
+    - Symmetric/skew-symmetric have special eigenvalue properties
+    """
+
+    # PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --sample-transformations -o data/opposing_pairs_data_sample_transformation
+    # PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --multiple-query-distributions  -o data/opposing_pairs_data_multi_query
+    # PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --multiple-query-distributions --ood-distribution  -o data/opposing_pairs_data_ood

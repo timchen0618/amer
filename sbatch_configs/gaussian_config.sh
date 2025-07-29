@@ -17,11 +17,11 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(128)
+BATCH_SIZES=(32)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(8000)
+NUM_EPOCHS_LIST=(400)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -36,9 +36,9 @@ BASE_PROJECT="diverse_retrieval"
 full_finetuning=true
 
 # dataset configurations
-transformation_type="linear" # linear, mlps
-small=true
-hard_strategy="sample_transformation" #  "", multi_query, ood, sample_transformation
+transformation_type="linear" # linear, diverse_mlps
+small=false
+hard_strategy="ood" #  "", multi_query, ood, sample_transformation
 
 
 # dataset_name="diverse_mlps_multi_query_sm"
@@ -51,7 +51,7 @@ all_data=$small
 MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="hungarian_contrastive"
+MODE="contrastive_first_label"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -175,50 +175,57 @@ else
 fi
 
 
-
-if [ "$transformation_type" = "mlps" ]; then
-    dataset_name="diverse_mlps"
-    if [ "$small" = true ]; then
-        train_small_suffix="_sm"
-        data_large_prefix=""
-    else
-        train_small_suffix=""
-        data_large_prefix="large_"
-    fi
-    
-    if [ "$hard_strategy" = "" ]; then
-        hard_strategy_suffix=""
-    elif [ "$hard_strategy" = "multi_query" ]; then
-        hard_strategy_suffix="_multi_query"
-    elif [ "$hard_strategy" = "ood" ]; then
-        hard_strategy_suffix="_ood"
-    elif [ "$hard_strategy" = "sample_transformation" ]; then
-        hard_strategy_suffix="_sample_transformation"
-    else
-        echo "Invalid hard strategy"
-        exit 1
-    fi
-
-    dataset_name="diverse_mlps${hard_strategy_suffix}${train_small_suffix}"
-    BASE_SAVE_PATH="results/gaussian_diverse_mlps${hard_strategy_suffix}_inf/"
-    BASE_TRAIN_PATH="training_datasets/gaussian_diverse_mlps${hard_strategy_suffix}/inf/gaussian_diverse_mlps${hard_strategy_suffix}_train_dataset_1b_contrastive${train_small_suffix}"
-    DATA_PREFIX="${data_large_prefix}mlps_gaussian${hard_strategy_suffix}"
+if [ "$small" = true ]; then
+    train_small_suffix="_sm"
+    data_large_prefix=""
+else
+    train_small_suffix=""
+    data_large_prefix="large_"
+fi
 
 
+if [ "$transformation_type" = "diverse_mlps" ]; then
+    transformation_type_suffix="mlps"
 elif [ "$transformation_type" = "linear" ]; then
-    if [ "$small" = true ]; then
-        BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
-        BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
-        DATA_PREFIX="sm_gaussian"
-    else
-        BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
-        BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
-        DATA_PREFIX="gaussian"
-    fi
+    transformation_type_suffix="linear"
 else
     echo "Invalid transformation type"
     exit 1
 fi
+
+if [ "$hard_strategy" = "" ]; then
+    hard_strategy_suffix=""
+elif [ "$hard_strategy" = "multi_query" ]; then
+    hard_strategy_suffix="_multi_query"
+elif [ "$hard_strategy" = "ood" ]; then
+    hard_strategy_suffix="_ood"
+elif [ "$hard_strategy" = "sample_transformation" ]; then
+    hard_strategy_suffix="_sample_transformation"
+else
+    echo "Invalid hard strategy"
+    exit 1
+fi
+
+dataset_name="${transformation_type}${hard_strategy_suffix}${train_small_suffix}"
+BASE_SAVE_PATH="results/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
+BASE_TRAIN_PATH="training_datasets/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${train_small_suffix}"
+DATA_PREFIX="${data_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
+
+
+# elif [ "$transformation_type" = "linear" ]; then
+#     if [ "$small" = true ]; then
+#         BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+#         BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
+#         DATA_PREFIX="sm_gaussian"
+#     else
+#         BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
+#         BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
+#         DATA_PREFIX="gaussian"
+#     fi
+# else
+#     echo "Invalid transformation type"
+#     exit 1
+# fi
 
 # Experiment prefix
 EXP_PREFIX="${DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
@@ -272,7 +279,7 @@ if [ "$multiple_gpus" = true ]; then
     GPU_STRING="4"
 else
     # SLURM job time limit
-    TIME_LIMIT="48:00:00"
+    TIME_LIMIT="24:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task

@@ -369,27 +369,28 @@ class OpposingPairsMlpSyntheticDataGenerator:
         print(f"    Hidden dim ratio: {self.hidden_dim/self.d:.3f}")
         print(f"    Initialization: Sparse(sparsity=0.7) × 3.0 for weights, zeros for biases")
         
-        # Add more MLPs with different hidden dimensions
-        new_hidden_dim = self.hidden_dim * 2
-        while new_hidden_dim >= (self.d / 16):
-            if new_hidden_dim == self.d:
+        if self.sample_transformations:
+            # Add more MLPs with different hidden dimensions
+            new_hidden_dim = self.hidden_dim * 2
+            while new_hidden_dim >= (self.d / 16):
+                if new_hidden_dim == self.d:
+                    new_hidden_dim = new_hidden_dim // 2
+                    continue
+                print(f"Adding Large MLP with hidden dim {new_hidden_dim}")
+                mlp_ = TransformationMLP(self.d, new_hidden_dim, self.num_layers)
+                with torch.no_grad():
+                    for param in mlp_.parameters():
+                        if len(param.shape) > 1:
+                                nn.init.normal_(param, 0, 0.2)
+                        else:
+                            nn.init.zeros_(param)
+                transformation_mlps.append(mlp_)
+                print(f"  ✓ Added Large MLP (F) - more parameters")
+                print(f"    Architecture: {self.d} → {new_hidden_dim} → {self.d}")
+                print(f"    Hidden dim ratio: {new_hidden_dim/self.d:.3f}")
+                print(f"    Initialization: Normal(0, 0.2) for weights, zeros for biases")
                 new_hidden_dim = new_hidden_dim // 2
-                continue
-            print(f"Adding Large MLP with hidden dim {new_hidden_dim}")
-            mlp_ = TransformationMLP(self.d, new_hidden_dim, self.num_layers)
-            with torch.no_grad():
-                for param in mlp_.parameters():
-                    if len(param.shape) > 1:
-                            nn.init.normal_(param, 0, 0.2)
-                    else:
-                        nn.init.zeros_(param)
-            transformation_mlps.append(mlp_)
-            print(f"  ✓ Added Large MLP (F) - more parameters")
-            print(f"    Architecture: {self.d} → {new_hidden_dim} → {self.d}")
-            print(f"    Hidden dim ratio: {new_hidden_dim/self.d:.3f}")
-            print(f"    Initialization: Normal(0, 0.2) for weights, zeros for biases")
-            new_hidden_dim = new_hidden_dim // 2
-        
+            
         
         # Print parameter counts
         print(f"\nParameter counts:")
