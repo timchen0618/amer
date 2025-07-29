@@ -98,19 +98,127 @@ class OpposingPairsSyntheticDataGenerator:
         self.corpus = None
         self.query2ground_truth_mapping = None
         
+        
+    def _generate_standard_gaussian(self, n_queries: int) -> np.ndarray:
+        """Generate queries from standard Gaussian N(0, I)"""
+        return np.random.multivariate_normal(
+            mean=np.zeros(self.d),
+            cov=np.eye(self.d),
+            size=n_queries
+        )
+    
+    def _generate_highvar_gaussian(self, n_queries: int) -> np.ndarray:
+        """Generate queries from high-variance Gaussian N(0, 4I)"""
+        return np.random.multivariate_normal(
+            mean=np.zeros(self.d),
+            cov=4.0 * np.eye(self.d),
+            size=n_queries
+        )
+    
+    def _generate_correlated_gaussian(self, n_queries: int) -> np.ndarray:
+        """Generate queries from correlated Gaussian with random covariance"""
+        A = np.random.randn(self.d, self.d)
+        cov_matrix = 0.5 * (A @ A.T) + 0.1 * np.eye(self.d)
+        return np.random.multivariate_normal(
+            mean=np.zeros(self.d),
+            cov=cov_matrix,
+            size=n_queries
+        )
+    
+    def _generate_uniform(self, n_queries: int) -> np.ndarray:
+        """Generate queries from uniform distribution [-2, 2]^d"""
+        return np.random.uniform(
+            low=-2.0, high=2.0, size=(n_queries, self.d)
+        )
+    
+    def _generate_laplace_gaussian(self, n_queries: int) -> np.ndarray:
+        """Generate queries from Laplace + Gaussian noise"""
+        laplace_queries = np.random.laplace(
+            loc=0.0, scale=1.0, size=(n_queries, self.d)
+        )
+        gaussian_noise = np.random.normal(0, 0.1, size=(n_queries, self.d))
+        return laplace_queries + gaussian_noise
+
     def generate_queries(self) -> np.ndarray:
         """
-        Generate query vectors from multivariate Gaussian N(0, I).
+        Generate query vectors from multivariate Gaussian N(0, I) or multiple distributions.
         
         Returns:
             Array of shape (n_total_queries, d)
         """
-        print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...")
-        queries = np.random.multivariate_normal(
-            mean=np.zeros(self.d),
-            cov=np.eye(self.d),
-            size=self.n_total_queries
-        )
+        if self.multiple_query_distributions:
+            print(f"Generating {self.n_total_queries} query vectors from multiple distributions...")
+            
+            # Define distribution generators and names
+            generators = [
+                (self._generate_standard_gaussian, "Standard Gaussian N(0, I)"),
+                (self._generate_highvar_gaussian, "High-variance Gaussian N(0, 4I)"),
+                (self._generate_correlated_gaussian, "Correlated Gaussian with random covariance"),
+                (self._generate_uniform, "Uniform distribution [-2, 2]^d"),
+                (self._generate_laplace_gaussian, "Laplace + Gaussian noise")
+            ]
+            
+            if self.ood_distribution:
+                # OOD mode: first 4 distributions for training, last 1 for testing
+                print(f"🔄 Using OOD distribution split...")
+                print(f"Target: {self.n_train_queries} training + {self.n_test_queries} testing")
+                
+                # Training distributions (first 4)
+                train_queries_per_dist = self.n_train_queries // 4
+                train_remainder = self.n_train_queries % 4
+                
+                train_queries = []
+                for i, (generator, name) in enumerate(generators[:4]):
+                    n_queries = train_queries_per_dist + (1 if i < train_remainder else 0)
+                    queries = generator(n_queries)
+                    train_queries.append(queries)
+                    print(f"  ✓ Generated {n_queries} TRAINING queries from {name}")
+                
+                # Test distribution (last 1)
+                test_queries = []
+                generator, name = generators[4]
+                queries = generator(self.n_test_queries)
+                test_queries.append(queries)
+                print(f"  ✓ Generated {self.n_test_queries} TESTING queries from {name} (OOD)")
+                
+                # Combine and shuffle within each split
+                train_combined = np.vstack(train_queries)
+                test_combined = np.vstack(test_queries)
+                
+                train_indices = np.random.permutation(len(train_combined))
+                test_indices = np.random.permutation(len(test_combined))
+                train_combined = train_combined[train_indices]
+                test_combined = test_combined[test_indices]
+                
+                # Final combination (training first, then testing)
+                queries = np.vstack([train_combined, test_combined])
+                self.n_total_queries = len(queries)
+                
+                print(f"  ✅ Final split: {len(train_combined)} training + {len(test_combined)} testing = {self.n_total_queries} total")
+                
+            else:
+                # Regular mode: all distributions mixed equally
+                queries_per_dist = self.n_total_queries // 5
+                remaining_queries = self.n_total_queries % 5
+                
+                all_queries = []
+                for i, (generator, name) in enumerate(generators):
+                    n_queries = queries_per_dist + (1 if i < remaining_queries else 0)
+                    queries = generator(n_queries)
+                    all_queries.append(queries)
+                    print(f"  ✓ Generated {n_queries} queries from {name}")
+                
+                # Combine all queries and shuffle
+                queries = np.vstack(all_queries)
+                shuffle_indices = np.random.permutation(len(queries))
+                queries = queries[shuffle_indices]
+                
+                print(f"  → Total: {queries.shape[0]} queries from 5 different distributions (shuffled)")
+            
+        else:
+            print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...")
+            queries = self._generate_standard_gaussian(self.n_total_queries)
+            
         self.queries = queries
         return queries
     
