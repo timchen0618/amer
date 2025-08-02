@@ -303,6 +303,7 @@ def main(args):
     # evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True)
 
     all_results = [['model_name', 'mrecall@100', 'recall@100', 'mrecall@10', 'recall@10']]
+    all_scores = []
     if args.run_random_baseline:
         random_rankings = random_baseline(test_pairs, corpus, args.k_values[-1])
         print('random rankings', random_rankings.shape)
@@ -349,10 +350,28 @@ def main(args):
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_multi_query/inf/gaussian_linear_multi_query_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_multi_query/inf/gaussian_linear_multi_query_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_sample_transformation/inf/gaussian_linear_sample_transformation_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_sample_transformation/inf/gaussian_linear_sample_transformation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_ood/' or args.data_dir == 'data_creation/gaussian/data/linear_ood/' or args.data_dir == 'data_creation/gaussian/data/linear_ood':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_ood/inf/gaussian_linear_ood_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/linear_ood_large/' or args.data_dir == 'data_creation/gaussian/data/linear_ood_large/' or args.data_dir == 'data_creation/gaussian/data/linear_ood_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_linear_ood/inf/gaussian_linear_ood_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     else:
                         raise ValueError(f'Invalid data directory: {args.data_dir}')
 
@@ -382,11 +401,26 @@ def main(args):
                     # Evaluate Results
                     rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
                     results = eval_metrics(rankings, pairs_data[args.split], args.k_values)
-                    eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True)
+                    _, scores = eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True)
                     
                     print('rankings', rankings.shape)
                     np.save(os.path.join(model_path, f'max_new_tokens_{max_new_tokens}_rankings.npy'), rankings)
                     all_results.append([model_path+f'_max_new_tokens_{max_new_tokens}', results['mrecall@100'], results['recall@100'], results['mrecall@10'], results['recall@10']])
+                    
+                    scores[0].append('MRecall')
+                    for j, k in enumerate(args.k_values):
+                        scores[j+1].append(results[f'mrecall@{k}'])
+
+                    _id = model_path.strip('/').split('/')[-1]
+                    all_scores.append([_id.split('lr')[0].split('finetuning')[1].strip('_') + f'_mnt_{max_new_tokens}'])
+                    all_scores.extend(scores)
+        
+        import pandas as pd
+        ### Record Results     
+        score_results = pd.DataFrame(all_scores)
+        score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
+        
+
 
     write_tsv(all_results, 'results.tsv')
 
@@ -396,7 +430,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_paths", type=str, nargs='+', default=['results/gaussian_synthetic_inf/gaussian_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep30_warmup0.05/'])
     parser.add_argument("--split", type=str, default='train')
     parser.add_argument("--data_dir", "-d", type=str, default='./data_creation/gaussian/data/opposing_pairs_data_large/')
-    parser.add_argument("--k_values", type=int, nargs='+', default=[10, 20, 50, 100, 200, 500]) # 10, 20, 50, 100, 200, 500
+    parser.add_argument("--k_values", type=int, nargs='+', default=[1, 5, 10, 20, 50, 100, 500]) # 10, 20, 50, 100, 200, 500
     parser.add_argument("--checkpoint_name", "-c", type=str, default='checkpoint_2001')
     parser.add_argument("--max_new_tokens_list", "-n", type=int, nargs='+', default=[5])
     parser.add_argument("--normalize", action='store_true')

@@ -21,7 +21,7 @@ import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from tqdm import tqdm
 def convert_to_serializable(obj):
     """
     Convert NumPy data types to native Python types for JSON serialization.
@@ -479,7 +479,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
         # Generate ground truth vectors organized by query:
         # [Q0MLP0, Q0MLP1, Q0MLP2, Q0MLP3, Q0MLP4, Q1MLP0, Q1MLP1, Q1MLP2, Q1MLP3, Q1MLP4, ...]
         with torch.no_grad():
-            for query_idx, query in enumerate(queries_tensor):
+            for query_idx, query in enumerate(tqdm(queries_tensor)):
                 query_batch = query.unsqueeze(0)  # Add batch dimension
                 if self.sample_transformations:
                     # sample self.n_transformations random numbers in the range [0, len(self.transformation_mlps))
