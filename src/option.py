@@ -42,6 +42,7 @@ def get_training_args():
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm for clipping")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning")
     parser.add_argument("--schedule_sampling", action="store_true", default=False, help="Schedule sampling")
+    parser.add_argument("--force_sampling", action="store_true", default=False, help="Force sampling")
     
     # Training options
     parser.add_argument("--shuffle_sequence", action="store_true", default=False, help="Shuffle sequence during training")
@@ -58,6 +59,7 @@ def get_training_args():
     parser.add_argument("--compute_loss_on_q", action="store_true", default=False, help="Compute loss on questions")
     parser.add_argument("--use_eos", action="store_true", default=False, help="Use EOS token")
     parser.add_argument("--model_type", type=str, default="EmbeddingModel", help="Model type")
+    parser.add_argument("--normalize_embeddings", action="store_true", default=False, help="Normalize embeddings")
     # Data loading
     parser.add_argument("--first_label_only", action="store_true", default=False, help="Use first label (question) only")
     

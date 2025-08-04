@@ -87,7 +87,8 @@ def train(configs):
                                 extra_q_embed=configs.extra_q_embed,
                                 compute_loss_on_q=configs.compute_loss_on_q,
                                 use_eos=configs.use_eos,
-                                model_type=configs.model_type)
+                                model_type=configs.model_type,
+                                normalize_embeddings=configs.normalize_embeddings)
     model = model.to(accelerator.device)
 
     # optimize and scheduler    
@@ -130,6 +131,9 @@ def train(configs):
             with accelerator.accumulate(model):
                 if configs.schedule_sampling:
                     batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                    
+                if configs.force_sampling:
+                    batch['sampling_rate'] = 1.0
                 
                 total_train_steps += 1
                 outputs = model(**batch)

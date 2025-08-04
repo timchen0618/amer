@@ -9,6 +9,7 @@ from peft import LoraConfig, PeftModel, get_peft_model
 import os
 import src.dist_utils as dist_utils
 import random
+import torch.nn.functional as F
 
 Outputs = namedtuple("Outputs", ["loss", "inputs_embeds", "last_hidden_states", "labels"])
 
@@ -63,16 +64,24 @@ class ContrastiveLoss(nn.Module):
     Returns:
         Scalar tensor: average contrastive loss over the batch
     """
-    def __init__(self, temperature=0.05):
+    def __init__(self, temperature=0.05, normalize_embeddings=True):
         super().__init__()
         self.temperature = temperature
+        self.normalize_embeddings = normalize_embeddings
         self.ce_loss = nn.CrossEntropyLoss(reduce=False)
 
 
     def forward(self, outputs, positive_embeddings, negative_embeddings):
+        # normalize the embeddings
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+        
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
-        # negative_embeddings: (batch_size, k, d)    
+        # negative_embeddings: (batch_size, k, d) 
+                   
         batch_size, k, d = outputs.shape
         labels = torch.arange(batch_size * k).long().to(outputs.device)
         outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
@@ -105,13 +114,19 @@ class ContrastiveLossWoSeq(nn.Module):
     Returns:
         Scalar tensor: average contrastive loss over the batch
     """
-    def __init__(self, temperature=0.05):
+    def __init__(self, temperature=0.05, normalize_embeddings=True):
         super().__init__()
         self.temperature = temperature
+        self.normalize_embeddings = normalize_embeddings
         self.ce_loss = nn.CrossEntropyLoss(reduce=False)
 
 
     def forward(self, outputs, positive_embeddings, negative_embeddings):
+        # normalize the embeddings
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
         # negative_embeddings: (batch_size, k, d)    
@@ -150,7 +165,7 @@ class HungarianContrastiveLoss(nn.Module):
     Returns:
         Scalar tensor: average contrastive loss over the batch
     """
-    def __init__(self, temperature=0.05, use_eos=False):
+    def __init__(self, temperature=0.05, use_eos=False, normalize_embeddings=True):
         super().__init__()
         from scipy.optimize import linear_sum_assignment
         self.linear_sum_assignment = linear_sum_assignment
@@ -158,8 +173,15 @@ class HungarianContrastiveLoss(nn.Module):
         self.ce_loss = nn.CrossEntropyLoss()
         self.log_softmax = nn.LogSoftmax(dim=1)
         self.use_eos = use_eos
+        self.normalize_embeddings = normalize_embeddings
             
     def forward(self, outputs, positive_embeddings, negative_embeddings):
+        # normalize the embeddings
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
         # negative_embeddings: (batch_size, k, d)
@@ -181,12 +203,14 @@ class HungarianContrastiveLoss(nn.Module):
         gather_kemb = gather_fn(all_embeddings)
         # print('gather_kemb', gather_kemb.shape, dist_utils.get_rank())
         # gather_kemb = all_embeddings
+        # print('gather_kemb', gather_kemb, dist_utils.get_rank())
+        # print('outputs', outputs, dist_utils.get_rank())
         
         similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
-        # print('similarity', similarity.shape, dist_utils.get_rank())
+        # print('similarity', similarity, dist_utils.get_rank())
         similarity = self.log_softmax(similarity)
         # denominator = torch.sum(torch.exp(similarity), dim=1)  # (batch_size * k)
-        # print('similarity', similarity.shape, dist_utils.get_rank())
+        # print('similarity after log softmax', similarity, dist_utils.get_rank())
         # print('denominator', denominator.shape)
         losses = []
         for i in range(batch_size):
@@ -233,7 +257,8 @@ class EmbeddingModel(nn.Module):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
 
         super(EmbeddingModel, self).__init__()
@@ -264,15 +289,17 @@ class EmbeddingModel(nn.Module):
         self.extra_q_embed = extra_q_embed
         self.compute_loss_on_q = compute_loss_on_q
         self.use_eos = use_eos
+        self.normalize_embeddings = normalize_embeddings
+        print('normalize_embeddings', normalize_embeddings)
 
         if loss_function == 'Hungarian_MSE':
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
-            self.loss_fct = ContrastiveLoss(temperature=temperature)
+            self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Contrastive_wo_seq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature)
+            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Hungarian_Contrastive':
-            self.loss_fct = HungarianContrastiveLoss(temperature=temperature)
+            self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'MSE':
             self.loss_fct = torch.nn.MSELoss()
         else:
@@ -458,14 +485,12 @@ class EmbeddingModel(nn.Module):
 
     
 
-class EmbeddingModelSS(nn.Module):
+class EmbeddingModelSS(EmbeddingModel):
 
     def __init__(
         self,
         base_causallm,
-        # latent_token_id,
         start_latent_id,
-        # end_latent_id,
         eos_token_id,
         embedding_model_dim,
         weight_tying=False,
@@ -473,51 +498,22 @@ class EmbeddingModelSS(nn.Module):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
-
-        super(EmbeddingModelSS, self).__init__()
-        self.gen_forward_cnt = 0
-        self.base_causallm = base_causallm
-        # self.latent_token_id = latent_token_id
-        self.eos_token_id = eos_token_id
-        self.start_latent_id = start_latent_id
-        # self.end_latent_id = end_latent_id
-
-        # tested with GPT2 and Llama3
-        if isinstance(self.base_causallm, GPT2LMHeadModel):
-            self.embedding = self.base_causallm.transformer.get_input_embeddings()
-        else:
-            self.embedding = self.base_causallm.get_input_embeddings()
-            
-        hidden_size = self.base_causallm.config.hidden_size
-        self.embedding_model_dim = embedding_model_dim
-        self.weight_tying = weight_tying
-        self.input_projection = nn.Linear(embedding_model_dim, hidden_size, bias=False).float()
-        if weight_tying:
-            self.output_projection = nn.Linear(hidden_size, embedding_model_dim, bias=False).float()
-            # Tie weights: output_projection's weight is the transpose of input_projection's weight
-            self.output_projection.weight[:] = self.input_projection.weight.transpose(0, 1)[:]
-        else:
-            self.output_projection = nn.Linear(hidden_size, embedding_model_dim, bias=False).float()
-            
-        self.extra_q_embed = extra_q_embed
-        self.compute_loss_on_q = compute_loss_on_q
-        self.use_eos = use_eos
-
-        if loss_function == 'Hungarian_MSE':
-            self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
-        elif loss_function == 'Contrastive':
-            self.loss_fct = ContrastiveLoss(temperature=temperature)
-        elif loss_function == 'Contrastive_wo_seq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature)
-        elif loss_function == 'Hungarian_Contrastive':
-            self.loss_fct = HungarianContrastiveLoss(temperature=temperature)
-        elif loss_function == 'MSE':
-            self.loss_fct = torch.nn.MSELoss()
-        else:
-            raise ValueError(f"Loss function {loss_function} not supported")
-        self.mse_loss = torch.nn.MSELoss()
+        super(EmbeddingModelSS, self).__init__(
+            base_causallm=base_causallm,
+            start_latent_id=start_latent_id,
+            eos_token_id=eos_token_id,
+            embedding_model_dim=embedding_model_dim,
+            weight_tying=weight_tying,
+            loss_function=loss_function,
+            temperature=temperature,
+            extra_q_embed=extra_q_embed,
+            compute_loss_on_q=compute_loss_on_q,
+            use_eos=use_eos,
+            normalize_embeddings=normalize_embeddings
+        )
 
     def forward(self, **inputs):
         has_label = 'labels' in inputs or 'positive_embeddings' in inputs
@@ -658,7 +654,8 @@ class EmbeddingModelSSVariable(EmbeddingModel):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
         super(EmbeddingModelSSVariable, self).__init__(
             base_causallm=base_causallm,
@@ -670,7 +667,8 @@ class EmbeddingModelSSVariable(EmbeddingModel):
             temperature=temperature,
             extra_q_embed=extra_q_embed,
             compute_loss_on_q=compute_loss_on_q,
-            use_eos=use_eos
+            use_eos=use_eos,
+            normalize_embeddings=normalize_embeddings
         )
 
     def forward(self, **inputs):
@@ -826,7 +824,8 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
         super(EmbeddingModelSSVariableLeftPad, self).__init__(
             base_causallm=base_causallm,
@@ -838,7 +837,8 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
             temperature=temperature,
             extra_q_embed=extra_q_embed,
             compute_loss_on_q=compute_loss_on_q,
-            use_eos=use_eos
+            use_eos=use_eos,
+            normalize_embeddings=normalize_embeddings
         )
 
     def forward(self, **inputs):
@@ -976,7 +976,8 @@ class EmbeddingModelNoLinear(nn.Module):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
 
         super(EmbeddingModelNoLinear, self).__init__()
@@ -1000,15 +1001,17 @@ class EmbeddingModelNoLinear(nn.Module):
         self.extra_q_embed = extra_q_embed
         self.compute_loss_on_q = compute_loss_on_q
         self.use_eos = use_eos
+        self.normalize_embeddings = normalize_embeddings
+        print('normalize_embeddings', normalize_embeddings)
 
         if loss_function == 'Hungarian_MSE':
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
-            self.loss_fct = ContrastiveLoss(temperature=temperature)
+            self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Contrastive_wo_seq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature)
+            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Hungarian_Contrastive':
-            self.loss_fct = HungarianContrastiveLoss(temperature=temperature)
+            self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'MSE':
             self.loss_fct = torch.nn.MSELoss()
         else:
@@ -1203,7 +1206,8 @@ class EmbeddingModelDual(nn.Module):
         temperature=0.05,
         extra_q_embed=False,
         compute_loss_on_q=False,
-        use_eos=False
+        use_eos=False,
+        normalize_embeddings=True
     ):
 
         super(EmbeddingModelDual, self).__init__()
@@ -1234,15 +1238,17 @@ class EmbeddingModelDual(nn.Module):
         self.extra_q_embed = extra_q_embed
         self.compute_loss_on_q = compute_loss_on_q
         self.use_eos = use_eos
+        self.normalize_embeddings = normalize_embeddings
+        print('normalize_embeddings', normalize_embeddings)
 
         if loss_function == 'Hungarian_MSE':
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
-            self.loss_fct = ContrastiveLoss(temperature=temperature)
+            self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Contrastive_wo_seq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature)
+            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Hungarian_Contrastive':
-            self.loss_fct = HungarianContrastiveLoss(temperature=temperature)
+            self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'MSE':
             self.loss_fct = torch.nn.MSELoss()
         else:
@@ -1447,7 +1453,7 @@ from peft import PeftModel
 
 def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, embedding_model_dim, 
                weight_tying=False, loss_function='Hungarian_MSE', temperature=0.05, lora_alpha=16, lora_r=64, lora_dropout=0.1, extra_q_embed=False, 
-               compute_loss_on_q=False, use_eos=False, model_type="EmbeddingModel"):
+               compute_loss_on_q=False, use_eos=False, model_type="EmbeddingModel", normalize_embeddings=False):
     # Load the base model
     base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
     base_model.gradient_checkpointing_enable()
@@ -1507,7 +1513,7 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
     print(f"loading model {model_type}")
     model = model_class(model, start_id, tokenizer.eos_token_id, 
                            embedding_model_dim, weight_tying, loss_function, 
-                           temperature, extra_q_embed, compute_loss_on_q, use_eos)
+                           temperature, extra_q_embed, compute_loss_on_q, use_eos, normalize_embeddings)
     
     # Load linear layers if checkpoint is provided
     if linear_checkpoint_path is not None:
