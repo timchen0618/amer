@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# torch
 # Hyperparameter Search Script
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
@@ -63,6 +63,7 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
+#SBATCH --requeue
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}

@@ -9,19 +9,19 @@
 
 # Learning rates to test
 # LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
-LEARNING_RATES=(2e-5)
+LEARNING_RATES=(1e-5 2e-5 5e-5)
 
 # Temperature values for contrastive loss
 # TEMPERATURES=(0.03 0.1)
 TEMPERATURES=(0.05)
 
 # Batch sizes
-# BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(32)
+# BATCH_SIZES=(32)
+BATCH_SIZES=(2048)
 
 # Number of epochs
-# NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(400)
+# NUM_EPOCHS_LIST=(400)
+NUM_EPOCHS_LIST=(8000)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -36,9 +36,9 @@ BASE_PROJECT="diverse_retrieval"
 full_finetuning=true
 
 # dataset configurations
-transformation_type="linear" # linear, diverse_mlps
+transformation_type="diverse_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="ood" #  "", multi_query, ood, sample_transformation
+hard_strategy="" #  "", multi_query, ood, sample_transformation
 
 
 # dataset_name="diverse_mlps_multi_query_sm"
@@ -51,7 +51,7 @@ all_data=$small
 MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="contrastive_first_label"
+MODE="hungarian_contrastive"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -176,11 +176,16 @@ fi
 
 
 if [ "$small" = true ]; then
-    train_small_suffix="_sm"
-    data_large_prefix=""
+    data_small_suffix="_sm"
+    exp_name_large_prefix=""
 else
-    train_small_suffix=""
-    data_large_prefix="large_"
+    if [ "$xlarge" = true ]; then
+        data_small_suffix="_xl"
+        exp_name_large_prefix="xl_"
+    else
+        data_small_suffix=""
+        exp_name_large_prefix="large_"
+    fi
 fi
 
 
@@ -206,21 +211,21 @@ else
     exit 1
 fi
 
-dataset_name="${transformation_type}${hard_strategy_suffix}${train_small_suffix}"
+dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
 BASE_SAVE_PATH="results/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
-BASE_TRAIN_PATH="training_datasets/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${train_small_suffix}"
-DATA_PREFIX="${data_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
+BASE_TRAIN_PATH="training_datasets/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${data_small_suffix}"
+EXP_DATA_PREFIX="${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
 
 
 # elif [ "$transformation_type" = "linear" ]; then
 #     if [ "$small" = true ]; then
 #         BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 #         BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive_sm"
-#         DATA_PREFIX="sm_gaussian"
+#         EXP_DATA_PREFIX="sm_gaussian"
 #     else
 #         BASE_SAVE_PATH="results/gaussian_synthetic_inf/"
 #         BASE_TRAIN_PATH="training_datasets/gaussian_synthetic/inf/gaussian_synthetic_train_dataset_1b_contrastive"
-#         DATA_PREFIX="gaussian"
+#         EXP_DATA_PREFIX="gaussian"
 #     fi
 # else
 #     echo "Invalid transformation type"
@@ -228,7 +233,7 @@ DATA_PREFIX="${data_large_prefix}${transformation_type_suffix}_gaussian${hard_st
 # fi
 
 # Experiment prefix
-EXP_PREFIX="${DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Model checkpoints
 # BASE_ADAPTER_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501"
@@ -256,7 +261,7 @@ WEIGHT_DECAY=0.01
 SCHEDULER="linear"
 
 # Maximum gradient norm for clipping
-MAX_GRAD_NORM=5.0
+MAX_GRAD_NORM=1.0
 
 # =================================================================
 # SLURM CONFIGURATION
@@ -268,9 +273,9 @@ MAX_CONCURRENT_JOBS=100
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="6:00:00"
+    TIME_LIMIT="24:00:00"
     # Memory per job
-    MEMORY="300GB"
+    MEMORY="600GB"
     # Number of CPUs per task
     CPUS_PER_TASK=40
     # GPU configuration
@@ -279,7 +284,7 @@ if [ "$multiple_gpus" = true ]; then
     GPU_STRING="4"
 else
     # SLURM job time limit
-    TIME_LIMIT="24:00:00"
+    TIME_LIMIT="96:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -294,7 +299,7 @@ fi
 EMAIL="hc3337@nyu.edu"
 
 # Singularity configuration
-SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
 OVERLAY_FILE="/scratch/hc3337/envs/div.ext3"
 
 # HuggingFace token (if needed)
