@@ -46,6 +46,7 @@ ARGS="--project ${BASE_PROJECT} \
       --train_path ${BASE_TRAIN_PATH} \
       --adapter_path ${BASE_ADAPTER_PATH} \
       --linear_checkpoint_path ${BASE_LINEAR_CHECKPOINT_PATH} \
+      --model_id ${MODEL_ID} \
       --lr ${LEARNING_RATE} \
       --temperature ${TEMPERATURE} \
       --batch_size_training ${BATCH_SIZE} \
@@ -56,23 +57,22 @@ ARGS="--project ${BASE_PROJECT} \
       --scheduler ${SCHEDULER} \
       --max_grad_norm ${MAX_GRAD_NORM} \
       --loss_function ${LOSS_FUNCTION} \
-      --shuffle_sequence \
-      --save_only_improve \
-      --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
-      --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
-      --model_type ${MODEL_TYPE} \
-      --lr_min_ratio ${LR_MIN_RATIO} \
       ${SHUFFLE_SEQUENCE} \
       ${SAVE_ONLY_IMPROVE} \
       ${TAKE_FIRST} \
       ${QUESTION_ONLY} \
+      --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
+      --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
+      --model_type ${MODEL_TYPE} \
+      --lr_min_ratio ${LR_MIN_RATIO} \
       ${FULL_FINETUNING} \
       ${SAVE_BEST_MODEL} \
       ${SCHEDULE_SAMPLING} \
       ${TRAIN_ON_ALL_DATA} \
       ${LEFT_PADDING} \
       ${NORMALIZE_STR} \
-      ${FORCE_SAMPLING}"
+      ${FORCE_SAMPLING} \
+      --log_with ${LOG_WITH}"
 
 
 

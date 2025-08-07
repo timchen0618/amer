@@ -11,7 +11,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
+    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
@@ -63,7 +63,7 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
-#SBATCH --partition=h200
+#SBATCH --partition=h100_1,stake_h100_1,stake_a100_2,stake_a100_1,cilvr_a100_1
 #SBATCH --requeue
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
@@ -82,6 +82,7 @@ ARGS="--project ${BASE_PROJECT} \\
       --batch_size_training ${batch} \\
       --num_epochs ${epochs} \\
       --warmup_ratio ${warmup} \\
+      --lr_min_ratio ${LR_MIN_RATIO} \\
       --gradient_accumulation_steps ${GRADIENT_ACCUMULATION_STEPS} \\
       --weight_decay ${WEIGHT_DECAY} \\
       --scheduler ${SCHEDULER} \\
@@ -100,7 +101,8 @@ ARGS="--project ${BASE_PROJECT} \\
       ${TRAIN_ON_ALL_DATA} \\
       ${LEFT_PADDING} \\
       ${NORMALIZE_STR} \\
-      ${FORCE_SAMPLING}"
+      ${FORCE_SAMPLING} \\
+      --log_with ${LOG_WITH}"
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} python train.py \$ARGS & wait)"
 EOF

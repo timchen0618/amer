@@ -5,13 +5,13 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/ambignq_config.sh"
+CONFIG_FILE="sbatch_configs/qampari_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from ambignq_config.sh"
+    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
     exit 1
 fi
 
@@ -63,8 +63,8 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
-#SBATCH --partition=h200
 #SBATCH --requeue
+#SBATCH --partition=h100_1,stake_h100_1,stake_a100_2,stake_a100_1,cilvr_a100_1
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}
@@ -76,11 +76,13 @@ ARGS="--project ${BASE_PROJECT} \\
       --train_path ${BASE_TRAIN_PATH} \\
       --adapter_path ${BASE_ADAPTER_PATH} \\
       --linear_checkpoint_path ${BASE_LINEAR_CHECKPOINT_PATH} \\
+      --model_id ${MODEL_ID} \\
       --lr ${lr} \\
       --temperature ${temp} \\
       --batch_size_training ${batch} \\
       --num_epochs ${epochs} \\
       --warmup_ratio ${warmup} \\
+      --lr_min_ratio ${LR_MIN_RATIO} \\
       --gradient_accumulation_steps ${GRADIENT_ACCUMULATION_STEPS} \\
       --weight_decay ${WEIGHT_DECAY} \\
       --scheduler ${SCHEDULER} \\
@@ -99,7 +101,8 @@ ARGS="--project ${BASE_PROJECT} \\
       ${TRAIN_ON_ALL_DATA} \\
       ${LEFT_PADDING} \\
       ${NORMALIZE_STR} \\
-      ${FORCE_SAMPLING}"
+      ${FORCE_SAMPLING} \\
+      --log_with ${LOG_WITH}"
 
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} accelerate launch train_distributed.py \$ARGS & wait)"

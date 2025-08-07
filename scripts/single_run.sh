@@ -38,6 +38,7 @@ echo "Save path: $SAVE_PATH"
 echo "Output log: $OUTPUT_LOG"
 echo ""
 
+
 # Build training arguments
 ARGS="--project ${BASE_PROJECT} \
       --save_path ${SAVE_PATH} \
@@ -45,6 +46,7 @@ ARGS="--project ${BASE_PROJECT} \
       --train_path ${BASE_TRAIN_PATH} \
       --adapter_path ${BASE_ADAPTER_PATH} \
       --linear_checkpoint_path ${BASE_LINEAR_CHECKPOINT_PATH} \
+      --model_id ${MODEL_ID} \
       --lr ${LEARNING_RATE} \
       --temperature ${TEMPERATURE} \
       --batch_size_training ${BATCH_SIZE} \
@@ -69,7 +71,8 @@ ARGS="--project ${BASE_PROJECT} \
       ${TRAIN_ON_ALL_DATA} \
       ${LEFT_PADDING} \
       ${NORMALIZE_STR} \
-      ${FORCE_SAMPLING}"
+      ${FORCE_SAMPLING} \
+      --log_with ${LOG_WITH}"
 
 echo "Training arguments:"
 echo "$ARGS"
