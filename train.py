@@ -3,7 +3,7 @@ import torch
 import torch.distributed
 import torch.optim as optim
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import wandb
+
 
 import torch.distributed as dist
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -31,14 +31,18 @@ import random
 import structlog
 logger = structlog.get_logger()
 
-
-
-    
-
-
 def train(configs):
+           
     if not configs.debug:
-        log_with_wandb = True
+        if configs.log_with == 'wandb':
+            import wandb
+            log_with_wandb = True
+        elif configs.log_with == 'trackio':
+            import trackio as wandb
+            log_with_wandb = True
+        else:
+            wandb = None
+            log_with_wandb = False
     else:
         log_with_wandb = False
 
@@ -54,8 +58,16 @@ def train(configs):
         os.environ['WANDB_DEBUG'] = 'true'
         ttt = configs.save_path.strip('/').split('/')[-1]
         logger.info('tags', wandb_tag=ttt)
-        wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt])
-        wandb_run.config.update(configs, allow_val_change=True)
+        if configs.log_with == 'wandb':
+            wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=600), tags=[ttt])
+            wandb_run.config.update(configs, allow_val_change=True)
+        elif configs.log_with == 'trackio':
+            wandb_run = wandb.init(project=configs.project, name=configs.name)
+            configs.tags = ttt
+            config_dict = vars(configs)
+            wandb_run.config.update(config_dict, allow_val_change=True)
+        else:
+            raise ValueError(f"Invalid log_with: {configs.log_with}")
     else:
         wandb_run = None
 
@@ -76,7 +88,7 @@ def train(configs):
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     
     # model loading
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ']), 'Schedule sampling is only supported for EmbeddingModelSS'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                   base_model_id=configs.model_id, 
@@ -148,7 +160,7 @@ def train(configs):
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=configs.max_grad_norm)
             
             if log_with_wandb:
-                losses.append(loss.detach().float())
+                losses.append(loss.detach().float().cpu().item())
                 
                 
             if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(

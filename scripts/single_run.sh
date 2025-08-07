@@ -11,7 +11,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
+    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
     exit 1
 fi
 
@@ -23,7 +23,7 @@ NUM_EPOCHS=${NUM_EPOCHS_LIST[0]}
 WARMUP_RATIO=${WARMUP_RATIOS[0]}
 
 # Generate experiment name
-EXP_NAME="orca_${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+EXP_NAME="${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
 
 # Set paths
 SAVE_PATH="${BASE_SAVE_PATH}"
@@ -67,7 +67,9 @@ ARGS="--project ${BASE_PROJECT} \
       ${SAVE_BEST_MODEL} \
       ${SCHEDULE_SAMPLING} \
       ${TRAIN_ON_ALL_DATA} \
-      ${LEFT_PADDING}"
+      ${LEFT_PADDING} \
+      ${NORMALIZE_STR} \
+      ${FORCE_SAMPLING}"
 
 echo "Training arguments:"
 echo "$ARGS"

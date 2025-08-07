@@ -9,7 +9,7 @@
 
 # Learning rates to test
 # LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
-LEARNING_RATES=(1e-5 2e-5 5e-5)
+LEARNING_RATES=(5e-5)
 
 # Temperature values for contrastive loss
 # TEMPERATURES=(0.03 0.1)
@@ -17,11 +17,11 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(32)
-BATCH_SIZES=(2048)
+BATCH_SIZES=(128)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(400)
-NUM_EPOCHS_LIST=(8000)
+NUM_EPOCHS_LIST=(3000)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -38,20 +38,21 @@ full_finetuning=true
 # dataset configurations
 transformation_type="diverse_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="" #  "", multi_query, ood, sample_transformation
-
+hard_strategy="ood" #  "", multi_query, ood, sample_transformation
+xlarge=false
+normalize=true
 
 # dataset_name="diverse_mlps_multi_query_sm"
 multiple_gpus=false              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 all_data=$small
-
+force_sampling=false
 
 MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="hungarian_contrastive"
+MODE="contrastive_first_label"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -135,6 +136,12 @@ elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
     MODEL_STR="_SSVariableLeftPad"
     SCHEDULE_SAMPLING="--schedule_sampling"
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSAddQ" ]; then
+    MODEL_STR="_SSAddQ"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSAvgQ" ]; then
+    MODEL_STR="_SSAvgQ"
+    SCHEDULE_SAMPLING="--schedule_sampling"
 fi
 
 # =================================================================
@@ -211,10 +218,26 @@ else
     exit 1
 fi
 
+if [ "$normalize" = true ]; then
+    normalize_prefix="normalized_"
+    NORMALIZE_STR="--normalize_embeddings"
+else
+    normalize_prefix=""
+    NORMALIZE_STR=""
+fi
+
+if [ "$force_sampling" = true ]; then
+    FORCE_SAMPLING="--force_sampling"
+    force_sampling_prefix="fsampling_"
+else
+    FORCE_SAMPLING=""
+    force_sampling_prefix=""
+fi
+
 dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
 BASE_SAVE_PATH="results/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
 BASE_TRAIN_PATH="training_datasets/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${data_small_suffix}"
-EXP_DATA_PREFIX="${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
+EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
 
 
 # elif [ "$transformation_type" = "linear" ]; then
@@ -236,8 +259,11 @@ EXP_DATA_PREFIX="${exp_name_large_prefix}${transformation_type_suffix}_gaussian$
 EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Model checkpoints
-# BASE_ADAPTER_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501"
-# BASE_LINEAR_CHECKPOINT_PATH="results/gaussian_synthetic_inf/sm_hungarian_contrastive_lr2e-5_temp0.05_batch64_ep100_warmup0.05/checkpoint_2501_linear.pt"
+MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
+# MODEL_ID="results/gaussian_diverse_mlps_inf/mlps_gaussian_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep16000_warmup0.05/best_model"
+
+# BASE_ADAPTER_PATH="results/gaussian_diverse_mlps_inf/mlps_gaussian_full_finetuning_SS_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep32000_warmup0.05/best_model"
+# BASE_LINEAR_CHECKPOINT_PATH="results/gaussian_diverse_mlps_inf/mlps_gaussian_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep16000_warmup0.05/best_model_linear.pt"
 BASE_ADAPTER_PATH=None
 BASE_LINEAR_CHECKPOINT_PATH=None
 
@@ -284,9 +310,9 @@ if [ "$multiple_gpus" = true ]; then
     GPU_STRING="4"
 else
     # SLURM job time limit
-    TIME_LIMIT="96:00:00"
+    TIME_LIMIT="144:00:00"
     # Memory per job
-    MEMORY="200GB"
+    MEMORY="300GB"
     # Number of CPUs per task
     CPUS_PER_TASK=20
     # GPU configuration

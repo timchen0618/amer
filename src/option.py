@@ -18,6 +18,7 @@ def get_training_args():
     parser.add_argument("--save_path", type=str, default="results/ambiguous_qe_inf/", help="Directory to save results")
     parser.add_argument("--name", type=str, default="toy_contrastive_4_gpus_from_stage2_lr2e5_ep20_temp0.05_warmup0.05", help="Experiment name")
     parser.add_argument("--train_path", type=str, default="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/", help="Path to training dataset")
+    parser.add_argument("--log_with", type=str, default="trackio", help="Log with wandb or trackio")
     
     # Save and load configuration
     parser.add_argument("--save_every_n_steps", type=int, default=50, help="Save model every n steps")

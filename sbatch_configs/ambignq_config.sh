@@ -17,11 +17,11 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(16)
+BATCH_SIZES=(32)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(30)
+NUM_EPOCHS_LIST=(120)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -29,7 +29,7 @@ WARMUP_RATIOS=(0.05)
 
 
 # LR min ratios
-LR_MIN_RATIO=0.1
+LR_MIN_RATIO=0.0
 
 
 # =================================================================
@@ -37,15 +37,16 @@ LR_MIN_RATIO=0.1
 # =================================================================
 
 # Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval"
+BASE_PROJECT="diverse_retrieval_distributed"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
+normalize=true
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_ordered"
+MODE="contrastive_all_labels_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -154,9 +155,16 @@ else
     SAVE_BEST_MODEL=""
 fi
 
+if [ "$normalize" = true ]; then
+    normalize_prefix="normalized_"
+    NORMALIZE_STR="--normalize_embeddings"
+else
+    normalize_prefix=""
+    NORMALIZE_STR=""
+fi
 
 # Experiment prefix
-EXP_PREFIX="ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 BASE_SAVE_PATH="results/ambiguous_qe_inf/"
@@ -165,6 +173,7 @@ BASE_SAVE_PATH="results/ambiguous_qe_inf/"
 BASE_TRAIN_PATH="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
 
 # Model checkpoints
+MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
 BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
 BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
 
@@ -176,7 +185,7 @@ BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_lin
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=250
+SAVE_EVERY_N_STEPS=10
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -200,7 +209,7 @@ MAX_CONCURRENT_JOBS=100
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="4:00:00"
+    TIME_LIMIT="24:00:00"
     # Memory per job
     MEMORY="300GB"
     # Number of CPUs per task
@@ -226,7 +235,8 @@ fi
 EMAIL="hc3337@nyu.edu"
 
 # Singularity configuration
-SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+# SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
 OVERLAY_FILE="/scratch/hc3337/envs/div.ext3"
 
 # HuggingFace token (if needed)

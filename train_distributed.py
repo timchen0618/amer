@@ -1,6 +1,6 @@
 import torch
 import torch.distributed
-import wandb
+
 from accelerate import Accelerator
 from accelerate.utils import set_seed
 
@@ -27,12 +27,19 @@ logger = structlog.get_logger()
 
 def train(configs):
     if not configs.debug:
+        if configs.log_with == 'wandb':
+            import wandb
+        elif configs.log_with == 'trackio':
+            import trackio as wandb
+        else:
+            raise ValueError(f"Invalid log_with: {configs.log_with}")
+        
         log_with_wandb = True
-        log_with_string = 'wandb'
+        log_with_string = configs.log_with
     else:
         log_with_wandb = False
         log_with_string = None  
-        
+    
     # Initialize accelerator
     accelerator = Accelerator(gradient_accumulation_steps=configs.gradient_accumulation_steps, log_with=log_with_string, mixed_precision='fp16')
     
@@ -42,9 +49,15 @@ def train(configs):
             os.environ['WANDB_DEBUG'] = 'true'
             ttt = configs.save_path.strip('/').split('/')[-1]
             logger.info('tags', wandb_tag=ttt)
-            wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=120), tags=[ttt, 'distributed'])
-            wandb_run.config.update(configs, allow_val_change=True)
-            text_table = wandb.Table(columns=["step", "text"])
+            if configs.log_with == 'wandb':
+                wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=600), tags=[ttt, 'distributed'])
+                wandb_run.config.update(configs, allow_val_change=True)
+            elif configs.log_with == 'trackio':
+                wandb_run = wandb.init(project=configs.project, name=configs.name)
+                configs.tags = [ttt, 'distributed']
+                config_dict = vars(configs)
+                wandb_run.config.update(config_dict, allow_val_change=True)
+            # text_table = wandb.Table(columns=["step", "text"])
         
         accelerator.init_trackers(
             project_name=configs.project,   # wandb project name
@@ -74,7 +87,7 @@ def train(configs):
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     total_length = total_length // accelerator.num_processes
     
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ']), 'Schedule sampling is only supported for EmbeddingModelSS'
     # Instantiate the model (we build the model here so that the seed also control new weights initialization)
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                 base_model_id=configs.model_id, 

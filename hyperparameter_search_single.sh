@@ -1,5 +1,5 @@
 #!/bin/bash
-# torch
+
 # Hyperparameter Search Script
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
@@ -11,7 +11,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
+    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
     exit 1
 fi
 
@@ -63,6 +63,7 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
+#SBATCH --partition=h200
 #SBATCH --requeue
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
@@ -75,6 +76,7 @@ ARGS="--project ${BASE_PROJECT} \\
       --train_path ${BASE_TRAIN_PATH} \\
       --adapter_path ${BASE_ADAPTER_PATH} \\
       --linear_checkpoint_path ${BASE_LINEAR_CHECKPOINT_PATH} \\
+      --model_id ${MODEL_ID} \\
       --lr ${lr} \\
       --temperature ${temp} \\
       --batch_size_training ${batch} \\
@@ -96,7 +98,9 @@ ARGS="--project ${BASE_PROJECT} \\
       ${SAVE_BEST_MODEL} \\
       ${SCHEDULE_SAMPLING} \\
       ${TRAIN_ON_ALL_DATA} \\
-      ${LEFT_PADDING}"
+      ${LEFT_PADDING} \\
+      ${NORMALIZE_STR} \\
+      ${FORCE_SAMPLING}"
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} python train.py \$ARGS & wait)"
 EOF

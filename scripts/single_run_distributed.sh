@@ -61,11 +61,21 @@ ARGS="--project ${BASE_PROJECT} \
       --embedding_model_dim ${EMBEDDING_MODEL_DIM} \
       --save_every_n_steps ${SAVE_EVERY_N_STEPS} \
       --model_type ${MODEL_TYPE} \
+      --lr_min_ratio ${LR_MIN_RATIO} \
+      ${SHUFFLE_SEQUENCE} \
+      ${SAVE_ONLY_IMPROVE} \
+      ${TAKE_FIRST} \
+      ${QUESTION_ONLY} \
       ${FULL_FINETUNING} \
       ${SAVE_BEST_MODEL} \
       ${SCHEDULE_SAMPLING} \
       ${TRAIN_ON_ALL_DATA} \
-      ${LEFT_PADDING}"
+      ${LEFT_PADDING} \
+      ${NORMALIZE_STR} \
+      ${FORCE_SAMPLING}"
+
+
+
 
 echo "Training arguments:"
 echo "$ARGS"

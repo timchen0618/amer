@@ -350,14 +350,14 @@ def main(args):
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation':
-                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large':
-                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large':
+                        dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large':
                         dataloader = load_input_data(f'training_datasets/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query':
@@ -414,16 +414,12 @@ def main(args):
                     _id = model_path.strip('/').split('/')[-1]
                     all_scores.append([_id.split('lr')[0].split('finetuning')[1].strip('_') + f'_mnt_{max_new_tokens}'])
                     all_scores.extend(scores)
-        
-        import pandas as pd
-        ### Record Results     
-        score_results = pd.DataFrame(all_scores)
-        score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
-        
-
 
     write_tsv(all_results, 'results.tsv')
-
+    import pandas as pd
+    ### Record Results     
+    score_results = pd.DataFrame(all_scores)
+    score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
