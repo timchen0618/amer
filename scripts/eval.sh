@@ -3,9 +3,8 @@
 # GENERATE ARGS
 data_name="ambiguous_qe"
 training_data_name="ambiguous_qe"
-suffix_list="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep60_warmup0.05"
-#  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05 normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep60_warmup0.05"
-# suffix_list="ambiguous_qe_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch16_ep30_warmup0.05 ambiguous_qe_full_finetuning_SSVariable_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch16_ep30_warmup0.05 ambiguous_qe_full_finetuning_SSVariable_hungarian_contrastive_lr5e-5_temp0.05_batch16_ep30_warmup0.05 ambiguous_qe_full_finetuning_SSVariable_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch16_ep30_warmup0.05"
+suffix_list="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep60_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep60_warmup0.05/  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05"
+
 
 retriever_list="inf"
 use_gpu=true
@@ -19,10 +18,10 @@ topk_list="100 10"
 inference_modes="all first second"
 
 max_new_tokens=0
-num_shards="4"
+num_shards="16"
 checkpoint_num="70000"
 
-
+#
 ###############################
 ### Define strings for args ###
 ###############################
@@ -68,16 +67,16 @@ fi
 ### End Definition of args ###
 ##############################
 
-# python gen_ret_and_eval.py --data_name $data_name \
-#                             --training_data_name $training_data_name \
-#                             --suffix_list $suffix_list \
-#                             --retriever_list $retriever_list \
-#                             $gpu_str --num_shards $num_shards \
-#                             --checkpoint_num $checkpoint_num \
-#                             $max_new_tokens_str $use_best_model_str $compute_loss_str $full_finetuning_str \
-#                             --inference_modes $inference_modes \
-#                             --top_k_per_query 500 \
-#                             --top_k 500
+python gen_ret_and_eval.py --data_name $data_name \
+                            --training_data_name $training_data_name \
+                            --suffix_list $suffix_list \
+                            --retriever_list $retriever_list \
+                            $gpu_str --num_shards $num_shards \
+                            --checkpoint_num $checkpoint_num \
+                            $max_new_tokens_str $use_best_model_str $compute_loss_str $full_finetuning_str \
+                            --inference_modes $inference_modes \
+                            --top_k_per_query 500 \
+                            --top_k 500
 
 for suffix in $suffix_list
 do

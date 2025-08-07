@@ -52,16 +52,28 @@ def train(configs):
             if configs.log_with == 'wandb':
                 wandb_run = wandb.init(project=configs.project, name=configs.name, settings=wandb.Settings(init_timeout=600), tags=[ttt, 'distributed'])
                 wandb_run.config.update(configs, allow_val_change=True)
-            elif configs.log_with == 'trackio':
-                wandb_run = wandb.init(project=configs.project, name=configs.name)
-                configs.tags = [ttt, 'distributed']
-                config_dict = vars(configs)
-                wandb_run.config.update(config_dict, allow_val_change=True)
-            # text_table = wandb.Table(columns=["step", "text"])
+            # elif configs.log_with == 'trackio':
+            #     wandb_run = wandb.init(project=configs.project, name=configs.name)
+            #     configs.tags = [ttt, 'distributed']
+            #     config_dict = vars(configs)
+            #     wandb_run.config.update(config_dict, allow_val_change=True)
         
-        accelerator.init_trackers(
-            project_name=configs.project,   # wandb project name
-        )        
+        if configs.log_with == 'wandb':
+            accelerator.init_trackers(
+                    project_name=configs.project,   # wandb project name,
+                )        
+        elif configs.log_with == 'trackio':
+            init_kwargs = {
+                "trackio": {
+                    'name': configs.name
+                }
+            }
+            configs.tags = [configs.save_path.strip('/').split('/')[-1], 'distributed']
+            config_dict = vars(configs)
+            accelerator.init_trackers(
+                project_name=configs.project,   # trackio project name,
+                config=config_dict, init_kwargs=init_kwargs
+            )
     
     set_seed(configs.seed)
     save_dir = os.path.join(configs.save_path, configs.name)

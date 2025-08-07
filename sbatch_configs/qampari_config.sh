@@ -12,9 +12,9 @@ LEARNING_RATES=(2e-5)
 # TEMPERATURES=(0.03 0.1)
 TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
-BATCH_SIZES=(32)
+BATCH_SIZES=(4)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(120)
+NUM_EPOCHS_LIST=(60)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 # Use hard negatives
@@ -27,16 +27,19 @@ LR_MIN_RATIO=0.0
 # =================================================================
 
 # Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval"
+BASE_PROJECT="diverse_retrieval_inf"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
+LOG_WITH="trackio"
+use_inf_base_model=true
+machine="greene" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_ordered"
+MODE="hungarian_contrastive"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -168,8 +171,14 @@ else
     NORMALIZE_STR=""
 fi
 
+if [ "$use_inf_base_model" = true ]; then
+    base_prefix="inf_"
+else
+    base_prefix=""
+fi
+
 # Experiment prefix
-EXP_PREFIX="${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 BASE_SAVE_PATH="results/qampari_inf"
@@ -182,9 +191,17 @@ else
 fi
 
 # Model checkpoints
-MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-BASE_ADAPTER_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
-BASE_LINEAR_CHECKPOINT_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+if [ "$use_inf_base_model" = true ]; then
+    MODEL_ID="infly/inf-retriever-v1-1.5b"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+else
+    MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
+    BASE_ADAPTER_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+fi
+
+
 
 # =================================================================
 # FIXED HYPERPARAMETERS
@@ -197,7 +214,7 @@ BASE_LINEAR_CHECKPOINT_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_300
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=50
+SAVE_EVERY_N_STEPS=500
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -220,7 +237,7 @@ MAX_CONCURRENT_JOBS=40
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="24:00:00"
+    TIME_LIMIT="48:00:00"
     # Memory per job
     MEMORY="300GB"
     # Number of CPUs per task
@@ -246,8 +263,14 @@ fi
 EMAIL="hc3337@nyu.edu"
 
 # Singularity configuration
-SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
-# SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+if [ "$machine" = "greene" ]; then
+    SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+elif [ "$machine" = "torch" ]; then
+    SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+else
+    echo "Invalid machine"
+    exit 1
+fi
 OVERLAY_FILE="/scratch/hc3337/envs/div.ext3"
 
 # HuggingFace token (if needed)

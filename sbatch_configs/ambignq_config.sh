@@ -44,6 +44,7 @@ multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
+machine="greene" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
 MODE="contrastive_all_labels_shuffled"
@@ -235,8 +236,14 @@ fi
 EMAIL="hc3337@nyu.edu"
 
 # Singularity configuration
-SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
-# SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+if [ "$machine" = "greene" ]; then
+    SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+elif [ "$machine" = "torch" ]; then
+    SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+else
+    echo "Invalid machine"
+    exit 1
+fi
 OVERLAY_FILE="/scratch/hc3337/envs/div.ext3"
 
 # HuggingFace token (if needed)

@@ -48,6 +48,7 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 all_data=$small
 force_sampling=false
+machine="greene" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSS"
 
@@ -310,9 +311,9 @@ if [ "$multiple_gpus" = true ]; then
     GPU_STRING="4"
 else
     # SLURM job time limit
-    TIME_LIMIT="144:00:00"
+    TIME_LIMIT="96:00:00"
     # Memory per job
-    MEMORY="300GB"
+    MEMORY="200GB"
     # Number of CPUs per task
     CPUS_PER_TASK=20
     # GPU configuration
@@ -325,7 +326,15 @@ fi
 EMAIL="hc3337@nyu.edu"
 
 # Singularity configuration
-SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+if [ "$machine" = "greene" ]; then
+    SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+elif [ "$machine" = "torch" ]; then
+    SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+else
+    echo "Invalid machine"
+    exit 1
+fi
+
 OVERLAY_FILE="/scratch/hc3337/envs/div.ext3"
 
 # HuggingFace token (if needed)
