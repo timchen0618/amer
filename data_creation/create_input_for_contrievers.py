@@ -303,17 +303,27 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
     def formulate_text(instruction, queries):
         return [instruction.replace('[QUERY]', query) for query in queries]
 
+    def get_detailed_instruct(task_description: str, query: str) -> str:
+        return f'Instruct: {task_description}\nQuery: {query}'
 
-    instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
-    response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-    instruction = f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]\n{response_template}'
+    if model_name == 'infly/inf-retriever-v1-1.5b':
+        print('Using infly/inf-retriever-v1-1.5b')
+        instruction_template = "Instruct: "
+        response_template = ""
+    elif model_name == "meta-llama/Llama-3.2-1B-Instruct":
+        print('Using meta-llama/Llama-3.2-1B-Instruct')
+        instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
+        response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+    else:
+        raise ValueError(f"Invalid model name: {model_name}")
+    instruction = (f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]\n{response_template}').strip('\n')
     
     # Load dataset
     dataset = load_dataset("json", data_files=str(input_data_path))
 
     # # Define model and tokenizer
     # model = LlamaModel.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
+    # model = AutoModel.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     seperator = tokenizer(response_template)[1:]
@@ -322,8 +332,8 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = model.to(device)
-    model.eval()
+    # model = model.to(device)
+    # model.eval()
     # output size (# data, 128, hidden_size)
     dataloader = DataLoader(tokenized_datasets['train'], batch_size=batch_size, shuffle=False, collate_fn=data_collator)
     
@@ -420,7 +430,7 @@ if __name__ == '__main__':
     rootdir = Path(__file__).parent
     print(rootdir)
     
-    generate_split = 'gaussian_synthetic'
+    generate_split = 'contrastive'
     if generate_split in ['qampari_train', 'qampari_dev']:
         tag='qampari_org'
     elif generate_split in ['wsd_train', 'wsd_dev']:
@@ -560,25 +570,29 @@ if __name__ == '__main__':
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
         split='dev'
         length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
+        # model_name = 'meta-llama/Llama-3.2-1B-Instruct'
+        base_model_name = 'infly/inf-retriever-v1-1.5b'
         
-        use_hard_negatives = True
+        use_hard_negatives = False
         for split in ['train', 'dev']:
-            for length in [5,6,7,8]:
+            # for length in [5,6,7,8]:
+            for length in [2,3,4,5]:
                 # for model_name in ['inf']:
-                for model_name in ['cont', 'stella']:
+                for model_name in ['cont', 'stella', 'inf']:
                     # for data_name in ['nq', 'msmarco']:
-                    for data_name in ['qampari']:
-                        rootdir = Path('../../autoregressive/data_creation/raw_data/')
+                    # for data_name in ['qampari']:
+                    for data_name in ['ambiguous_qe']:
+                        rootdir = Path('raw_data/')
                         if length == 1:
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
-                                                            model_name="meta-llama/Llama-3.2-1B-Instruct",
+                                                            model_name=base_model_name,
                                                             input_data_path=rootdir / f'{data_name}_{split}_question_only.jsonl', 
                                                             positive_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_question_only.npy', 
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings.npy',
                                                             out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_query' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_query')
                         else:
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
-                                                            model_name="meta-llama/Llama-3.2-1B-Instruct",
+                                                            model_name=base_model_name,
                                                             input_data_path=rootdir / f'{data_name}_{split}_question_only_{length}_ctxs.jsonl', 
                                                             positive_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_positive_embeddings_{length}.npy', 
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings_{length}.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings_{length}.npy',

@@ -12,9 +12,9 @@ LEARNING_RATES=(2e-5)
 # TEMPERATURES=(0.03 0.1)
 TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
-BATCH_SIZES=(4)
+BATCH_SIZES=(32)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(60)
+NUM_EPOCHS_LIST=(60 120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 # Use hard negatives
@@ -36,10 +36,10 @@ save_best_model=true            # whether to save best model
 normalize=true
 LOG_WITH="trackio"
 use_inf_base_model=true
-machine="greene" # greene, torch
+machine="torch" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="hungarian_contrastive"
+MODE="contrastive_one_label_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -181,14 +181,28 @@ fi
 EXP_PREFIX="${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
-BASE_SAVE_PATH="results/qampari_inf"
+if [ "$use_inf_base_model" = true ]; then
+    BASE_SAVE_PATH="results/inf/qampari_inf"
+else
+    BASE_SAVE_PATH="results/llama-1b/qampari_inf"
+fi
 
 # Training dataset path
-if [ "$USE_HARD_NEGATIVES" = true ]; then
-    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+if [ "$use_inf_base_model" = true ]; then
+    if [ "$USE_HARD_NEGATIVES" = true ]; then
+        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+    else
+        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+    fi
 else
-    BASE_TRAIN_PATH="training_datasets/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+    if [ "$USE_HARD_NEGATIVES" = true ]; then
+        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+    else
+        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+    fi
 fi
+
+
 
 # Model checkpoints
 if [ "$use_inf_base_model" = true ]; then
@@ -206,10 +220,6 @@ fi
 # =================================================================
 # FIXED HYPERPARAMETERS
 # =================================================================
-
-# Loss function (options: MSE, Hungarian_MSE, Contrastive, Hungarian_Contrastive)
-# LOSS_FUNCTION="Hungarian_Contrastive"
-
 # Model embedding dimension
 EMBEDDING_MODEL_DIM=1536
 

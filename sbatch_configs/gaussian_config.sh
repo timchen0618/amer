@@ -38,7 +38,7 @@ full_finetuning=true
 # dataset configurations
 transformation_type="diverse_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="ood" #  "", multi_query, ood, sample_transformation
+hard_strategy="multi_query" #  "", multi_query, ood, sample_transformation
 xlarge=false
 normalize=true
 
@@ -48,12 +48,14 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 all_data=$small
 force_sampling=false
+
+LOG_WITH="wandb"
 machine="greene" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="contrastive_first_label"
+MODE="contrastive_all_labels_shuffled"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label

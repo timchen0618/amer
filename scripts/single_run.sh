@@ -5,7 +5,7 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/gaussian_config.sh"
+CONFIG_FILE="sbatch_configs/qampari_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"

@@ -27,7 +27,7 @@ Could use `input_ids`, or use the raw text to do the generation.
 ### Path to Data 
 - `data/`: contains the original data structure of different datasets. 
 - `training_datasets/`: training sets 
-    - structure: [dataset]/[retriever]/[actual_dataset]
+    - structure: [base_model]/[dataset]/[retriever]/[actual_dataset]
 - `data_creation/raw_data/`: 
     - `[dataset]_[split]_question_only.jsonl`: the JSONL files that contain only the questions. For generating the data. 
     - `[dataset]_[retriever]/`: the `.npy` file for embeddings of the positive / random negative / hard negative documents. 

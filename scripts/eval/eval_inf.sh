@@ -1,9 +1,12 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="ambiguous_qe"
-training_data_name="ambiguous_qe"
-suffix_list="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep60_warmup0.05  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep60_warmup0.05/  normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05"
+data_name="qampari"
+training_data_name="qampari"
+suffix_list=$1
+# inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch8_ep60_warmup0.05
+# inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep60_warmup0.05
+# inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch8_ep60_warmup0.05
 
 
 retriever_list="inf"
@@ -16,7 +19,7 @@ full_finetuning=true
 has_gold_id=false
 topk_list="100 10"
 inference_modes="all first second"
-
+select_indices_file=""
 max_new_tokens=0
 num_shards="16"
 checkpoint_num="70000"
@@ -63,6 +66,12 @@ else
     full_finetuning_str=""
 fi
 
+if [ "$select_indices_file" != "" ]; then
+    select_indices_file_str="--selected-indices-file $select_indices_file"
+else
+    select_indices_file_str=""
+fi
+
 ##############################
 ### End Definition of args ###
 ##############################
@@ -88,6 +97,6 @@ do
         echo "Evaluating retrieval results for $retriever"
         python eval.py --data-type $data_name \
             --root $ROOT_DIR \
-            --topk $topk_list $has_gold_id_str
+            --topk $topk_list $has_gold_id_str $select_indices_file_str
     done
 done

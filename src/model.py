@@ -1915,7 +1915,14 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
     
     # Load the tokenizer
     if 'full_finetuning' in base_model_id:
-        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+        if 'inf' in base_model_id.split('/')[1]:
+            print('load tokenizer from the starting point, not from the finetuned model', 'infly/inf-retriever-v1-1.5b')
+            tokenizer = AutoTokenizer.from_pretrained("infly/inf-retriever-v1-1.5b")
+        elif 'llama' in base_model_id.split('/')[1]:
+            print('load tokenizer from the starting point, not from the finetuned model', 'meta-llama/Llama-3.2-1B-Instruct')
+            tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B-Instruct")
+        else:
+            raise ValueError(f"Invalid base model id: {base_model_id}")
     else:
         tokenizer = AutoTokenizer.from_pretrained(base_model_id)
     tokenizer.pad_token = tokenizer.eos_token

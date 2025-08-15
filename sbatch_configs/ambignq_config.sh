@@ -21,7 +21,7 @@ BATCH_SIZES=(32)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(120)
+NUM_EPOCHS_LIST=(60 120)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -37,17 +37,20 @@ LR_MIN_RATIO=0.0
 # =================================================================
 
 # Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval_distributed"
+BASE_PROJECT="diverse_retrieval_inf"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
-machine="greene" # greene, torch
+LOG_WITH="trackio"
+use_inf_base_model=true
+machine="torch" # greene, torch
+
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled"
+MODE="contrastive_one_label_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -164,24 +167,46 @@ else
     NORMALIZE_STR=""
 fi
 
+if [ "$use_inf_base_model" = true ]; then
+    base_prefix="inf_"
+else
+    base_prefix=""
+fi
+
 # Experiment prefix
-EXP_PREFIX="${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
-BASE_SAVE_PATH="results/ambiguous_qe_inf/"
+if [ "$use_inf_base_model" = true ]; then
+    BASE_SAVE_PATH="results/inf/ambiguous_qe_inf"
+else
+    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf"
+fi
 
 # Training dataset path
-BASE_TRAIN_PATH="training_datasets/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
+if [ "$use_inf_base_model" = true ]; then
+    BASE_TRAIN_PATH="training_datasets/inf/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
+else
+    BASE_TRAIN_PATH="training_datasets/llama-1b/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
+fi
+
 
 # Model checkpoints
-MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
-BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+if [ "$use_inf_base_model" = true ]; then
+    MODEL_ID="infly/inf-retriever-v1-1.5b"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+else
+    # Model checkpoints
+    MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
+    BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+fi
+
 
 # =================================================================
 # FIXED HYPERPARAMETERS
 # =================================================================
-
 # Model embedding dimension
 EMBEDDING_MODEL_DIM=1536
 

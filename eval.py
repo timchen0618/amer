@@ -123,6 +123,7 @@ def main():
     
     # Load selected indices if provided
     selected_indices = load_selected_indices(args.selected_indices_file)
+    print("selected_indices", selected_indices)
     
     # Determine file list
     if args.file_list is None:
@@ -197,7 +198,7 @@ def main():
             # Collect scores for this file
             if len(args.topk) >= 2:
                 # Assuming we have scores for both topk values
-                score_indices = [1, 2, 3, 6, 7, 8] if len(scores_per_file) > 8 else list(range(1, min(len(scores_per_file), 7)))
+                score_indices = [1, 2, 3, 5, 8, 9, 10, 12] if len(scores_per_file) > 12 else [1,2,3,6,7,8]
                 file_scores = [scores_per_file[i] if i < len(scores_per_file) else 0 for i in score_indices]
                 all_scores.append(file_scores)
     
@@ -208,8 +209,8 @@ def main():
                   'MRecall', 'Recall', 'Precision', 'mAP', 'nDCG', 'MRR', 
                   'MRecall-Repeat', 'Recall-Repeat', 'Precision-Repeat']
     else:
-        columns = ['MRecall@100', 'Recall@100', 'Precision@100', 
-                  'MRecall@10', 'Recall@10', 'Precision@10']
+        columns = ['MRecall@100', 'Recall@100', 'Precision@100', 'nDCG@100', 
+                  'MRecall@10', 'Recall@10', 'Precision@10', 'nDCG@10']
     
     df = pd.DataFrame(all_scores, columns=columns[:len(all_scores[0]) if all_scores else len(columns)], index=file_list)
     df.index.name = 'file_name'
