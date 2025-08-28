@@ -10,5 +10,6 @@ submit.sh
 t_back.py
 training_datasets/
 results.tsv
+*.csv
 
 sync_config.jsonc

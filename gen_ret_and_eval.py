@@ -748,6 +748,7 @@ if __name__ == "__main__":
             print('adapter_path', adapter_path)
             print('base_model_id', args.base_model_id)
             print('linear_checkpoint_path', linear_checkpoint_path)
+            print('args.max_new_tokens', args.max_new_tokens)
             # Generate embeddings
             outputs, loss_with_generation, all_labels_gen = eval_with_generation(
                 adapter_path=adapter_path,
@@ -792,6 +793,9 @@ if __name__ == "__main__":
                         inference_string = ''
                         aggregate_start_idx = 0
                         aggregate_end_idx = None
+                        if args.max_new_tokens is not None:
+                            inference_string = f'_max_new_tokens_{args.max_new_tokens}'
+                            
                     else:
                         raise ValueError(f"Invalid inference mode: {inference_mode}")
                     

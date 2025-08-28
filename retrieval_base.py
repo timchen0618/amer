@@ -377,7 +377,7 @@ def main(args):
 
         output_path = os.path.join(args.output_dir, args.output_file)
         print('start embedding queries')
-        queries = [ex["question"] for ex in data]
+        queries = [ex["question"] if 'question' in ex else ex['question_text'] for ex in data]
         if 'stella' in args.model_name_or_path or ('inf-retriever' in args.model_name_or_path):
             questions_embedding = embed_queries_stella(args, queries, model)
         elif ('LLM2Vec' in args.model_name_or_path) or ('llm2vec' in args.model_name_or_path):
@@ -387,6 +387,9 @@ def main(args):
             questions_embedding = embed_queries(args, queries, model)
         print('finished embedding queries')
         
+        if args.save_embeddings:
+            np.save(os.path.join(args.output_dir, f'questions_embeddings_{Path(path).stem}.npy'), questions_embedding)
+            exit(0)
         # # get top k results
         # start_time_retrieval = time.time()
         # top_ids_and_scores = index.search_knn(questions_embedding, args.n_docs)
@@ -452,5 +455,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_shards", type=int, default=8, help="number of shards")
     parser.add_argument("--use_gpu", action="store_true", help="use gpu")
     parser.add_argument("--use_dummy", action="store_true", help="use dummy model")
+    parser.add_argument("--save_embeddings", action="store_true", help="save embeddings")
     args = parser.parse_args()
     main(args)
