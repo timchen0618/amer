@@ -34,13 +34,6 @@ import structlog
 logger = structlog.get_logger()
 
 
-# import colorlog
-
-# handler = colorlog.StreamHandler()
-# handler.setFormatter(colorlog.ColoredFormatter(
-# 	'%(log_color)s%(levelname)s:%(name)s:%(message)s'))
-# logger = colorlog.getLogger(__name__)
-# logger.addHandler(handler)
 def write_jsonl(data, output_path):
     with open(output_path, 'w') as f:
         for inst in data:
@@ -60,7 +53,6 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
             batch[k] = v.to(device)
         if 'positive_embeddings' in batch and adaptive_max_new_tokens:
             max_new_tokens = batch['positive_embeddings'].size(1)
-        
 
         output = model.generate(
             max_new_tokens=max_new_tokens,
@@ -93,29 +85,7 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
         return torch.cat(all_outputs, dim=0).cpu().numpy(), None, None, all_lengths
 
 
-def load_input_data(loss_function, first_label_only, batch_size_training, get_split, input_data_path):
-    use_contrastive_data = 'Contrastive' in loss_function
-    logger.info('use_contrastive_data', more_than_strings=use_contrastive_data)
-    # Load dataset
-    if use_contrastive_data:
-        collator = contrastive_eval_collator
-    else:
-        collator = partial(mse_eval_collator, first_label_only=first_label_only)
-    full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
-    data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev', 4)
-    
-    # load the corresponding split
-    if get_split == 'train-held-out':
-        dataloader = data_handler.get_dev_dataloader()
-    elif get_split == 'train':
-        dataloader = data_handler.get_sequential_train_dataloader()
-    elif get_split == 'dev':
-        dataloader = data_handler.get_full_dataloader()
-    else:
-        raise ValueError(f"Invalid split: {get_split}")
-    return dataloader
-
-def generate_input_data(loss_function, first_label_only, input_data_path, tokenizer, base_model_type):
+def generate_input_data(input_data_path, tokenizer, base_model_type, batch_size_training, get_split):
         # Tokenize dataset
     def tokenize_function(examples):
         if 'question' in examples:
@@ -161,16 +131,9 @@ def generate_input_data(loss_function, first_label_only, input_data_path, tokeni
     # tokenize dataset => get the question embedding
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     
-    # # Load dataset
-    # use_contrastive_data = 'Contrastive' in loss_function
-    # logger.info('use_contrastive_data', more_than_strings=use_contrastive_data)
-    # # Load dataset
-    # if use_contrastive_data:
-    #     collator = contrastive_eval_collator
-    # else:
-    #     collator = partial(mse_eval_collator, first_label_only=first_label_only)
+    # # Load dataset. Always batch size = 1
     full_dataset = tokenized_datasets['train']
-    data_handler = DataHandler(full_dataset, data_collator, 1, 'dev', 4)
+    data_handler = DataHandler(full_dataset, data_collator, batch_size_training, get_split, 4)
     dataloader = data_handler.get_full_dataloader()
     return dataloader
 
@@ -181,22 +144,15 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
          base_model_id = "meta-llama/Meta-Llama-3-8B-Instruct",
          linear_checkpoint_path = None,
          base_model_type = 'inf',
-         output_path = 'out_train_large.npy',
-         output_lengths_path = 'out_train_large_lengths.npy',
          max_new_tokens = 2,
          embedding_model_dim = 1536,
          compute_loss = True,
          loss_function = 'Contrastive',
-         first_label_only = False,
          batch_size_training = 1,
          use_gt_q_embed = False,
          use_eos = False):
-
-    # instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
-    # response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
-    # instruction = f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]\n{response_template}'
-
     
+    # check base model type
     if base_model_id == 'infly/inf-retriever-v1-1.5b':
         assert base_model_type == 'inf'
     elif base_model_id == 'meta-llama/Llama-3.2-1B-Instruct':
@@ -219,14 +175,8 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
                                   embedding_model_dim=embedding_model_dim, 
                                   loss_function=loss_function)
     
-    # always use hungarian loss for evaluation
-    # always not predict question for evaluation    
-    if Path(input_data_path).is_dir():
-        logger.info(f"Loading input data from {input_data_path}, using the question embedding")
-        dataloader = load_input_data(loss_function, first_label_only, batch_size_training, get_split, input_data_path)
-    else:
-        logger.info(f"Generating input data from {input_data_path}, using the raw text")
-        dataloader = generate_input_data(loss_function, first_label_only, input_data_path, tokenizer, base_model_type)
+    logger.info(f"Generating input data from {input_data_path}, using the raw text")
+    dataloader = generate_input_data(input_data_path, tokenizer, base_model_type, batch_size_training, get_split)
 
 
     with torch.no_grad():
@@ -235,18 +185,10 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
         model.eval()
         
         outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=use_gt_q_embed, use_eos=use_eos, compute_loss=compute_loss)
-        # outputs = outputs.reshape(-1, embedding_model_dim)
         print('len all lengths', len(all_lengths))
-        np.save(output_path, outputs)
-        if len(all_lengths) > 0:
-            np.save(output_lengths_path, np.array(all_lengths))
-        else:
-            print('no lengths')
-        return outputs, loss, all_labels
+        return outputs, loss, all_labels, all_lengths
     
-  
-  
-  
+
 
 def load_data(data_path):
     if data_path.endswith(".json"):
@@ -260,52 +202,6 @@ def load_data(data_path):
                 data.append(example)
     return data
   
-
-
-def read_jsonl(path):
-    with open(path, 'r') as f:
-        return [json.loads(line) for line in f]
-
-
-    
-  
-# def aggregate_different_queries(top_ids_and_scores, MAX_LATENTS, top_k):
-#     # aggregate top_ids_and_scores for different queries
-#     assert len(top_ids_and_scores) % (MAX_LATENTS) == 0, (len(top_ids_and_scores), MAX_LATENTS)
-#     aggregated_top_ids_and_scores = []
-#     for i in range(len(top_ids_and_scores) // MAX_LATENTS):
-#         aggregated_top_ids_and_scores_per_inst = []
-#         ids_and_scores_to_aggregate = top_ids_and_scores[i*MAX_LATENTS:(i+1)*MAX_LATENTS]
-#         # aggregate ids and scores to be a single list, and avoid duplicates
-#         # take from each list in a round-robin manner until reaches top_k
-#         # put them into aggregated_top_ids_and_scores, which follows the format of top_ids_and_scores
-#         seen_ids = set()
-    
-#         # Find the maximum length among all lists
-#         max_len = max(len(list(zip(*sublist))) for sublist in ids_and_scores_to_aggregate)
-#         # Round-robin aggregation
-#         for idx in range(max_len):
-#             for query_results in ids_and_scores_to_aggregate:
-#                 query_results = list(zip(*query_results))
-#                 # Skip if we've processed all items from this query
-#                 if idx >= len(query_results):
-#                     continue
-#                 # print(query_results[idx])
-#                 current_id, current_score = query_results[idx]
-                
-#                 # Only add if we haven't seen this ID before
-#                 if current_id not in seen_ids:
-#                     aggregated_top_ids_and_scores_per_inst.append((current_id, current_score))
-#                     seen_ids.add(current_id)
-                
-#                 if len(aggregated_top_ids_and_scores_per_inst) >= top_k:
-#                     break
-#             if len(aggregated_top_ids_and_scores_per_inst) >= top_k:
-#                 break
-#         aggregated_top_ids_and_scores_per_inst = list(zip(*aggregated_top_ids_and_scores_per_inst))
-#         aggregated_top_ids_and_scores.append(aggregated_top_ids_and_scores_per_inst)
-#     return aggregated_top_ids_and_scores
-
 
 def aggregate_different_queries_by_length(top_ids_and_scores, lengths=None, MAX_LATENTS=None, top_k=100, aggregate_start_idx=0, aggregate_end_idx=None):
     # aggregate top_ids_and_scores for different queries
@@ -447,12 +343,12 @@ def main_test_google(passages_embeddings, passages_path, output_path,
       
 def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, output_path, 
               raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
-              data_path = 'out.npy', lengths_path = "", embedding_size = 4096, top_k_per_query = 100, top_k = 100,
+              question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
               start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None):
     
     # loading question embeddings
-    logger.info('loading question embeddings and attempt to retrieve from %s', data_path)
-    question_embeddings = np.load(data_path)
+    # logger.info('loading question embeddings and attempt to retrieve from %s', data_path)
+    # question_embeddings = np.load(data_path)
     logger.info('question embeddings shape: %s', question_embeddings.shape)
     
     # loading data
@@ -465,8 +361,6 @@ def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, outp
 
     # loading lengths; making sure the data and question embeddings are aligned
     if MAX_LATENTS is None:
-        lengths = np.load(lengths_path)
-        logger.info('loaded lengths from %s', lengths_path)
         assert len(data) == len(lengths), (len(data), len(lengths))
         assert question_embeddings.shape[0] == sum(lengths), (question_embeddings.shape[0], sum(lengths))
     else:
@@ -546,10 +440,10 @@ def parse_args():
                        help='Name of the dataset used for training')
     parser.add_argument('--split', type=str, default='dev', choices=['dev', 'train', 'train-held-out'],
                        help='Data split to evaluate on')
-    parser.add_argument('--suffix_list', nargs='+', default=["_contrastive_from_stage2_lr2e5_ep20_temp0.05_warmup0.05"],
-                       help='List of model suffixes to evaluate')
-    parser.add_argument('--retriever_list', nargs='+', default=['inf'], choices=['stella', 'inf', 'cont'],
-                       help='List of retrievers to use')
+    parser.add_argument('--retriever', type=str, default='inf', choices=['stella', 'inf', 'cont'],
+                       help='Retriever to use')
+    parser.add_argument('--dev_data_path', type=str, default='data_creation/raw_data/ambiguous_qe_dev_question_only.jsonl',
+                       help='Path to the dev data')
     
     # Indexing configuration
     parser.add_argument('--use_gpu', action='store_true', default=False,
@@ -559,17 +453,16 @@ def parse_args():
     parser.add_argument('--save_or_load_index', action='store_true', default=False,
                        help='Whether to save/load index')
     
-    # Checkpoint mapping
-    parser.add_argument('--checkpoint_num', type=int, default=1501,
-                       help='Checkpoint number to use (overrides suffix-based mapping)')
-    parser.add_argument('--use_suffix_mapping', action='store_true', default=False,
-                       help='Whether to use suffix-based checkpoint mapping')
-    parser.add_argument('--use_best_model', action='store_true', default=False,
-                       help='Whether to use best model')
 
     # Model configuration
     parser.add_argument('--base_model_id', type=str, default="meta-llama/Llama-3.2-1B-Instruct",
                        help='Base model ID')
+    parser.add_argument('--adapter_path', type=str, default=None,
+                       help='Adapter path')
+    parser.add_argument('--linear_checkpoint_path', type=str, default=None,
+                       help='Linear checkpoint path')
+    parser.add_argument('--base_model_type', type=str, default='llama-1b',
+                       help='Base model type')
     parser.add_argument('--max_new_tokens', type=int, default=None,
                        help='Maximum number of new tokens to generate')
     parser.add_argument('--compute_loss', action='store_true', default=False,
@@ -581,8 +474,6 @@ def parse_args():
     # Config parameters (previously from config file)
     parser.add_argument('--loss_function', type=str, default='Hungarian_Contrastive',
                        help='Loss function to use')
-    parser.add_argument('--first_label_only', action='store_true', default=False,
-                       help='Whether to use question only')
     parser.add_argument('--batch_size_training', type=int, default=1,
                        help='Batch size for training')
     parser.add_argument('--use_gt_q_embed', action='store_true', default=False,
@@ -612,39 +503,14 @@ def parse_args():
     parser.add_argument('--inference_modes', type=str, nargs='+', default='all',
                        choices=['first', 'second', 'all'],
                        help='Inference mode')
-    parser.add_argument('--full_finetuning', action='store_true', default=False,
-                       help='Whether to use full finetuning')
-    parser.add_argument('--base_model_type', type=str, default='llama-1b',
-                       help='Base model type')
+    parser.add_argument('--output_path', type=str, default=None,
+                       help='Output path')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     print('using base model type: ', args.base_model_type)
-    # Checkpoint mapping dictionaries
-    num_map = {
-        "msmarco_stella": 10000, "msmarco_cont": 10000, "msmarco_inf": 10000,
-        "nq_cont": 70000, "nq_inf": 70000, "nq_stella": 70000,
-        "ambiguous_cont": 1000, "ambiguous_inf": 3501, "ambiguous_stella": 1000,
-        "qampari_cont": 30000, "qampari_inf": 1, "qampari_stella": 30000,
-        "qampari+ambiguous_inf": 10000, "nq+msmarco_inf": 280000, "ambiguous+qampari_inf": 20001,
-        "ambiguous_qe_cont": 1000, "ambiguous_qe_inf": 1501, "ambiguous_qe_stella": 1000
-    }
-    
-    num_map_inst = {
-        "_contrastive_ordered_4_gpus_lr1e4_ep30_temp0.05_warmup0.05": 1601,
-        "_contrastive_4_gpus_lr1e4_ep30_temp0.05_warmup0.05": 1601,
-        "_contrastive_from_stage2_take_first_lr2e5_ep20_temp0.05_warmup0.05": 4001,
-        "_contrastive_take_first_lr2e5_ep20_temp0.05_warmup0.05": 5501,
-        "_contrastive_lr2e5_ep20_temp0.05_warmup0.05": 2501,
-        "_contrastive_4_gpus_lr2e5_ep30_temp0.05_warmup0.05": 1,
-        "_contrastive_from_stage1_lr2e5_ep20_temp0.05_warmup0.05_eos": 35001,
-        "_contrastive_from_stage2_lr2e5_ep20_temp0.05_warmup0.05_eos_new": 5501,
-        "_contrastive_ordered_from_stage2_lr2e5_ep20_temp0.05_warmup0.05_eos_new": 5501,
-        "_contrastive_from_stage2_lr2e5_ep20_temp0.05_warmup0.05": 1501,
-        "_contrastive": 70000
-    }
     
     # Validate Google API usage
     if args.data_name in ['arguana_generated', 'kialo', 'opinionqa']:
@@ -683,267 +549,92 @@ if __name__ == "__main__":
             passages_path = f'data/{args.data_name}/corpus.tsv'
     else:
         passages_path = f'{args.root}/serpapi/contriever_psgs/{args.data_name}'
+                     
+            
+    print('adapter_path', args.adapter_path)
+    if args.adapter_path == "None":
+        args.adapter_path = None
+    print('base_model_id', args.base_model_id)
+    print('linear_checkpoint_path', args.linear_checkpoint_path)
+    print('args.max_new_tokens', args.max_new_tokens)
+    # Generate embeddings
+    outputs, _, _, lengths = eval_with_generation(
+        adapter_path=args.adapter_path,
+        base_model_id=args.base_model_id,
+        linear_checkpoint_path=args.linear_checkpoint_path,
+        base_model_type=args.base_model_type,
+        input_data_path=args.dev_data_path, 
+        get_split=args.split,
+        max_new_tokens=args.max_new_tokens,
+        embedding_model_dim=passage_embeddings_map[args.retriever]["embedding_dim"],
+        compute_loss=args.compute_loss,
+        loss_function=args.loss_function,
+        batch_size_training=args.batch_size_training,
+        use_gt_q_embed=args.use_gt_q_embed,
+        use_eos=args.use_eos
+    )
+    assert len(lengths) > 0 or args.max_new_tokens is None, "Lengths can only be empty if max_new_tokens is None"
     
-    # Set up dev data path
-    if args.data_name == 'ambiguous' or args.data_name == 'ambiguous_qe':
-        dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only_2_to_5_ctxs.jsonl'
-    elif args.data_name == 'qampari':
-        dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only_5_to_8_ctxs.jsonl'
-    elif args.data_name in ['nq', 'msmarco', 'wsd_distinct']:
-        dev_data_path = f'data_creation/raw_data/{args.data_name}_{args.split}_question_only.jsonl'
-    else:
-        dev_data_path = f"data_creation/raw_data/{args.data_name}_question_only.jsonl"
-    
-    # Main evaluation loop
-    for suffix in args.suffix_list:
-        for retriever in args.retriever_list:
-            train_name = f"{args.training_data_name}_{retriever}"
-            dataset_name = f"{args.data_name}_{retriever}"
-            model_name = f"{suffix}"
-            
-            # Set up model paths
-            Path(f"output_embeddings/{train_name}").mkdir(parents=True, exist_ok=True)
-            
-            # Determine checkpoint number
-            if args.use_best_model:
-                if args.full_finetuning:
-                    args.base_model_id = f"results/{args.base_model_type}/{train_name}/{model_name}/best_model"
-                    adapter_path = None
-                else:
-                    adapter_path = f"results/{args.base_model_type}/{train_name}/{model_name}/best_model"
-                linear_checkpoint_path = f"results/{args.base_model_type}/{train_name}/{model_name}/best_model_linear.pt"
-            else:
-                if args.use_suffix_mapping and suffix in num_map_inst:
-                    checkpoint_num = num_map_inst[suffix]
-                else:
-                    checkpoint_num = args.checkpoint_num
-                
-                if args.full_finetuning:
-                    args.base_model_id = f"results/{args.base_model_type}/{train_name}/{model_name}/checkpoint_{checkpoint_num}"
-                    adapter_path = None
-                else:
-                    adapter_path = f"results/{args.base_model_type}/{train_name}/{model_name}/checkpoint_{checkpoint_num}"
-                # adapter_path = "results/nq_inf/toy_contrastive/checkpoint_70000"
-                linear_checkpoint_path = f"results/{args.base_model_type}/{train_name}/{model_name}/checkpoint_{checkpoint_num}_linear.pt"
-                # linear_checkpoint_path = "results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
-            
-            # Set up dataset path
-            if args.data_name == 'ambiguous' or args.data_name == 'ambiguous_qe':
-                dataset_path = f'training_datasets/{args.base_model_type}/{args.data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_contrastive_2_to_5_ctxs'
-            elif args.data_name == 'qampari':
-                dataset_path = f'training_datasets/{args.base_model_type}/{args.data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_contrastive_5_to_8_ctxs'
-            elif args.data_name in ['nq', 'msmarco']:
-                dataset_path = f'training_datasets/{args.base_model_type}/{args.data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_qemb'
-            elif args.data_name in ['arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct']:
-                dataset_path = dev_data_path
-            else:
-                raise ValueError(f"Invalid data name: {args.data_name}")
-            
-            logger.info('loading embeddings dataset from %s', dataset_path)
-            
-            # Set up output paths
-            generated_embeddings_path = f'output_embeddings/{train_name}/out_{dataset_name}_{suffix}_{args.split}.npy'
-            generated_embeddings_lengths_path = f'output_embeddings/{train_name}/out_{dataset_name}_{suffix}_{args.split}_lengths.npy'
-            
-            print('adapter_path', adapter_path)
-            print('base_model_id', args.base_model_id)
-            print('linear_checkpoint_path', linear_checkpoint_path)
-            print('args.max_new_tokens', args.max_new_tokens)
-            # Generate embeddings
-            outputs, loss_with_generation, all_labels_gen = eval_with_generation(
-                adapter_path=adapter_path,
-                base_model_id=args.base_model_id,
-                linear_checkpoint_path=linear_checkpoint_path,
-                base_model_type=args.base_model_type,
-                output_path=generated_embeddings_path,
-                output_lengths_path=generated_embeddings_lengths_path,
-                input_data_path=dataset_path, 
-                get_split=args.split,
-                max_new_tokens=args.max_new_tokens,
-                embedding_model_dim=passage_embeddings_map[retriever]["embedding_dim"],
-                compute_loss=args.compute_loss,
-                loss_function=args.loss_function,
-                first_label_only=args.first_label_only,
-                batch_size_training=args.batch_size_training,
-                use_gt_q_embed=args.use_gt_q_embed,
-                use_eos=args.use_eos
+    for inference_mode in args.inference_modes:
+        if inference_mode == 'first':
+            inference_string = '_single'
+            aggregate_start_idx = 0
+            aggregate_end_idx = 1
+        elif inference_mode == 'second':
+            inference_string = '_from_2nd_to_3rd'
+            aggregate_start_idx = 1
+            aggregate_end_idx = 2
+        elif inference_mode == 'all':
+            inference_string = ''
+            aggregate_start_idx = 0
+            aggregate_end_idx = None
+            if args.max_new_tokens is not None:
+                inference_string = f'_max_new_tokens_{args.max_new_tokens}'      
+        else:
+            raise ValueError(f"Invalid inference mode: {inference_mode}")
+        
+        # start retrieval
+        if not args.google_api:
+            # Load passages
+            logger.info(f"Loading passages from {passages_path}")
+            passages = load_passages(passages_path)
+            passage_id_map = {x["id"]: x for x in passages}
+            # Retrieve and evaluate
+            retrieve(
+                num_shards=args.num_shards, 
+                retriever=args.retriever, 
+                passage_embeddings_map=passage_embeddings_map, 
+                passage_id_map=passage_id_map,
+                raw_data_path=args.dev_data_path,
+                embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
+                lengths=lengths,
+                question_embeddings=outputs,
+                output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
+                MAX_LATENTS=args.max_new_tokens,
+                top_k_per_query=args.top_k_per_query,
+                top_k=args.top_k,
+                start_idx=args.start_idx,
+                end_idx=args.end_idx,
+                aggregate_start_idx=aggregate_start_idx,
+                aggregate_end_idx=aggregate_end_idx
             )
-            logger.info('writing to %s', generated_embeddings_path)
-            outputs_gen = np.load(generated_embeddings_path)
+        else:
+            # Google API path
+            main_test_google(
+                passages_embeddings=passage_embeddings_map[args.retriever]["embedding_path"], 
+                passages_path=passages_path, 
+                raw_data_path=args.dev_data_path,
+                embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
+                lengths=lengths,
+                question_embeddings=outputs,
+                output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
+                MAX_LATENTS=args.max_new_tokens,
+                top_k_per_query=args.top_k_per_query,
+                top_k=args.top_k,
+                start_idx=args.start_idx,
+                end_idx=args.end_idx,
+                aggregate_start_idx=aggregate_start_idx,
+                aggregate_end_idx=aggregate_end_idx
+            )
             
-            output_embedding_dir = f'output_embeddings/{args.training_data_name}_{retriever}/'
-            os.makedirs(output_embedding_dir, exist_ok=True)
-            
-            if not args.google_api:
-                # Load passages
-                logger.info(f"Loading passages from {passages_path}")
-                passages = load_passages(passages_path)
-                passage_id_map = {x["id"]: x for x in passages}
-                
-                for inference_mode in args.inference_modes:
-                    if inference_mode == 'first':
-                        inference_string = '_single'
-                        aggregate_start_idx = 0
-                        aggregate_end_idx = 1
-                    elif inference_mode == 'second':
-                        inference_string = '_from_2nd_to_3rd'
-                        aggregate_start_idx = 1
-                        aggregate_end_idx = 2
-                    elif inference_mode == 'all':
-                        inference_string = ''
-                        aggregate_start_idx = 0
-                        aggregate_end_idx = None
-                        if args.max_new_tokens is not None:
-                            inference_string = f'_max_new_tokens_{args.max_new_tokens}'
-                            
-                    else:
-                        raise ValueError(f"Invalid inference mode: {inference_mode}")
-                    
-                    # Retrieve and evaluate
-                    retrieve(
-                        num_shards=args.num_shards, 
-                        retriever=retriever, 
-                        passage_embeddings_map=passage_embeddings_map, 
-                        passage_id_map=passage_id_map,
-                        raw_data_path=dev_data_path,
-                        embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                        lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                        data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.base_model_type}/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}{inference_string}.jsonl',
-                        MAX_LATENTS=args.max_new_tokens,
-                        top_k_per_query=args.top_k_per_query,
-                        top_k=args.top_k,
-                        start_idx=args.start_idx,
-                        end_idx=args.end_idx,
-                        aggregate_start_idx=aggregate_start_idx,
-                        aggregate_end_idx=aggregate_end_idx
-                    )
-                
-                # retrieve(
-                #     index=index,
-                #     passage_id_map=passage_id_map,
-                #     raw_data_path=dev_data_path,
-                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single{shard_string}.jsonl',
-                #     MAX_LATENTS=args.max_new_tokens,
-                #     top_k_per_query=args.top_k_per_query,
-                #     top_k=args.top_k,
-                #     start_idx=args.start_idx,
-                #     end_idx=args.end_idx,
-                #     aggregate_start_idx=0,
-                #     aggregate_end_idx=1
-                # )
-                
-                # retrieve(
-                #     index=index,
-                #     passage_id_map=passage_id_map,
-                #     raw_data_path=dev_data_path,
-                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd{shard_string}.jsonl',
-                #     MAX_LATENTS=args.max_new_tokens,
-                #     top_k_per_query=args.top_k_per_query,
-                #     top_k=args.top_k,
-                #     start_idx=args.start_idx,
-                #     end_idx=args.end_idx,
-                #     aggregate_start_idx=1,
-                #     aggregate_end_idx=2
-                # )
-                
-                # # Aggregate sharded results
-                # if args.num_shards > 1:
-                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl', args.num_shards)
-                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl', args.num_shards)
-                #     aggregate_sharded_results(f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl', args.num_shards)
-            else:
-                
-                for inference_mode in args.inference_modes:
-                    if inference_mode == 'first':
-                        inference_string = '_single'
-                        aggregate_start_idx = 0
-                        aggregate_end_idx = 1
-                    elif inference_mode == 'second':
-                        inference_string = '_from_2nd_to_3rd'
-                        aggregate_start_idx = 1
-                        aggregate_end_idx = 2
-                    elif inference_mode == 'all':
-                        inference_string = ''
-                        aggregate_start_idx = 0
-                        aggregate_end_idx = None
-                    else:
-                        raise ValueError(f"Invalid inference mode: {inference_mode}")
-                    # Google API path
-                    main_test_google(
-                        passages_embeddings=passage_embeddings_map[retriever]["embedding_path"], 
-                        passages_path=passages_path, 
-                        raw_data_path=dev_data_path,
-                        embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                        lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                        data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                        output_path=f'results/{args.base_model_type}/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}{inference_string}.jsonl',
-                        MAX_LATENTS=args.max_new_tokens,
-                        top_k_per_query=args.top_k_per_query,
-                        top_k=args.top_k,
-                        start_idx=args.start_idx,
-                        end_idx=args.end_idx,
-                        aggregate_start_idx=aggregate_start_idx,
-                        aggregate_end_idx=aggregate_end_idx
-                    )
-                    
-                
-                # # Google API path
-                # main_test_google(
-                #     passages_embeddings=passage_embeddings_map[retriever]["embedding_path"], 
-                #     passages_path=passages_path, 
-                #     raw_data_path=dev_data_path,
-                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}.jsonl',
-                #     MAX_LATENTS=args.max_new_tokens,
-                #     top_k_per_query=args.top_k_per_query,
-                #     top_k=args.top_k,
-                #     start_idx=args.start_idx,
-                #     end_idx=args.end_idx,
-                #     aggregate_start_idx=args.aggregate_start_idx,
-                #     aggregate_end_idx=args.aggregate_end_idx
-                # )
-                
-                # main_test_google(
-                #     passages_embeddings=passage_embeddings_map[retriever]["embedding_path"], 
-                #     passages_path=passages_path, 
-                #     raw_data_path=dev_data_path,
-                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_single.jsonl',   
-                #     top_k_per_query=args.top_k_per_query,
-                #     top_k=args.top_k,
-                #     start_idx=args.start_idx,
-                #     end_idx=args.end_idx,
-                #     aggregate_start_idx=0,
-                #     aggregate_end_idx=1,
-                #     MAX_LATENTS=args.max_new_tokens
-                # )
-                
-                # main_test_google(
-                #     passages_embeddings=passage_embeddings_map[retriever]["embedding_path"], 
-                #     passages_path=passages_path, 
-                #     raw_data_path=dev_data_path,
-                #     embedding_size=passage_embeddings_map[retriever]["embedding_dim"], 
-                #     lengths_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}_lengths.npy',
-                #     data_path=f'{output_embedding_dir}/out_{args.data_name}_{retriever}_{suffix}_{args.split}.npy',
-                #     output_path=f'results/{args.training_data_name}_{retriever}/{model_name}/retrieval_out_{args.split}_{args.data_name}_from_2nd_to_3rd.jsonl',   
-                #     top_k_per_query=args.top_k_per_query,
-                #     top_k=args.top_k,
-                #     start_idx=args.start_idx,
-                #     end_idx=args.end_idx,
-                #     aggregate_start_idx=1,
-                #     aggregate_end_idx=2,
-                #     MAX_LATENTS=args.max_new_tokens
-                # )
-
 
