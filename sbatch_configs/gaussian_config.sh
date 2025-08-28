@@ -36,9 +36,9 @@ BASE_PROJECT="diverse_retrieval"
 full_finetuning=true
 
 # dataset configurations
-transformation_type="diverse_mlps" # linear, diverse_mlps
+transformation_type="new_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="multi_query" #  "", multi_query, ood, sample_transformation
+hard_strategy="rotation" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
 xlarge=false
 normalize=true
 
@@ -48,14 +48,15 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 all_data=$small
 force_sampling=false
+less_ss=true
 
 LOG_WITH="wandb"
-machine="greene" # greene, torch
+machine="torch" # greene, torch
 
 MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="contrastive_all_labels_shuffled"
+MODE="contrastive_all_labels_shuffled_woseq"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -77,6 +78,31 @@ elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "hungarian_contrastive_woseq" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_first_label" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE=""
@@ -85,11 +111,6 @@ elif [ "$MODE" == "contrastive_first_label" ]; then
 elif [ "$MODE" == "mse_all_labels" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
-    TAKE_FIRST=""
-    QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
 elif [ "$MODE" == "mse_all_labels_shuffled" ]; then
@@ -102,11 +123,6 @@ elif [ "$MODE" == "hungarian_contrastive_no_shuffle" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE="--shuffle_sequence"
-    TAKE_FIRST="--take_first"
-    QUESTION_ONLY=""
 elif [ "$MODE" == "mse_one_label_shuffled" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
@@ -117,11 +133,6 @@ elif [ "$MODE" == "mse_first_label" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY="--first_label_only"
-elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
-    LOSS_FUNCTION="Contrastive_wo_seq"
-    SHUFFLE_SEQUENCE=""
-    TAKE_FIRST=""
-    QUESTION_ONLY=""
 fi
 
 
@@ -201,6 +212,8 @@ fi
 
 if [ "$transformation_type" = "diverse_mlps" ]; then
     transformation_type_suffix="mlps"
+elif [ "$transformation_type" = "new_mlps" ]; then
+    transformation_type_suffix="new_mlps"
 elif [ "$transformation_type" = "linear" ]; then
     transformation_type_suffix="linear"
 else
@@ -216,6 +229,14 @@ elif [ "$hard_strategy" = "ood" ]; then
     hard_strategy_suffix="_ood"
 elif [ "$hard_strategy" = "sample_transformation" ]; then
     hard_strategy_suffix="_sample_transformation"
+elif [ "$hard_strategy" = "harder" ]; then
+    hard_strategy_suffix="_harder"
+elif [ "$hard_strategy" = "rotation" ]; then
+    hard_strategy_suffix="_rotation"
+elif [ "$hard_strategy" = "normal" ]; then
+    hard_strategy_suffix="_normal"
+elif [ "$hard_strategy" = "opposite" ]; then
+    hard_strategy_suffix="_opposite"
 else
     echo "Invalid hard strategy"
     exit 1
@@ -237,10 +258,18 @@ else
     force_sampling_prefix=""
 fi
 
+if [ "$less_ss" = true ]; then
+    LESS_SS="--less_ss"
+    less_ss_prefix="less_ss_"
+else
+    LESS_SS=""
+    less_ss_prefix=""
+fi
+
 dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
-BASE_SAVE_PATH="results/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
-BASE_TRAIN_PATH="training_datasets/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${data_small_suffix}"
-EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
+BASE_SAVE_PATH="results/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
+BASE_TRAIN_PATH="training_datasets/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${data_small_suffix}"
+EXP_DATA_PREFIX="${force_sampling_prefix}${less_ss_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
 
 
 # elif [ "$transformation_type" = "linear" ]; then

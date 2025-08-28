@@ -3,25 +3,26 @@
 # GENERATE ARGS
 data_name="qampari"
 training_data_name="qampari"
-suffix_list="inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05 inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05 inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
-# inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05 inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05 inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
+suffix_list="less_SS_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05 less_SS_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
+# suffix_list="less_SS_inf_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep30_warmup0.05"
+file_list="retrieval_out_dev_qampari_max_new_tokens_5.jsonl"
 
 retriever_list="inf"
 use_gpu=true
 use_best_model=true
-compute_loss=true
+compute_loss=false
 full_finetuning=true
-base_model="inf"
+base_model="llama-1b"
 
 # EVALUATE ARGS
 has_gold_id=false
 topk_list="100 10"
 # inference_modes="all first second"
 inference_modes="all"
-# select_indices_file="data/qampari/small_distance_indices_inf.txt"
+# select_indices_file="data/qampari/large_distance_indices_inf.txt"
 select_indices_file=""
 
-max_new_tokens=0
+max_new_tokens=5
 num_shards="8"
 checkpoint_num="30000"
 
@@ -74,6 +75,12 @@ else
     select_indices_file_str=""
 fi
 
+if [ "$file_list" != "" ]; then
+    file_list_str="--file-list $file_list"
+else
+    file_list_str=""
+fi
+
 ##############################
 ### End Definition of args ###
 ##############################
@@ -100,7 +107,7 @@ do
         echo "Evaluating retrieval results for $retriever"
         python eval.py --data-type $data_name \
             --root $ROOT_DIR \
-            --topk $topk_list $has_gold_id_str $select_indices_file_str
+            --topk $topk_list $has_gold_id_str $select_indices_file_str $file_list_str
     done
 done
 
@@ -114,6 +121,6 @@ do
         echo "Evaluating retrieval results for $retriever"
         python eval.py --data-type $data_name \
             --root $ROOT_DIR \
-            --topk $topk_list --has-gold-id $select_indices_file_str
+            --topk $topk_list --has-gold-id $select_indices_file_str $file_list_str
     done
 done

@@ -4,19 +4,19 @@
 # for data_name in "opinionqa" "kialo" "arguana_generated"
 for data_name in "kialo"
 do
-    training_data_name="qampari"
-    # suffix_list="normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05 normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
-    # suffix_list="normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
-    suffix_list="toy_qemb_from_nq"
+    training_data_name="nq"
+    # suffix_list="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05 normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
+    # suffix_list="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
+    suffix_list="toy_contrastive"
 
 
     compute_only=false
 
     retriever_list="inf"
     use_gpu=true
-    use_best_model=false
+    use_best_model=true
     compute_loss=false
-    full_finetuning=false
+    full_finetuning=true
     base_model="llama-1b"
 
     # EVALUATE ARGS
@@ -26,9 +26,9 @@ do
     # select_indices_file="data/ambiguous/qampari_embeddings_data/small_distance_indices_inf.txt"
     select_indices_file=""
 
-    max_new_tokens=1
+    max_new_tokens=2
     num_shards="8"
-    checkpoint_num="30000"
+    checkpoint_num="70000"
 
     #
     ###############################
@@ -106,6 +106,7 @@ do
     #                             --top_k 500 \
     #                             --google_api \
     #                             $base_model_type_str
+
     
     for suffix in $suffix_list
     do
@@ -130,5 +131,6 @@ do
                     $compute_only_str
         done
     done
+    
 done
 

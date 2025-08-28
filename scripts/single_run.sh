@@ -72,6 +72,7 @@ ARGS="--project ${BASE_PROJECT} \
       ${LEFT_PADDING} \
       ${NORMALIZE_STR} \
       ${FORCE_SAMPLING} \
+      ${LESS_SS} \
       --log_with ${LOG_WITH}"
 
 echo "Training arguments:"

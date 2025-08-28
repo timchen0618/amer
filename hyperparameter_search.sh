@@ -5,13 +5,13 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/qampari_config.sh"
+CONFIG_FILE="sbatch_configs/gaussian_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
+    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
@@ -64,7 +64,7 @@ create_sbatch_file() {
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
 #SBATCH --requeue
-#SBATCH --partition=h100_1,stake_h100_1,stake_a100_2,stake_a100_1,cilvr_a100_1
+#SBATCH --partition=h200
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}
@@ -102,6 +102,7 @@ ARGS="--project ${BASE_PROJECT} \\
       ${LEFT_PADDING} \\
       ${NORMALIZE_STR} \\
       ${FORCE_SAMPLING} \\
+      ${LESS_SS} \\
       --log_with ${LOG_WITH}"
 
 

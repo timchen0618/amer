@@ -14,7 +14,7 @@ TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
 BATCH_SIZES=(32)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(60 120)
+NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 # Use hard negatives
@@ -27,19 +27,20 @@ LR_MIN_RATIO=0.0
 # =================================================================
 
 # Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval_inf"
+BASE_PROJECT="diverse_retrieval"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
-multiple_gpus=true              # whether to use multiple GPUs
+multiple_gpus=false              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
-LOG_WITH="trackio"
-use_inf_base_model=true
+LOG_WITH="wandb"
+use_inf_base_model=false
 machine="torch" # greene, torch
+less_ss=true
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_one_label_shuffled"
+MODE="hungarian_contrastive_woseq"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -60,6 +61,21 @@ if [ "$MODE" == "hungarian_contrastive" ]; then
     QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "hungarian_contrastive_woseq" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
@@ -88,11 +104,6 @@ elif [ "$MODE" == "hungarian_contrastive_no_shuffle" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE="--shuffle_sequence"
-    TAKE_FIRST="--take_first"
-    QUESTION_ONLY=""
 elif [ "$MODE" == "mse_one_label_shuffled" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
@@ -103,11 +114,6 @@ elif [ "$MODE" == "mse_first_label" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY="--first_label_only"
-elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
-    LOSS_FUNCTION="Contrastive_wo_seq"
-    SHUFFLE_SEQUENCE=""
-    TAKE_FIRST=""
-    QUESTION_ONLY=""
 fi
 
 
@@ -175,10 +181,18 @@ if [ "$use_inf_base_model" = true ]; then
     base_prefix="inf_"
 else
     base_prefix=""
+fi  
+
+if [ "$less_ss" = true ]; then
+    LESS_SS="--less_ss"
+    less_ss_prefix="less_SS_"
+else
+    LESS_SS=""
+    less_ss_prefix=""
 fi
 
 # Experiment prefix
-EXP_PREFIX="${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -211,8 +225,8 @@ if [ "$use_inf_base_model" = true ]; then
     BASE_LINEAR_CHECKPOINT_PATH=None
 else
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    BASE_ADAPTER_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
 fi
 
 
@@ -224,7 +238,7 @@ fi
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=500
+SAVE_EVERY_N_STEPS=100
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1

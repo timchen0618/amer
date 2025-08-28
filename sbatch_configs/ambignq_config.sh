@@ -47,6 +47,7 @@ normalize=true
 LOG_WITH="trackio"
 use_inf_base_model=true
 machine="torch" # greene, torch
+less_ss=true
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
@@ -68,23 +69,33 @@ if [ "$MODE" == "hungarian_contrastive" ]; then
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_first_label" ]; then
+elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE=""
-    TAKE_FIRST="--take_first"
+    TAKE_FIRST=""
     QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST="--take_first"
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
-    LOSS_FUNCTION="Contrastive"
+elif [ "$MODE" == "hungarian_contrastive_woseq" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_ordered_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_all_labels_ordered_wo_seq" ]; then
-    LOSS_FUNCTION="Contrastive_wo_seq"
+elif [ "$MODE" == "contrastive_first_label" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST="--take_first"
+    QUESTION_ONLY=""
+elif [ "$MODE" == "mse_all_labels" ]; then
+    LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
@@ -93,16 +104,26 @@ elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
     SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "mse_all_labels_shuffled" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "hungarian_contrastive_no_shuffle" ]; then
+    LOSS_FUNCTION="Hungarian_Contrastive"
+    SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "mse_one_label_shuffled" ]; then
+    LOSS_FUNCTION="MSE"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY="--first_label_only"
 elif [ "$MODE" == "mse_first_label" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY="--first_label_only"
-elif [ "$MODE" == "mse_all_labels" ]; then
-    LOSS_FUNCTION="MSE"
-    SHUFFLE_SEQUENCE=""
-    TAKE_FIRST=""
-    QUESTION_ONLY=""
 fi
 
 
@@ -173,8 +194,16 @@ else
     base_prefix=""
 fi
 
+if [ "$less_ss" = true ]; then
+    LESS_SS="--less_ss"
+    less_ss_prefix="less_SS_"
+else
+    LESS_SS=""
+    less_ss_prefix=""
+fi
+
 # Experiment prefix
-EXP_PREFIX="${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -199,8 +228,8 @@ if [ "$use_inf_base_model" = true ]; then
 else
     # Model checkpoints
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    BASE_ADAPTER_PATH="results/nq_inf/toy_contrastive/checkpoint_70000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
 fi
 
 
