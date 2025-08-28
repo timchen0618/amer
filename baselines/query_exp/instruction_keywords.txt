@@ -1,0 +1,4 @@
+Write a list of keywords for the given question. The goal is to help retrieving relevant documents to the question, which contains multiple answers, so generate keywords as diverse as possible. Do not generate similar keywords; they should be distinct. Just answer with the list, and do not generate anything else. Keywords are separated by commas.  
+
+Question:
+[Question]
