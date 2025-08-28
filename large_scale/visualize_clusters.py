@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 import pandas as pd
+import pickle
 
 def read_jsonl(path):
     with open(path, 'r') as f:
@@ -14,39 +15,61 @@ def read_jsonl(path):
 
 def load_clustering_results(labels_path, centroids_path, embeddings_path, retrieved_docs_path):
     """Load clustering results and embeddings."""
-    labels = np.load(labels_path)  # shape: (num_questions, num_documents)
-    centroids = np.load(centroids_path)  # shape: (num_questions, num_clusters, dimension)
+    # labels = np.load(labels_path)  # shape: (num_questions, num_documents)
+    # centroids = np.load(centroids_path)  # shape: (num_questions, num_clusters, dimension)
+    with open(labels_path, 'rb') as f:
+        labels = pickle.load(f)
+    with open(centroids_path, 'rb') as f:
+        centroids = pickle.load(f)
     embeddings = np.load(embeddings_path)  # shape: (num_questions, num_documents, dimension)
+    print('embeddings', embeddings.shape)
+    embeddings = embeddings.reshape(embeddings.shape[0], -1, embeddings.shape[-1])
     retrieved_docs = read_jsonl(retrieved_docs_path)  # list of questions with their retrieved documents
     return labels, centroids, embeddings, retrieved_docs
 
-def create_visualization(labels, centroids, embeddings, retrieved_docs, output_path):
+def create_visualization(labels, centroids, embeddings, retrieved_docs, output_path, max_docs_per_question=500):
     """Create an interactive HTML visualization of the clustering results."""
-    num_questions = len(labels)
+    # num_questions = len(labels)
+    num_questions = 5
     
     # Prepare data for JavaScript
     plot_data = []
     questions = [doc['question'] for doc in retrieved_docs]  # Extract questions
     
     for q_idx in range(num_questions):
+        # Sample documents if there are too many
+        num_docs = len(embeddings[q_idx])
+        print(f"Question {q_idx}: {num_docs} documents")
+        if num_docs > max_docs_per_question:
+            # Randomly sample documents while preserving cluster distribution
+            indices = np.random.choice(num_docs, max_docs_per_question, replace=False)
+            indices = np.sort(indices)  # Keep original order
+            current_embeddings = embeddings[q_idx][indices]
+            current_labels = labels[q_idx][indices]
+            current_doc_ids = indices
+        else:
+            current_embeddings = embeddings[q_idx]
+            current_labels = labels[q_idx]
+            current_doc_ids = range(num_docs)
+        
         # Project embeddings to 2D using PCA for this question
         pca = PCA(n_components=2)
-        embeddings_2d = pca.fit_transform(embeddings[q_idx])  # shape: (num_documents, 2)
+        embeddings_2d = pca.fit_transform(current_embeddings)  # shape: (num_documents, 2)
         
         # Create a DataFrame for easier plotting
         df = pd.DataFrame({
             'x': embeddings_2d[:, 0],
             'y': embeddings_2d[:, 1],
-            'cluster': labels[q_idx],
-            'document_id': range(len(embeddings[q_idx]))
+            'cluster': current_labels,
+            'document_id': current_doc_ids
         })
         
         # Create traces for this question
         question_data = []
         
         # Add scatter plot for documents
-        for cluster in sorted(df['cluster'].unique()):
-            cluster_data = df[df['cluster'] == cluster]
+        for cluster in sorted(df['cluster'].unique())[:7]:
+            cluster_data = df[df['cluster'] == cluster][:20]
             question_data.append({
                 'x': cluster_data['x'].tolist(),
                 'y': cluster_data['y'].tolist(),
@@ -58,8 +81,9 @@ def create_visualization(labels, centroids, embeddings, retrieved_docs, output_p
                 },
                 'text': [f'Document {i}' for i in cluster_data['document_id']],
                 'customdata': [{
-                    'title': retrieved_docs[q_idx]['ctxs'][i]['title'],
-                    'text': retrieved_docs[q_idx]['ctxs'][i]['text']
+                    'title': retrieved_docs[q_idx]['ctxs'][i]['title'] if 'title' in retrieved_docs[q_idx]['ctxs'][i] else f"Document {i}",
+                    # 'title': retrieved_docs[q_idx]['ctxs'][i]['title'] if 'title' in retrieved_docs[q_idx]['ctxs'][i] else f"Document {i} | Source: {(str(retrieved_docs[q_idx]['ctxs'][i].get('source', 'unknown')).replace('_', ' ').replace('"', '').replace("'", '').replace('\\', '')[:50])}",
+                    'text': retrieved_docs[q_idx]['ctxs'][i]['text'] if 'text' in retrieved_docs[q_idx]['ctxs'][i] else retrieved_docs[q_idx]['ctxs'][i]['retrieval text'].replace('_', ' ').replace('"', '').replace("'", '').replace('\\', '')
                 } for i in cluster_data['document_id']],
                 'hoverinfo': 'text'
             })
@@ -79,7 +103,7 @@ def create_visualization(labels, centroids, embeddings, retrieved_docs, output_p
             'text': [f'Centroid {i}' for i in range(len(centroids_2d))],
             'hoverinfo': 'text'
         })
-        
+        print(question_data)
         plot_data.append(question_data)
     
     # Create the HTML with dropdown
