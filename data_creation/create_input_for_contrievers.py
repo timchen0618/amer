@@ -430,7 +430,7 @@ if __name__ == '__main__':
     rootdir = Path(__file__).parent
     print(rootdir)
     
-    generate_split = 'contrastive'
+    generate_split = 'gaussian_synthetic'
     if generate_split in ['qampari_train', 'qampari_dev']:
         tag='qampari_org'
     elif generate_split in ['wsd_train', 'wsd_dev']:
@@ -721,12 +721,12 @@ if __name__ == '__main__':
             # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
             hard_negatives = None
             
-            data = load_synthetic_dataset(data_dir='./gaussian/data/diverse_mlps_ood/', normalize=normalize)
+            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_opposite_large/', normalize=normalize)
             pairs = data['pairs_data'][split]
             
             normalized_str = '_normalized' if normalize else ''
             hard_negatives_str = '' if hard_negatives is None else '_hn'
-            out_data_path = f'gaussian_diverse_mlps_ood_{split}_dataset_1b_contrastive_sm{normalized_str}{hard_negatives_str}' 
+            out_data_path = f'gaussian_new_mlps_opposite_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}' 
             
             
             create_synthetic_dataset(out_dataset_path=out_data_path, 
