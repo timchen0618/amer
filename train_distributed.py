@@ -155,7 +155,10 @@ def train(configs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 if configs.schedule_sampling:
-                    batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                    if configs.less_ss:
+                        batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
+                    else:
+                        batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
                     
                 if configs.force_sampling:
                     batch['sampling_rate'] = 1.0

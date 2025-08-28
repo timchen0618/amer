@@ -208,7 +208,10 @@ def train(configs):
                             batch[k] = v.to(device)
                         
                         if configs.schedule_sampling:
-                            batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                            if configs.less_ss:
+                                batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
+                            else:
+                                batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
                         outputs = model(**batch)
                         
                         loss = outputs.loss
