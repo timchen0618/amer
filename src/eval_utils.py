@@ -142,7 +142,11 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
         mrr_inst = {}
         gold_question = gold_inst['question_text'] if 'question_text' in gold_inst else gold_inst['question']
         docs_question = docs['question_text'] if 'question_text' in docs else docs['question']
-        assert gold_question == docs_question, f'Questions do not match: {gold_question} vs {docs_question}'
+        if "Relevant Keywords:" in docs_question:
+            docs_question = docs_question.split("Relevant Keywords:")[0].split("Question: ")[1].strip('\n').strip()
+            gold_question = gold_question.strip('\n').strip()
+        assert gold_question == docs_question, (f'Questions do not match: {gold_question} vs {docs_question}', len(gold_question), len(docs_question))
+            
         # valid_answers = process_reference(gold_inst)
         # print(valid_answers)
         

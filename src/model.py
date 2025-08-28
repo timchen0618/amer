@@ -126,27 +126,39 @@ class ContrastiveLossWoSeq(nn.Module):
             outputs = F.normalize(outputs, dim=-1)
             positive_embeddings = F.normalize(positive_embeddings, dim=-1)
             negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+        
         # input: (batch_size, k, d)
         # positive_embeddings: (batch_size, k, d)
-        # negative_embeddings: (batch_size, k, d)    
+        # negative_embeddings: (batch_size, k, d) 
+                   
         batch_size, k, d = outputs.shape
-        # labels = torch.arange(batch_size * k).long().to(outputs.device)
-        # outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
-        labels = torch.zeros((batch_size*k)).long().to(outputs.device)
-        # positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        # negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size, k, d)
+        labels = torch.arange(batch_size * k).long().to(outputs.device)
+        outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
+        positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
+        negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
+        all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
+        
         
         # handle distributed training
-        labels = labels + dist_utils.get_rank() * len(all_embeddings)
-        gather_fn = dist_utils.gather
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+        labels = labels + start_idx
+        gather_fn = dist_utils.varsize_gather
         gather_kemb = gather_fn(all_embeddings)
-        # print('gather_kemb', gather_kemb.shape)
-        # print('outputs', outputs.shape)
-        similarity = torch.einsum('bkd,ckd->bkc', outputs / self.temperature, gather_kemb)  # (batch_size, 2 * batch_size, k)
-        # print('similarity', similarity.shape)
-        similarity = similarity.contiguous().view(batch_size*k, -1)
-        # print('outputs', outputs.shape, 'gather_kemb', gather_kemb.shape, 'similarity', similarity.shape)
+        
+        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
+        
+        # apply mask to eliminate in-sequence negative losses
+        similarity_mask = torch.ones_like(similarity)
+        for i in range(batch_size):
+            start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+            start_idx_dim_1 += k*i 
+            start_idx_dim_0 = k*i
+            similarity[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
+            for j in range(k):
+                similarity[start_idx_dim_0+j, start_idx_dim_1+j] = 1
+        similarity = similarity * similarity_mask
+        
         loss = self.ce_loss(similarity, labels)
         loss = loss.mean()
         return loss
@@ -239,6 +251,81 @@ class HungarianContrastiveLoss(nn.Module):
         return torch.stack(losses).mean()
 
 
+
+class HungarianContrastiveLossWoSeq(nn.Module):
+    """
+    Computes the contrastive loss between two batches of sets of vectors.
+    Args:
+        input: Tensor of shape (batch_size, k, d)
+        positive_embeddings: Tensor of shape (batch_size, k, d)
+        negative_embeddings: Tensor of shape (batch_size, k, d)
+    Returns:
+        Scalar tensor: average contrastive loss over the batch
+    """
+    def __init__(self, temperature=0.05, use_eos=False, normalize_embeddings=True):
+        super().__init__()
+        from scipy.optimize import linear_sum_assignment
+        self.linear_sum_assignment = linear_sum_assignment
+        self.temperature = temperature
+        self.ce_loss = nn.CrossEntropyLoss()
+        self.log_softmax = nn.LogSoftmax(dim=1)
+        self.use_eos = use_eos
+        self.normalize_embeddings = normalize_embeddings
+            
+    def forward(self, outputs, positive_embeddings, negative_embeddings):
+        # normalize the embeddings
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+
+        # input: (batch_size, k, d)
+        # positive_embeddings: (batch_size, k, d)
+        # negative_embeddings: (batch_size, k, d)
+        batch_size, k, d = outputs.shape
+        outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
+        positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
+        negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
+        all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        
+        # handle distributed training
+        gather_fn = dist_utils.varsize_gather
+        gather_kemb = gather_fn(all_embeddings)
+        
+        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
+        # apply mask to eliminate in-sequence negative losses
+        similarity_mask = torch.ones_like(similarity)
+        for i in range(batch_size):
+            start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+            start_idx_dim_1 += k*i 
+            start_idx_dim_0 = k*i
+            similarity[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
+            for j in range(k):
+                similarity[start_idx_dim_0+j, start_idx_dim_1+j] = 1
+        no_in_seq_similarity = similarity * similarity_mask
+        denominator = torch.logsumexp(no_in_seq_similarity, dim=1)
+        
+        losses = []
+        for i in range(batch_size):
+            start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+            start_idx += k*i 
+            batch_scores = similarity[k*i:k*(i+1)]
+            cost_matrix = batch_scores[:, start_idx:start_idx+k] - denominator[k*i:k*(i+1)].unsqueeze(1)
+            
+            if self.use_eos:
+                # if use eos, force match the last token to the eos token
+                cost_eos = cost_matrix[-1, -1]
+                cost_matrix = cost_matrix[:-1, :-1]
+            
+            row_ind, col_ind = self.linear_sum_assignment(cost_matrix.detach().cpu().numpy(), maximize=True)
+            costs = cost_matrix[row_ind, col_ind]  # (k, )
+            if self.use_eos:
+                costs = torch.cat([costs, cost_eos.unsqueeze(0)])
+            costs = -(costs)
+            losses.append(costs.mean())
+        return torch.stack(losses).mean()
+
 class EmbeddingModel(nn.Module):
 
     def __init__(
@@ -293,10 +380,12 @@ class EmbeddingModel(nn.Module):
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
             self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'Contrastive_wo_seq':
+        elif loss_function == 'Contrastive_woseq':
             self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Hungarian_Contrastive':
             self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
+        elif loss_function == 'Hungarian_Contrastive_woseq':
+            self.loss_fct = HungarianContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'MSE':
             self.loss_fct = torch.nn.MSELoss()
         else:

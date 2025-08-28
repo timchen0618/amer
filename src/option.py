@@ -44,6 +44,7 @@ def get_training_args():
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning")
     parser.add_argument("--schedule_sampling", action="store_true", default=False, help="Schedule sampling")
     parser.add_argument("--force_sampling", action="store_true", default=False, help="Force sampling")
+    parser.add_argument("--less_ss", action="store_true", default=False, help="Less Schedule Sampling")
     
     # Training options
     parser.add_argument("--shuffle_sequence", action="store_true", default=False, help="Shuffle sequence during training")
@@ -54,7 +55,7 @@ def get_training_args():
     # Model architecture
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")
     parser.add_argument("--loss_function", type=str, default="Hungarian_Contrastive", 
-                       choices=["MSE", "Hungarian_MSE", "Contrastive", "Hungarian_Contrastive", "Contrastive_wo_seq"],
+                       choices=["MSE", "Hungarian_MSE", "Contrastive", "Hungarian_Contrastive", "Contrastive_woseq", "Hungarian_Contrastive_woseq"],
                        help="Loss function to use")
     parser.add_argument("--extra_q_embed", action="store_true", default=False, help="Use extra question embedding")
     parser.add_argument("--compute_loss_on_q", action="store_true", default=False, help="Compute loss on questions")
