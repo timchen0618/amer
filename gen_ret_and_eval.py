@@ -573,7 +573,7 @@ if __name__ == "__main__":
         use_gt_q_embed=args.use_gt_q_embed,
         use_eos=args.use_eos
     )
-    assert len(lengths) > 0 or args.max_new_tokens is None, "Lengths can only be empty if max_new_tokens is None"
+    assert len(lengths) > 0 or args.max_new_tokens is not None, "Lengths can only be empty if max_new_tokens is not None"
     
     for inference_mode in args.inference_modes:
         if inference_mode == 'first':

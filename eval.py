@@ -89,6 +89,8 @@ def parse_arguments():
 def get_split_for_data_type(data_type):
     """Get default split for data type if not specified."""
     if data_type == 'qampari':
+        return 'dev'
+    elif data_type == 'qampari_5_to_8':
         return 'dev_5_to_8'
     elif data_type in ['ambiguous', 'ambiguous_qe']:
         return 'dev_2_to_5'

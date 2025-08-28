@@ -1,20 +1,21 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="ambiguous_qe"
-training_data_name="nq"
-suffix="toy_contrastive"
+data_name="arguana"
+training_data_name="qampari"
+suffix="less_SS_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
 
 retriever="inf"
-use_best_model=false
+use_best_model=true
 compute_loss=false
-full_finetuning=false
+full_finetuning=true
 base_model="llama-1b"
-checkpoint_num="70000"
+checkpoint_num="30000"
+google_api="--google_api"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=2
+max_new_tokens=5
 num_shards="8"
 use_gpu=true
 machine="torch"

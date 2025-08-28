@@ -14,6 +14,8 @@ else
     echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
+source sbatch_configs/eval/eval_utils.sh
+echo "Loading utils from sbatch_configs/eval/eval_utils.sh"
 
 # Create directories if they don't exist
 mkdir -p "$JOB_OUTPUT_DIR"
@@ -58,7 +60,8 @@ ARGS="--data_name $data_name \\
     --top_k_per_query 500 \\
     --top_k 500 \\
     --inference_modes $inference_modes \\
-    --output_path $output_path"
+    --output_path $output_path \\
+    $google_api"
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} python gen_ret_and_eval.py \$ARGS & wait)"
 EOF
