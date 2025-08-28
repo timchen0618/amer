@@ -3,7 +3,7 @@
 # GENERATE ARGS
 data_name="qampari"
 training_data_name="qampari"
-suffix="less_SS_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
+suffix="normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
 
 retriever="inf"
 use_best_model=true

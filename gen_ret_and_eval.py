@@ -281,12 +281,10 @@ def load_index(embedding_size, passages_embeddings, save_or_load_index=False, us
     
 def main_test_google(passages_embeddings, passages_path, output_path, 
               raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
-              data_path = 'out.npy', lengths_path = "", embedding_size = 4096, top_k_per_query = 100, top_k = 100,
+              question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
               start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None):
     
     # loading question embeddings
-    logger.info('loading question embeddings and attempt to retrieve from %s', data_path)
-    question_embeddings = np.load(data_path)
     logger.info('question embeddings shape: %s', question_embeddings.shape)
     
     # loading data
@@ -299,8 +297,6 @@ def main_test_google(passages_embeddings, passages_path, output_path,
 
     # loading lengths; making sure the data and question embeddings are aligned
     if MAX_LATENTS is None:
-        lengths = np.load(lengths_path)
-        logger.info('loaded lengths from %s', lengths_path)
         assert len(data) == len(lengths), (len(data), len(lengths))
         assert question_embeddings.shape[0] == sum(lengths), (question_embeddings.shape[0], sum(lengths))
     else:
