@@ -154,9 +154,12 @@ class ContrastiveLossWoSeq(nn.Module):
             start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
             start_idx_dim_1 += k*i 
             start_idx_dim_0 = k*i
-            similarity[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
+            print('start_idx_dim_0', start_idx_dim_0, 'start_idx_dim_1', start_idx_dim_1, 'k', k)
+            similarity_mask[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
             for j in range(k):
-                similarity[start_idx_dim_0+j, start_idx_dim_1+j] = 1
+                similarity_mask[start_idx_dim_0+j, start_idx_dim_1+j] = 1
+        
+        print('similarity_mask', similarity_mask.shape, similarity_mask[:20,:20])
         similarity = similarity * similarity_mask
         
         loss = self.ce_loss(similarity, labels)
@@ -300,9 +303,9 @@ class HungarianContrastiveLossWoSeq(nn.Module):
             start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
             start_idx_dim_1 += k*i 
             start_idx_dim_0 = k*i
-            similarity[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
+            similarity_mask[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
             for j in range(k):
-                similarity[start_idx_dim_0+j, start_idx_dim_1+j] = 1
+                similarity_mask[start_idx_dim_0+j, start_idx_dim_1+j] = 1
         no_in_seq_similarity = similarity * similarity_mask
         denominator = torch.logsumexp(no_in_seq_similarity, dim=1)
         

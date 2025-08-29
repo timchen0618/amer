@@ -3,18 +3,18 @@
 # GENERATE ARGS
 data_name="ambiguous_qe"
 training_data_name="nq"
-suffix="toy_contrastive"
+suffix="toy_qemb"
 
 retriever="inf"
 use_best_model=false
 compute_loss=false
 full_finetuning=false
 base_model="llama-1b"
-checkpoint_num="70000"
+checkpoint_num="30000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=2
+max_new_tokens=1
 num_shards="8"
 use_gpu=true
 machine="torch"

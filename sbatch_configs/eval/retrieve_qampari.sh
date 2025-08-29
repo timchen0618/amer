@@ -3,18 +3,18 @@
 # GENERATE ARGS
 data_name="qampari"
 training_data_name="qampari"
-suffix="normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05"
+suffix="toy_qemb_from_nq"
 
 retriever="inf"
-use_best_model=true
+use_best_model=false
 compute_loss=false
-full_finetuning=true
+full_finetuning=false
 base_model="llama-1b"
 checkpoint_num="30000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=5
+max_new_tokens=1
 num_shards="8"
 use_gpu=true
 machine="torch"

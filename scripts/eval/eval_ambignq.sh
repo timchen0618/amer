@@ -1,8 +1,8 @@
 #!/bin/bash
 # GENERATE ARGS
 data_name="ambiguous_qe"
-training_data_name="nq"
-suffix_list="toy_contrastive"
+training_data_name="ambiguous_qe"
+suffix_list="from_stage1_less_SS_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05 from_stage1_less_SS_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05 from_stage1_less_SS_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
 file_list="retrieval_out_dev_ambiguous_qe_max_new_tokens_2.jsonl"
 retriever="inf"
 base_model="llama-1b"

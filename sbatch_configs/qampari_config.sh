@@ -30,7 +30,7 @@ LR_MIN_RATIO=0.0
 BASE_PROJECT="diverse_retrieval"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
-multiple_gpus=false              # whether to use multiple GPUs
+multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
@@ -40,7 +40,7 @@ machine="torch" # greene, torch
 less_ss=true
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="hungarian_contrastive_woseq"
+MODE="contrastive_all_labels_shuffled_woseq"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -77,6 +77,11 @@ elif [ "$MODE" == "hungarian_contrastive_woseq" ]; then
 elif [ "$MODE" == "contrastive_all_labels_ordered_woseq" ]; then
     LOSS_FUNCTION="Contrastive_woseq"
     SHUFFLE_SEQUENCE=""
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_first_label" ]; then

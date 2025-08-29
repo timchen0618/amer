@@ -38,7 +38,7 @@ full_finetuning=true
 # dataset configurations
 transformation_type="new_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="rotation" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
+hard_strategy="opposite" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
 xlarge=false
 normalize=true
 

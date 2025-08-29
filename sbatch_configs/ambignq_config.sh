@@ -21,7 +21,7 @@ BATCH_SIZES=(32)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
-NUM_EPOCHS_LIST=(60 120)
+NUM_EPOCHS_LIST=(120)
 
 # Warmup ratios
 # WARMUP_RATIOS=(0.05 0.1)
@@ -37,21 +37,21 @@ LR_MIN_RATIO=0.0
 # =================================================================
 
 # Project name (will be used in wandb)
-BASE_PROJECT="diverse_retrieval_inf"
+BASE_PROJECT="diverse_retrieval"
 full_finetuning=true            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
-LOG_WITH="trackio"
-use_inf_base_model=true
+LOG_WITH="wandb"
+use_inf_base_model=false
 machine="torch" # greene, torch
 less_ss=true
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_one_label_shuffled"
+MODE="contrastive_all_labels_shuffled_woseq"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -74,6 +74,11 @@ elif [ "$MODE" == "contrastive_all_labels_ordered" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
+    LOSS_FUNCTION="Contrastive"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_one_label_shuffled" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE="--shuffle_sequence"
@@ -89,6 +94,11 @@ elif [ "$MODE" == "contrastive_all_labels_ordered_woseq" ]; then
     SHUFFLE_SEQUENCE=""
     TAKE_FIRST=""
     QUESTION_ONLY=""
+elif [ "$MODE" == "contrastive_all_labels_shuffled_woseq" ]; then
+    LOSS_FUNCTION="Contrastive_woseq"
+    SHUFFLE_SEQUENCE="--shuffle_sequence"
+    TAKE_FIRST=""
+    QUESTION_ONLY=""
 elif [ "$MODE" == "contrastive_first_label" ]; then
     LOSS_FUNCTION="Contrastive"
     SHUFFLE_SEQUENCE=""
@@ -97,11 +107,6 @@ elif [ "$MODE" == "contrastive_first_label" ]; then
 elif [ "$MODE" == "mse_all_labels" ]; then
     LOSS_FUNCTION="MSE"
     SHUFFLE_SEQUENCE=""
-    TAKE_FIRST=""
-    QUESTION_ONLY=""
-elif [ "$MODE" == "contrastive_all_labels_shuffled" ]; then
-    LOSS_FUNCTION="Contrastive"
-    SHUFFLE_SEQUENCE="--shuffle_sequence"
     TAKE_FIRST=""
     QUESTION_ONLY=""
 elif [ "$MODE" == "mse_all_labels_shuffled" ]; then
@@ -203,7 +208,7 @@ else
 fi
 
 # Experiment prefix
-EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="from_stage1_${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -228,8 +233,10 @@ if [ "$use_inf_base_model" = true ]; then
 else
     # Model checkpoints
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+    # BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
+    # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000_linear.pt"
 fi
 
 
