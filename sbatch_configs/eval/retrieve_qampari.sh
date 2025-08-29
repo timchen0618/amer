@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari"
+data_name="limit"
 training_data_name="qampari"
 suffix="toy_qemb_from_nq"
 
@@ -15,7 +15,7 @@ checkpoint_num="30000"
 # inference_modes="all first second"
 inference_modes="all"
 max_new_tokens=1
-num_shards="8"
+num_shards="1"
 use_gpu=true
 machine="torch"
 

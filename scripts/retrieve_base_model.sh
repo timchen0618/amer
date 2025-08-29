@@ -77,32 +77,57 @@ rootdir="/scratch/hc3337"
 #      --output_file "ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs_query_exp.jsonl"
 
 
+python retrieval_base.py \
+     --model_name_or_path infly/inf-retriever-v1-1.5b \
+     --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit/corpus.tsv" \
+     --passages_embeddings "${data_dir}/inf/limit/*" \
+     --data "/scratch/hc3337/projects/autoregressive/data/questions/limit_question_only.jsonl"  \
+     --output_dir results/base_retrievers/inf/ \
+     --projection_size 1536 \
+     --per_gpu_batch_size 4 \
+     --n_docs 500 \
+     --use_gpu \
+     --num_shards 1 \
+     --output_file "limit_retrieved.jsonl" 
 
 
-# EVALUATE ARGS
-has_gold_id=false
-# select_indices_file="data/ambiguous/qampari_embeddings_data/small_distance_indices_inf.txt"
-topk_list="100 10"
-# ['qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct']
-data_name="qampari"
-file_list="dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.5.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.75.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.9.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.95.jsonl"
+python retrieval_base.py \
+     --model_name_or_path infly/inf-retriever-v1-1.5b \
+     --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit-small/corpus.tsv" \
+     --passages_embeddings "${data_dir}/inf/limit-small/*" \
+     --data "/scratch/hc3337/projects/autoregressive/data/questions/limit-small_question_only.jsonl"  \
+     --output_dir results/base_retrievers/inf/ \
+     --projection_size 1536 \
+     --per_gpu_batch_size 4 \
+     --n_docs 500 \
+     --use_gpu \
+     --num_shards 1 \
+     --output_file "limit-small_retrieved.jsonl" 
 
-if [ "$has_gold_id" = true ]; then
-    has_gold_id_str="--has-gold-id"
-else
-    has_gold_id_str=""
-fi
+# # EVALUATE ARGS
+# has_gold_id=false
+# # select_indices_file="data/ambiguous/qampari_embeddings_data/small_distance_indices_inf.txt"
+# topk_list="100 10"
+# # ['qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct']
+# data_name="qampari"
+# file_list="dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.5.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.75.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.9.jsonl dev_data_gt_qampari_corpus_5_to_8_ctxs_reranked_l0.95.jsonl"
 
-if [ "$select_indices_file" != "" ]; then
-    select_indices_file_str="--selected-indices-file $select_indices_file"
-else
-    select_indices_file_str=""
-fi
+# if [ "$has_gold_id" = true ]; then
+#     has_gold_id_str="--has-gold-id"
+# else
+#     has_gold_id_str=""
+# fi
+
+# if [ "$select_indices_file" != "" ]; then
+#     select_indices_file_str="--selected-indices-file $select_indices_file"
+# else
+#     select_indices_file_str=""
+# fi
 
 
-python eval.py --data-type $data_name \
-    --root /scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/ \
-    --topk $topk_list $has_gold_id_str $select_indices_file_str --file-list ${file_list}
+# python eval.py --data-type $data_name \
+#     --root /scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/ \
+#     --topk $topk_list $has_gold_id_str $select_indices_file_str --file-list ${file_list}
 
 
     

@@ -4,8 +4,9 @@
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
 
+use_sbatch=false
 # Load configuration
-CONFIG_FILE="sbatch_configs/eval/retrieve_ambignq.sh"
+CONFIG_FILE="sbatch_configs/eval/retrieve_qampari.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
@@ -69,16 +70,34 @@ EOF
     echo "$sbatch_file"
 }
 
+if [ "$use_sbatch" = true ]; then
+    # Create SBATCH file
+    sbatch_file=$(create_sbatch_file)
+    # Submit job 
+    job_id=$(sbatch "$sbatch_file" | awk '{print $4}')
+    echo "Submitted job with ID: $job_id"
+    echo "Job output will be in: $JOB_OUTPUT_DIR/run_${exp_name}.out"
 
-
-# Create SBATCH file
-sbatch_file=$(create_sbatch_file)
-# Submit job 
-job_id=$(sbatch "$sbatch_file" | awk '{print $4}')
-echo "Submitted job with ID: $job_id"
-echo "Job output will be in: $JOB_OUTPUT_DIR/run_${exp_name}.out"
-
-echo ""
-echo "Evaluation setup complete!"
-echo "SBATCH files stored in: $SBATCH_DIR"
-echo "Job outputs will be in: $JOB_OUTPUT_DIR"
+    echo ""
+    echo "Evaluation setup complete!"
+    echo "SBATCH files stored in: $SBATCH_DIR"
+    echo "Job outputs will be in: $JOB_OUTPUT_DIR"
+else
+    echo "Running evaluation without sbatch"
+    python gen_ret_and_eval.py --data_name $data_name \
+    --training_data_name $training_data_name \
+    --split $split \
+    --retriever $retriever \
+    --dev_data_path $dev_data_path \
+    $gpu_str --num_shards $num_shards \
+    --base_model_id $base_model_id \
+    --adapter_path $adapter_path \
+    --linear_checkpoint_path $linear_checkpoint_path \
+    --base_model_type $base_model \
+    $max_new_tokens_str $compute_loss_str \
+    --top_k_per_query 500 \
+    --top_k 500 \
+    --inference_modes $inference_modes \
+    --output_path $output_path \
+    $google_api
+fi

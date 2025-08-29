@@ -429,7 +429,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate embeddings and perform retrieval evaluation')
     # Data configuration
     parser.add_argument('--data_name', type=str, default='ambiguous_qe', 
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small'],
                        help='Name of the dataset to evaluate on')
     parser.add_argument('--training_data_name', type=str, default='ambiguous_qe',
                        choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
@@ -541,6 +541,8 @@ if __name__ == "__main__":
             passages_path = f'data/nq/corpus.tsv'
         elif args.data_name == 'wsd_distinct':
             passages_path = f'data/wsd/distinct/corpus.tsv'
+        elif args.data_name == 'limit' or args.data_name == 'limit-small':
+            passages_path = f'data/limit/data/{args.data_name}/corpus.tsv'
         else:
             passages_path = f'data/{args.data_name}/corpus.tsv'
     else:
