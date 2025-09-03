@@ -100,6 +100,7 @@ def stats(output_dirs=['outputs/q_docs_wctx_1/', 'outputs/q_docs_woctx_1/', 'out
         num_words_list_docs = []
         questions = []
         docs = []
+        
         if 'existing' in output_dir:
             data = read_jsonl(f'{output_dir}/existing_q2docs_1k.jsonl')
             # q_data = read_jsonl('../data/eli5+researchy_questions_1k.jsonl')[:200]
@@ -119,6 +120,8 @@ def stats(output_dirs=['outputs/q_docs_wctx_1/', 'outputs/q_docs_woctx_1/', 'out
                         if len(inst['positive_documents']) > 0 and isinstance(inst['positive_documents'], list):
                             docs += inst['positive_documents']
                 i += 1
+                if i >= 20:
+                    break
         num_questions = len(questions)
         num_docs = len(docs)
         num_words_list_questions += [len(word_tokenize(question)) for question in questions]
@@ -128,12 +131,27 @@ def stats(output_dirs=['outputs/q_docs_wctx_1/', 'outputs/q_docs_woctx_1/', 'out
         print(f'{output_dir} has {sum(num_words_list_questions)/float(num_questions):.2f} words per question')
         print(f'{output_dir} has {sum(num_words_list_docs)/float(num_docs):.2f} words per document')
 
+    def get_domains():
+        domains = json.load(open('outputs/domains.json', 'r'))
+        all_data = [['domain', 'sub_domain']]
+        num_domains = 0
+        num_sub_domains = 0
+        for domain, sub_domains in tqdm(domains.items()):
+            all_data.append([domain, ''])
+            num_domains += 1
+            for sub_domain in sub_domains:
+                all_data.append(['', sub_domain])
+                num_sub_domains += 1
+        print('total number of domains', num_domains)
+        print('total number of sub_domains', num_sub_domains)
+        write_csv(all_data, 'outputs/domains.csv')
+        
 if __name__ == '__main__':
     # # main()
     # # output_csv()
     # # output_docs_csv('vllm_outputs/q_docs_woctx_2')
     # # output_docs_csv('vllm_outputs/q_docs_woctx_3')
-    # stats(output_dirs=['vllm_outputs/q_docs_woctx_4_100/', 'vllm_outputs/q_docs_woctx_4_200/', 'vllm_outputs/q_docs_woctx_4_150/'])
+    stats(output_dirs=['vllm_outputs/q_docs_existing_1/'])
     
     # # process_docs('vllm_outputs/q_docs_woctx_1')
     # process_docs('vllm_outputs/q_docs_woctx_4_100')
@@ -142,16 +160,4 @@ if __name__ == '__main__':
     
     # # stats()
     
-    domains = json.load(open('outputs/domains.json', 'r'))
-    all_data = [['domain', 'sub_domain']]
-    num_domains = 0
-    num_sub_domains = 0
-    for domain, sub_domains in tqdm(domains.items()):
-        all_data.append([domain, ''])
-        num_domains += 1
-        for sub_domain in sub_domains:
-            all_data.append(['', sub_domain])
-            num_sub_domains += 1
-    print('total number of domains', num_domains)
-    print('total number of sub_domains', num_sub_domains)
-    write_csv(all_data, 'outputs/domains.csv')
+    

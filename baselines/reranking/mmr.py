@@ -7,9 +7,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from torch import Tensor
-from transformers import AutoTokenizer, AutoModel
-
 
 # def collect_retrieval_results(corpus, retriever)
 
@@ -169,8 +166,22 @@ def main(args):
     
     reranker = Reranker(tokenizer=tokenizer, model=model, device=device, args=args)
     
-    rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
-    data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+    # rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+    # data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+    # 
+    
+    if args.base_retriever == 'inf':
+        # base
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+        data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+    elif args.base_retriever == 'qampari_stage1':
+        # stage 1 qampari
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_1']
+    elif args.base_retriever == 'nq_stage2':
+        # stage 2 nq
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/nq_inf/toy_contrastive/'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
     logger.info('collecting retrieval results')
     
     for data_type in data_types:
@@ -179,7 +190,7 @@ def main(args):
         # print('max_score:', max_score)
         # print('mean_score:', mean_score)
         
-        retrieval_results = read_jsonl(f'{rootdir}/{data_type}.json')
+        retrieval_results = read_jsonl(f'{rootdir}/{data_type}.jsonl')
         reranker.load_similarity_matrix(f'{rootdir}/{data_type}_similarities.npy')
         reranked_results = reranker.rerank(retrieval_results)
         write_jsonl(f'{rootdir}/{data_type}_reranked_l{args._lambda}.jsonl', reranked_results)
@@ -190,7 +201,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--_lambda", type=float, default=0.9)
-    parser.add_argument("--num_docs", type=int, default=100)
+    parser.add_argument("--num_docs", type=int, default=500)
+    parser.add_argument("--base_retriever", type=str, default='inf', choices=['inf', 'qampari_stage1', 'nq_stage2'])
     args = parser.parse_args()
     
     main(args)

@@ -242,7 +242,7 @@ def main():
             
         thinking_contents, contents = generate(all_prompts, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
             
-        for thinking_content, content in zip(thinking_contents, contents):
+        for thinking_content, content, question in zip(thinking_contents, contents, questions):
             try:
                 data = literal_eval(content)
             except:

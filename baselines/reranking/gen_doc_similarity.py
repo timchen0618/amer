@@ -56,14 +56,25 @@ def main(args):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
-    data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+    
+    if args.base_retriever == 'inf':
+        # base
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+        data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+    elif args.base_retriever == 'qampari_stage1':
+        # stage 1 qampari
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_1']
+    elif args.base_retriever == 'nq_stage2':
+        # stage 2 nq
+        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/nq_inf/toy_contrastive/'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
     
     
     doc_sim = DocSimilarity(model, tokenizer, device, args)
 
     for data_type in data_types:
-        retrieval_results = read_jsonl(f'{rootdir}/{data_type}.json')
+        retrieval_results = read_jsonl(f'{rootdir}/{data_type}.jsonl')
         for ret_inst in retrieval_results:
             doc_sim.similarity([doc['text'] + ' ' + doc['title'] if 'title' in doc else doc['text'] for doc in ret_inst['ctxs'][:args.num_docs]])
         
@@ -88,6 +99,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="infly/inf-retriever-v1-1.5b")
     parser.add_argument("--num_docs", type=int, default=500)
+    parser.add_argument("--base_retriever", type=str, default='inf', choices=['inf', 'qampari_stage1', 'nq_stage2'])
     args = parser.parse_args()
     
     main(args)

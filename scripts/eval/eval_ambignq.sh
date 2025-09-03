@@ -2,7 +2,7 @@
 # GENERATE ARGS
 data_name="ambiguous_qe"
 training_data_name="nq"
-suffix_list="toy_qemb"
+suffix_list="toy_contrastive"
 file_list="retrieval_out_dev_ambiguous_qe_max_new_tokens_1.jsonl"
 retriever="inf"
 base_model="llama-1b"

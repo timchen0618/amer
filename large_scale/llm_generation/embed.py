@@ -102,7 +102,7 @@ if __name__ == "__main__":
     domains = json.load(open('outputs/domains.json', 'r'))
     # output_dir = 'outputs/q_docs_wctx_1/'
     # for output_dir in ['outputs/q_docs_wctx_1/', 'outputs/q_docs_woctx_1/', 'outputs/q_docs_wctx/', 'outputs/q_docs_woctx/', 'outputs/q_docs_existing/', 'outputs/q_docs_existing_1/']:
-    for output_dir in ['vllm_outputs/q_docs_woctx_4_100/', 'vllm_outputs/q_docs_woctx_4_200/', 'vllm_outputs/q_docs_woctx_4_150/']:
+    for output_dir in ['vllm_outputs/q_docs_existing_1/']:
         print('Generating embeddings for', output_dir)
         all_data = {"question_embeddings": [], "document_embeddings": []}
         questions = []
@@ -110,7 +110,8 @@ if __name__ == "__main__":
             data = read_jsonl(f'{output_dir}/existing_q2docs_1k.jsonl')
             # read questions from the data
             # q_data = read_jsonl('../data/eli5+researchy_questions_1k.jsonl')[:200]
-            questions += [inst['question'] for inst in data]
+            # questions += [inst['question'] for inst in data]
+            questions = [inst['question'] for inst in read_jsonl('../data/eli5+researchy_questions_1k.jsonl')]
             
             for inst in data:
                 if len(inst['positive_documents']) == 0 or not isinstance(inst['positive_documents'], list):

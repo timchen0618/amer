@@ -2,8 +2,8 @@
 # GENERATE ARGS
 data_name="qampari_5_to_8"
 training_data_name="qampari"
-suffix_list="less_SS_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_woseq_lr2e-5_temp0.05_batch32_ep120_warmup0.05/"
-file_list="retrieval_out_dev_qampari_5_to_8_max_new_tokens_5.jsonl"
+suffix_list="toy_qemb_from_nq"
+file_list="retrieval_out_dev_qampari_5_to_8_max_new_tokens_1_reranked_l0.9.jsonl"
 retriever="inf"
 base_model="llama-1b"
 

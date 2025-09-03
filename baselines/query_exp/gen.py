@@ -57,31 +57,38 @@ def write_tsv(filename, data):
 
 instruction = open('instruction_keywords.txt', 'r').read()
 
-rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
-data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+# base
+# rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+# data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
+
+# # stage 1 qampari
+# rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
+# data_types = ['retrieval_out_dev_qampari_single.jsonl']
+
+
+# stage 2 nq
+rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/nq_inf/toy_contrastive/'
+data_types = ['retrieval_out_dev_ambiguous_qe_single.jsonl']
 
 for data_type in data_types:
-    input_file = f'{rootdir}/{data_type}.json'
+    input_file = f'{rootdir}/{data_type}'
 
     out_data = []
     out_file = Path(input_file).stem + '_query_exp.jsonl'
 
     data = read_jsonl(input_file)
-    if data_type == 'ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs':
-        data = data[34:]
-    elif data_type == 'dev_data_gt_qampari_corpus_5_to_8_ctxs':
-        data = data[3:]
         
     client = OpenAI()
 
     for inst in tqdm(data):
         # try:
-        response = pred_gpt4(client, inst['question'])
+        question = inst['question'] if 'question' in inst else inst['question_text']
+        response = pred_gpt4(client, question)
         # except:
         #     print('skipped question', inst['question'])
         #     continue
         out_data.append(inst)
-        out_data[-1]['question'] = f'Question: {inst["question"]} \nRelevant Keywords: {response}'
+        out_data[-1]['question'] = f'Question: {question} \nRelevant Keywords: {response}'
         
         print('writing to', out_file)
         write_jsonl_line(out_file, inst)
