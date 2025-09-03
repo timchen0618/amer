@@ -184,6 +184,8 @@ def train(configs):
                             "train/step": epoch * len(train_dataloader) + step,
                             "train/loss": sum(losses)/ len(losses) 
                             * configs.gradient_accumulation_steps,
+                            "train/sampling_rate": batch['sampling_rate'],
+                            "train/lr": scheduler.get_last_lr()[0]
                         }
                         accelerator.log(log_dict, step=total_train_steps)
                         losses = []

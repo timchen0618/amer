@@ -177,7 +177,8 @@ def train(configs):
                     "train/step": epoch * len(train_dataloader) + step,
                     "train/loss": sum(losses)/ len(losses) 
                     * configs.gradient_accumulation_steps,
-                    "train/lr": scheduler.get_last_lr()[0]
+                    "train/lr": scheduler.get_last_lr()[0],
+                    "train/sampling_rate": batch['sampling_rate']
                 }
                 wandb_run.log(log_dict, step=total_train_steps)
                 losses = []

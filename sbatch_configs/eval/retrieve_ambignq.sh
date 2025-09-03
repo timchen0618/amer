@@ -1,23 +1,23 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="ambiguous_qe"
-training_data_name="ambiguous_qe"
-suffix="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
+data_name="ambiguous_qe_query_exp"
+training_data_name="nq"
+suffix="toy_contrastive"
 
 retriever="inf"
-use_best_model=true
+use_best_model=false
 compute_loss=false
-full_finetuning=true
+full_finetuning=false
 base_model="llama-1b"
 checkpoint_num="70000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=2
+max_new_tokens=1
 num_shards="8"
 use_gpu=true
-machine="torch"
+machine="greene"
 
 # SLURM CONFIGURATION BEGINS
 SBATCH_DIR="sbatch_jobs_eval"

@@ -12,8 +12,8 @@
 LEARNING_RATES=(5e-5)
 
 # Temperature values for contrastive loss
-# TEMPERATURES=(0.03 0.1)
-TEMPERATURES=(0.05)
+TEMPERATURES=(0.04 0.03 0.02 0.01)
+# TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
@@ -51,7 +51,7 @@ less_ss=true
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_ordered_woseq"
+MODE="hungarian_contrastive"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -214,7 +214,7 @@ EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS
 if [ "$use_inf_base_model" = true ]; then
     BASE_SAVE_PATH="results/inf/ambiguous_qe_inf"
 else
-    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf"
+    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf/sanity_check"
 fi
 
 # Training dataset path

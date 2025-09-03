@@ -9,8 +9,8 @@
 
 # LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
 LEARNING_RATES=(2e-5)
-# TEMPERATURES=(0.03 0.1)
-TEMPERATURES=(0.05)
+TEMPERATURES=(0.04 0.03 0.02 0.01)
+# TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
 BATCH_SIZES=(32)
 # NUM_EPOCHS_LIST=(20 10 30 40)
@@ -40,7 +40,7 @@ machine="torch" # greene, torch
 less_ss=true
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled_woseq"
+MODE="hungarian_contrastive"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -203,7 +203,7 @@ EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}qampari${GPUS_PREF
 if [ "$use_inf_base_model" = true ]; then
     BASE_SAVE_PATH="results/inf/qampari_inf"
 else
-    BASE_SAVE_PATH="results/llama-1b/qampari_inf"
+    BASE_SAVE_PATH="results/llama-1b/qampari_inf/sanity_check"
 fi
 
 # Training dataset path
