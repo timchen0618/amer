@@ -5,8 +5,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import logging
 import torch
 from tqdm import tqdm
+from pathlib import Path
 from vllm import LLM, SamplingParams
-
+from ast import literal_eval
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -14,80 +15,118 @@ def read_jsonl(file_path):
     with open(file_path, 'r') as f:
         return [json.loads(line) for line in f]
 
-def load_clustering_results(centroids_path, labels_path):
-    with open(centroids_path, 'rb') as f:
-        centroids = pickle.load(f)
-    with open(labels_path, 'rb') as f:
-        labels = pickle.load(f)
-    return centroids, labels
-
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-def find_closest_document_ids(centroid, document_embeddings, labels, cluster_id, top_k=5):
-    # document indices that are in the same cluster as the centroid
-    doc_ids_in_cluster = [i for i, l in enumerate(labels) if l == cluster_id]
-    
-    # get the documents in the cluster
-    document_embeddings_in_cluster = [document_embeddings[i] for i in doc_ids_in_cluster]
-    
-    # for each document in the cluster, calculate the cosine similarity between the document and the centroid
-    similarities = [cosine_similarity(document_embedding, centroid) for document_embedding in document_embeddings_in_cluster]
-    # top 5 documents with highest similarity
-    max_similarity_indices = np.argsort(similarities)[::-1][:top_k]
-    return [doc_ids_in_cluster[i] for i in max_similarity_indices]
+def write_json(data, file_path):
+    with open(file_path, 'w') as f:
+        json.dump(data, f, indent=4)
+        
+def write_jsonl(data, file_path):
+    with open(file_path, 'w') as f:
+        for item in data:
+            f.write(json.dumps(item) + '\n')
 
 
-def filter_cluster(closest_documents, question, system_prompt, model, tokenizer, use_vllm):
-    user_prompt = "**Input Format:**\n- **User Question:** [Question]\n- **K Documents:** [Documents]".replace("[Question]", question).replace("[Documents]", '\n'.join(closest_documents))
-    if use_vllm:
-        outputs = model.generate(prompts=[system_prompt + "\n\n" + user_prompt])
-        content = outputs[0].outputs[0].text
-        thinking_content = None
-    else:
-        thinking_content, content = generate(system_prompt, user_prompt, tokenizer, model)
-    if use_vllm:
-        print(outputs)
-        print(content)
-    # parse the content to get the score
-    score = content.split('"relevance_score":')[-1].split(',')[0].strip()
-    score = int(score)
-    return score, thinking_content, content
+def append_jsonl(data, file_path):
+    with open(file_path, 'a') as f:
+        for item in data:
+            f.write(json.dumps(item) + '\n')
+
 
 @torch.no_grad()
-def generate(system_prompt, user_prompt, tokenizer, model):
+def generate(prompts, tokenizer, model, thinking=True, use_vllm=False):
+    if use_vllm:
+        sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=32768)
+        outputs = model.generate(prompts=prompts, sampling_params=sampling_params, use_tqdm=True)
+        contents = [output.outputs[0].text for output in outputs]
+        thinking_contents = [None for _ in prompts]
+    else:
+        contents = []
+        thinking_contents = []
+        for prompt in prompts:
+            model_inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
+            # conduct text completion
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=32768
+            )
+            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
+            if thinking:
+                # parsing thinking contents
+                try:
+                    # rindex finding 151668 (</think>)
+                    index = len(output_ids) - output_ids[::-1].index(151668)
+                except ValueError:
+                    index = 0
+
+                thinking_content_per_prompt = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
+                content_per_prompt = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+            else:
+                thinking_content_per_prompt = None
+                content_per_prompt = tokenizer.decode(output_ids, skip_special_tokens=True)
+            thinking_contents.append(thinking_content_per_prompt)
+            contents.append(content_per_prompt)
+    return thinking_contents, contents
+
+
+def form_prompts(system_prompt, user_prompt, tokenizer):
     # prepare the model input
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
+    if system_prompt is not None:
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+    else:
+        messages = []
+    messages.append({"role": "user", "content": user_prompt})
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=True,
     )
-    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    return text
 
-    # conduct text completion
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=32768
-    )
-    output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
 
-    # parsing thinking content
-    try:
-        # rindex finding 151668 (</think>)
-        index = len(output_ids) - output_ids[::-1].index(151668)
-    except ValueError:
-        index = 0
+# @torch.no_grad()
+# def generate(system_prompt, user_prompt, tokenizer, model, thinking=True, use_vllm=False):
+#     # prepare the model input
+#     if system_prompt is not None:
+#         messages = [
+#             {"role": "system", "content": system_prompt}
+#         ]
+#     else:
+#         messages = []
+#     messages.append({"role": "user", "content": user_prompt})
+#     text = tokenizer.apply_chat_template(
+#         messages,
+#         tokenize=False,
+#         add_generation_prompt=True,
+#     )
+    
+#     if use_vllm:
+#         sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=32768)
+#         outputs = model.generate(prompts=[text], sampling_params=sampling_params)
+#         content = outputs[0].outputs[0].text
+#         thinking_content = None
+#     else:
+#         model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+#         # conduct text completion
+#         generated_ids = model.generate(
+#             **model_inputs,
+#             max_new_tokens=32768
+#         )
+#         output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
+#         if thinking:
+#             # parsing thinking content
+#             try:
+#                 # rindex finding 151668 (</think>)
+#                 index = len(output_ids) - output_ids[::-1].index(151668)
+#             except ValueError:
+#                 index = 0
 
-    thinking_content = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
-    content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
-
-    # print("thinking content:", thinking_content) # no opening <think> tag
-    # print("content:", content)
-    return thinking_content, content
+#             thinking_content = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
+#             content = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+#         else:
+#             content = tokenizer.decode(output_ids, skip_special_tokens=True)
+#             thinking_content = None
+#     return thinking_content, content
     
 def load_model(model_name='Qwen/Qwen3-30B-A3B-Thinking-2507'):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -101,106 +140,142 @@ def load_model(model_name='Qwen/Qwen3-30B-A3B-Thinking-2507'):
 
 def load_vllm_model(model_name='Qwen/Qwen3-30B-A3B-Thinking-2507'):
     import os
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     llm = LLM(
         model=model_name,
         max_model_len=32768,
         download_dir=os.environ['HF_HOME']
     )
-    return llm
+    return llm, tokenizer
     
        
 def main():
-    use_vllm = False
+    # import time
+    # start_time = time.time()
     
-    data_name = 'small'
-    logger.info(f'Loading data from data/{data_name}.jsonl')
-    raw_data = read_jsonl(f'data/{data_name}.jsonl')
-    document_embedding_list = np.load(f'clustered_data/{data_name}_embeddings.npy')
-    method = 'mean_shift'
-    logger.info(f'Loading clustering results from clustered_data/{data_name}_{method}_centroids_flexible.pkl and clustered_data/{data_name}_{method}_labels_flexible.pkl')
-    centroid_list, labels_list = load_clustering_results(f'clustered_data/{data_name}_{method}_centroids_flexible.pkl', f'clustered_data/{data_name}_{method}_labels_flexible.pkl')
-    
-    logger.info(f'Loading model from Qwen/Qwen3-30B-A3B-Thinking-2507')
-    if use_vllm:
-        model = load_vllm_model()
-        tokenizer = None
+    # load the domains
+    domains = json.load(open(args.domain_path, 'r'))
+    # load the model
+    logger.info(f'Loading model from {args.model_name}')
+    if args.use_vllm:
+        model, tokenizer = load_vllm_model(args.model_name)
     else:
-        model, tokenizer = load_model()
+        model, tokenizer = load_model(args.model_name)
     
-    system_prompt = open('relevance.txt', 'r').read()
+    # load the prompt
+    user_prompt_template = open(args.prompt_path.replace("[command]", args.command), 'r').read()
+    system_prompt = None
     
-    logger.info(f'Filtering clusters')
-    print(len(centroid_list), len(labels_list), len(document_embedding_list))
     
-    all_scores = []
-    outputs = []
-    for i in range(len(centroid_list)):
-        centroids = centroid_list[i] # (num_centroids, embedding_dim)
-        labels = labels_list[i]      # (num_documents)
-        document_embeddings = document_embedding_list[i]
-        documents = [c['retrieval text'] for c in raw_data[i]['ctxs']]
-        
-        # for each centroid, find the document ids in that cluster that are closest to it
-        for j, centroid in tqdm(enumerate(centroids)):
-            closest_document_ids = find_closest_document_ids(centroid, document_embeddings, labels, j)
-            closest_documents = [documents[i] for i in closest_document_ids]
-            score, thinking_content, content = filter_cluster(closest_documents, raw_data[i]['question'], system_prompt, model, tokenizer, use_vllm)
-            all_scores.append(score)
-            outputs.append({"score": score, "thinking_content": thinking_content, "content": content, "question": raw_data[i]['question'], "closest_documents": closest_documents})
+    if args.command == 'domain2q_woctx' or args.command == 'domain2q_wctx':
+        all_prompts = []
+        for domain, sub_domains in tqdm(domains.items()):
+            for sub_domain in sub_domains:
+                user_prompt = user_prompt_template.replace("[domain]", domain).replace("[sub-domain]", sub_domain).replace("[num_questions]", "20")
+                all_prompts.append(form_prompts(system_prompt, user_prompt, tokenizer))
             
+        thinking_contents, contents = generate(all_prompts, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
+        i = 0
+        for domain, sub_domains in tqdm(domains.items()):
+            for sub_domain in sub_domains:
+                write_json(contents[i], Path(args.output_dir) / f'{domain}_{sub_domain}_questions.json')
+                i += 1
+    elif args.command == 'domains':
+        system_prompt = None
+        prompts = [form_prompts(system_prompt, user_prompt, tokenizer)]
+        thinking_contents, contents = generate(prompts, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
+        write_json(contents[0], Path(args.output_dir) / 'domains.json')
+    elif args.command == 'q_and_docs':
+        system_prompt = None
+        user_prompt = user_prompt_template.replace("[length]", str(args.length))
+        thinking_content, content = generate(system_prompt, user_prompt, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
+        write_json(content, Path(args.output_dir) / f'{domain}_{sub_domain}_q_and_docs.json')
+    elif args.command == 'q2docs' or args.command == 'q2docs_1' or args.command == 'q2docs_2' or args.command == 'q2docs_3' or args.command == 'q2docs_4':
+        all_prompts = []
+        all_questions = []
+        # for domain, sub_domains in tqdm(domains.items()):
+        for _id in args.domain_ids:
+            domain = list(domains.keys())[_id]
+            sub_domains = domains[domain]
+            for sub_domain in sub_domains:
+                if (Path(args.output_dir) / f'{domain}_{sub_domain}_q_and_docs.json').exists():
+                    continue
+                questions = json.load(open(f'vllm_outputs/questions_{args.question_source}/{domain}_{sub_domain}_questions.json', 'r'))['questions']
+                all_questions.append(questions)
+                for question in tqdm(questions):
+                    system_prompt = None
+                    user_prompt = user_prompt_template.replace("[length]", str(args.length)).replace("[Question]", question)
+                    all_prompts.append(form_prompts(system_prompt, user_prompt, tokenizer))
+                    
+        thinking_contents, contents = generate(all_prompts, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
         
-    print(all_scores)
-    print(sum(all_scores)/float(len(all_scores)))
-
-    with open(f'clustered_data/{data_name}_{method}_filtered_outputs.jsonl', 'w') as f:
-        for output in outputs:
-            f.write(json.dumps(output) + '\n')
-    
-    # plot the distribution of scores
-    import matplotlib.pyplot as plt
-    plt.hist(all_scores)
-    plt.savefig('score_distribution.png')
+        i = 0
+        sub_domain_index = 0
+        for _id in args.domain_ids:
+            domain = list(domains.keys())[_id]
+            sub_domains = domains[domain]
+            for sub_domain in sub_domains:
+                all_data = []
+                # loop over all questions for this sub_domain
+                for question in all_questions[sub_domain_index]:
+                    content = contents[i]
+                    i += 1
+                    try:
+                        data = literal_eval(content)
+                    except:
+                        print(content)
+                        data = {"positive_documents": content}
+                    data['question'] = question
+                    all_data.append(data)
+                sub_domain_index += 1
+                write_json(all_data, Path(args.output_dir) / f'{domain}_{sub_domain}_q_and_docs.json')
+    elif args.command == 'existing_q2docs' or args.command == 'existing_q2docs_1' or args.command == 'existing_q2docs_2':
+        assert args.question_source == 'existing'
+        data = read_jsonl('../data/eli5+researchy_questions_1k.jsonl')
+        questions = [inst['question'] for inst in data]
+        all_data = []
+        all_prompts = []
+        for question in tqdm(questions):
+            system_prompt = None
+            user_prompt = user_prompt_template.replace("[length]", str(args.length)).replace("[Question]", question)
+            all_prompts.append(form_prompts(system_prompt, user_prompt, tokenizer))
+            
+        thinking_contents, contents = generate(all_prompts, tokenizer, model, thinking=False, use_vllm=args.use_vllm)
+            
+        for thinking_content, content in zip(thinking_contents, contents):
+            try:
+                data = literal_eval(content)
+            except:
+                print('Error parsing content\n', content)
+                data = {"positive_documents": content}
+            data['question'] = question
+            all_data.append(data)
+        write_jsonl(all_data, Path(args.output_dir) / 'existing_q2docs_1k.jsonl')
+        
                 
 if __name__ == '__main__':
-    # main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--domain_path', type=str, default='outputs/domains.json')
+    parser.add_argument('--use_vllm', action='store_true', default=False)
+    parser.add_argument('--model_name', type=str, default='Qwen/Qwen3-30B-A3B-Instruct-2507')
+    parser.add_argument('--prompt_path', type=str, default='prompts/prompt_[command].txt')
+    parser.add_argument('--command', type=str, default='domain2q', choices=['domain2q_woctx', 'domain2q_wctx', 'domains', 'q_and_docs', 'q2docs', 'q2docs_1', 'q2docs_2', 'q2docs_3', 'q2docs_4', 'existing_q2docs', 'existing_q2docs_1', 'existing_q2docs_2'])
+    parser.add_argument('--question_source', type=str, default='wctx', choices=['wctx', 'woctx', 'existing', 'woctx_20'])
+    parser.add_argument('--output_dir', type=str, default='outputs/')
+    parser.add_argument('--domain_ids', type=int, nargs='+', default=[0])
+    parser.add_argument('--length', type=int, default=200)
+    args = parser.parse_args()
     
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    model_name = "Qwen/Qwen3-235B-A22B-Instruct-2507"
-
-    # load the tokenizer and the model
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto"
-    )
-    print('finished loading model')
+    main()
     
-    # prepare the model input
-    prompt = "Give me a short introduction to large language model."
-    messages = [
-        {"role": "user", "content": prompt}
-    ]
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
-
-    print('generating...')
+    # python generate.py --command q2docs_1 --output_dir outputs/q_docs_wctx_1/ --question_source wctx
+    # python generate.py --command q2docs_1 --output_dir outputs/q_docs_woctx_1/ --question_source woctx
     
-    import time
-    start_time = time.time()
-    # conduct text completion
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=16384
-    )
-    output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
-
-    content = tokenizer.decode(output_ids, skip_special_tokens=True)
-
-    print("content:", content)
-    print(f'Time taken: {time.time() - start_time} seconds')
+    # python generate.py --command existing_q2docs --output_dir outputs/q_docs_existing/ --question_source existing
+    
+    
+    
+    # python generate.py --command q2docs_1 --output_dir outputs/q_docs_woctx_1/ --question_source woctx_20
+    # python generate.py --command q2docs_2 --output_dir outputs/q_docs_woctx_2/ --question_source woctx_20
+    # python generate.py --command q2docs_3 --output_dir outputs/q_docs_woctx_3/ --question_source woctx_20

@@ -110,6 +110,17 @@ def compute_averge_target_distance_same_example(target_vectors_list):
             for k in range(j+1, len(all_target_vectors)):
                 l2_distance_list.append(compute_l2_distance(all_target_vectors[j], all_target_vectors[k]))
                 cosine_similarity_list.append(compute_cosine_similarity(all_target_vectors[j], all_target_vectors[k]))
+    print('max', 'l2', np.max(l2_distance_list), 'cosine', np.max(cosine_similarity_list))
+    print('min', 'l2', np.min(l2_distance_list), 'cosine', np.min(cosine_similarity_list))
+    import matplotlib.pyplot as plt
+    plt.hist(l2_distance_list, bins=100)
+    plt.savefig('l2_distance_hist.png')
+    plt.close()
+    plt.hist(cosine_similarity_list, bins=100)
+    plt.savefig('cosine_similarity_hist.png')
+    plt.close()
+    # compute the percentage of cosine similarity greater than 0.9
+    print('percentage of cosine similarity greater than 0.93', np.sum(np.array(cosine_similarity_list) > 0.93) / len(cosine_similarity_list))
     return np.mean(l2_distance_list), np.mean(cosine_similarity_list)
 
 def compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=0, _print=False):
@@ -126,9 +137,19 @@ def compute_averge_target_distance_different_examples(target_vectors_list, in_ex
             query_1 = targets_1[in_example_idx]
             query_2 = targets_2[in_example_idx]
         else:
-            two_random_in_example_nums = random.sample(range(min(len(targets_1), len(targets_2))), 2)
-            query_1 = targets_1[two_random_in_example_nums[0]]
-            query_2 = targets_2[two_random_in_example_nums[1]]
+            if min(len(targets_1), len(targets_2)) == 0:
+                continue
+            else:
+                query_1 = random.choice(targets_1)
+                query_2 = random.choice(targets_2)
+            # elif min(len(targets_1), len(targets_2)) == 1:
+            #     print('one target')
+            #     query_1 = targets_1[0]
+            #     query_2 = targets_2[0]
+            # else:
+            #     two_random_in_example_nums = random.sample(range(min(len(targets_1), len(targets_2))), 2)
+            #     query_1 = targets_1[two_random_in_example_nums[0]]
+            #     query_2 = targets_2[two_random_in_example_nums[1]]
         l2_distance_list.append(compute_l2_distance(query_1, query_2))
         cosine_similarity_list.append(compute_cosine_similarity(query_1, query_2))
     if _print:
@@ -244,7 +265,11 @@ def main(args):
             if cluster_data[i].shape[0] <= 1:
                 continue
             target_vectors_list.append(normalize_np(cluster_data[i]))
-
+    elif args.data_type == 'llm_generation':
+        print(f'loading {args.model_name_or_path} model')
+        data = pickle.load(open(args.data_path, 'rb'))
+        target_vectors_list = data['document_embeddings']
+        query_vectors = data['question_embeddings']
     
     # compute the average distance between queries
     l2_distance, cosine_similarity = compute_averge_query_distance(query_vectors)
@@ -266,14 +291,15 @@ def main(args):
     l2_distance, cosine_similarity = compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=0)
     all_l2_distances.append(l2_distance.round(3))
     all_cosine_similarities.append(cosine_similarity.round(3))
-    l2_distance, cosine_similarity = compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=1)
-    all_l2_distances.append(l2_distance.round(3))
-    all_cosine_similarities.append(cosine_similarity.round(3))
+    
     
     if args.data_type != 'synthetic':
-        all_l2_distances.extend([0, 0, 0])
-        all_cosine_similarities.extend([0, 0, 0])
+        all_l2_distances.extend([0, 0, 0, 0])
+        all_cosine_similarities.extend([0, 0, 0, 0])
     else:
+        l2_distance, cosine_similarity = compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=1)
+        all_l2_distances.append(l2_distance.round(3))
+        all_cosine_similarities.append(cosine_similarity.round(3))
         l2_distance, cosine_similarity = compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=2)
         all_l2_distances.append(l2_distance.round(3))
         all_cosine_similarities.append(cosine_similarity.round(3))
@@ -322,6 +348,7 @@ if __name__ == "__main__":
     # clustered data
     # python sanity_check.py --data_type clustered_data --data_path large_scale/clustered_data/small_mean_shift_centroids_flexible.pkl
     
-    
+    # llm generation
+    # python sanity_check.py --data_type llm_generation --data_path large_scale/llm_generation/outputs/q_docs_woctx/embeddings.pkl
     
     

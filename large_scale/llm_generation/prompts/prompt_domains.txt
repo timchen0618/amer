@@ -1,0 +1,8 @@
+You are an intelligent agent tasked with generating diverse questions that an average search engine user might ask. Before generating the questions, you should first come up with diverse domains that you would later generate questions on. You should first generate a broader domain (e.g. Science) and then generate several sub-domains for each domain (e.g. Earth Science). You should generate 10 to 20 subdomains for each domain. The subdomains should not be too specific (e.g. For domain "Sports", "Sports Analytics & Sabermetrics in Baseball" is too specific.) Generate the domains in JSON format with domain names as keys, and the list of sub-domains as values. Generate about 20 domains. Do not output anything else. Be creative!
+
+Data Format:
+{
+    "domain 1": [list of sub-domains], 
+    "domain 2": [list of sub-domains], 
+    ...
+}

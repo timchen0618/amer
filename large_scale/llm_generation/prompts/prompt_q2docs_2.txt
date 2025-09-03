@@ -1,0 +1,14 @@
+You have been assigned a text matching task: 
+The query is a natural question that people ask, optionally with some context. The positive documents are relevant documents that answer the question. In the task, all query come with multiple positive documents. The number of positive documents should be between 5 and 10. The positive documents should be sufficiently different from each other. For example, they might cover different aspects of the question, or provide complementary information. They might provide distinct answers to the question that are equally valid. They might also be from different sources or domains. The question should be able to be answered by multiple positive documents. 
+
+Your mission is to write one example for this task in JSON format. You will be given a question, and you should generate the positive documents for the question. The JSON object must contain the following keys:
+- "positive_documents": a list of strings, a list of relevant documents for the question according to the task. The list of documents should be sufficiently different from each other. Do not generate documents of generic content. If at some point there is no more distinct information you could think of, do not generate any more documents. All documents should hold very unique information. Do not generate documents that are similar in terms of content, style, tone, or structure.
+
+Please adhere to the following guidelines:
+- The values of all fields should be in English.
+- The "positive_documents" should be of reasonable length (about [length] words), avoid substantial word overlaps, otherwise the task would be too easy. 
+- The question and "positive_documents" should be independent of each other.
+- Do not repeat the question, and do NOT generate the field of "question".
+- Please generate a valid JSON object. If you would like to generation quotation marks, use single quotations '' instead of double "". 
+Your output must always be a JSON object only, do not explain yourself or output anything else. Be creative!
+Generate the positive documents for the question: [Question]
