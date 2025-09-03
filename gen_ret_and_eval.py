@@ -428,7 +428,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate embeddings and perform retrieval evaluation')
     # Data configuration
     parser.add_argument('--data_name', type=str, default='ambiguous_qe', 
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small', 'qampari_5_to_8'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small', 'qampari_5_to_8', 'qampari_query_exp_5_to_8', 'ambiguous_qe_query_exp', 'qampari_query_exp'],
                        help='Name of the dataset to evaluate on')
     parser.add_argument('--training_data_name', type=str, default='ambiguous_qe',
                        choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
@@ -514,7 +514,7 @@ if __name__ == "__main__":
         assert not args.google_api, "Google API is not allowed for these datasets"
     
     # Determine embeddings directory
-    embeddings_dir = 'qampari_embeddings' if args.data_name in ['qampari', 'ambiguous_qe', 'qampari_5_to_8'] else args.data_name
+    embeddings_dir = 'qampari_embeddings' if args.data_name in ['qampari', 'qampari_query_exp', 'ambiguous_qe', 'ambiguous_qe_query_exp', 'qampari_5_to_8', 'qampari_query_exp_5_to_8'] else args.data_name
     if args.data_name == 'ambiguous':
         embeddings_dir = 'nq'
     
@@ -534,7 +534,7 @@ if __name__ == "__main__":
     
     # Set up passages path
     if not args.google_api:
-        if args.data_name in ['qampari', 'ambiguous_qe', 'qampari_5_to_8']:
+        if args.data_name in ['qampari', 'qampari_query_exp', 'ambiguous_qe', 'ambiguous_qe_query_exp', 'qampari_5_to_8', 'qampari_query_exp_5_to_8']:
             passages_path = f'{args.root}/wikipedia_chunks/chunks_v5.tsv'
         elif args.data_name == 'ambiguous':
             passages_path = f'data/nq/corpus.tsv'
