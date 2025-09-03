@@ -10,9 +10,11 @@ def get_data_mapping(project_root):
     return {
         "qampari": {
             'dev': f'{project_root}/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl',
-            'dev_5_to_8': f'{project_root}/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl',
             'train': f'{project_root}/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl',
             'second_stage': f'{project_root}/diverse_response/data/qampari_data/2nd_stage_test_data/dev_data_qampari_corpus_inp{{num_input}}.jsonl'
+        },
+        "qampari_5_to_8": {
+            'dev_5_to_8': f'{project_root}/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl',
         },
         "ambiguous": {
             'dev': f'{project_root}/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_no_empty_clusters.jsonl',
@@ -56,7 +58,7 @@ def parse_arguments():
     
     # Data configuration
     parser.add_argument('--data-type', type=str, default='wsd_distinct',
-                       choices=['qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
+                       choices=['qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct', 'qampari_5_to_8'],
                        help='Type of data to evaluate')
     parser.add_argument('--split', type=str, default=None,
                        help='Data split to use (will be auto-determined if not provided)')
