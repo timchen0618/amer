@@ -221,7 +221,6 @@ def aggregate_different_queries_by_length(top_ids_and_scores, lengths=None, MAX_
             ids_and_scores_to_aggregate = ids_and_scores_to_aggregate[aggregate_start_idx:aggregate_end_idx]
         else:
             ids_and_scores_to_aggregate = ids_and_scores_to_aggregate[aggregate_start_idx:]
-        # print('lens', len(ids_and_scores_to_aggregate))
         start_idx += lengths[i]
         # aggregate ids and scores to be a single list, and avoid duplicates
         # take from each list in a round-robin manner until reaches top_k
@@ -429,7 +428,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate embeddings and perform retrieval evaluation')
     # Data configuration
     parser.add_argument('--data_name', type=str, default='ambiguous_qe', 
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small', 'qampari_5_to_8'],
                        help='Name of the dataset to evaluate on')
     parser.add_argument('--training_data_name', type=str, default='ambiguous_qe',
                        choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
@@ -497,7 +496,7 @@ def parse_args():
     # parser.add_argument('--aggregate_end_idx', type=int, default=None,
     #                    help='Ending index for aggregation')   
     parser.add_argument('--inference_modes', type=str, nargs='+', default='all',
-                       choices=['first', 'second', 'all'],
+                       choices=['first', 'second', 'all', 'average'],
                        help='Inference mode')
     parser.add_argument('--output_path', type=str, default=None,
                        help='Output path')
@@ -515,7 +514,7 @@ if __name__ == "__main__":
         assert not args.google_api, "Google API is not allowed for these datasets"
     
     # Determine embeddings directory
-    embeddings_dir = 'qampari_embeddings' if args.data_name in ['qampari', 'ambiguous_qe'] else args.data_name
+    embeddings_dir = 'qampari_embeddings' if args.data_name in ['qampari', 'ambiguous_qe', 'qampari_5_to_8'] else args.data_name
     if args.data_name == 'ambiguous':
         embeddings_dir = 'nq'
     
@@ -535,7 +534,7 @@ if __name__ == "__main__":
     
     # Set up passages path
     if not args.google_api:
-        if args.data_name in ['qampari', 'ambiguous_qe']:
+        if args.data_name in ['qampari', 'ambiguous_qe', 'qampari_5_to_8']:
             passages_path = f'{args.root}/wikipedia_chunks/chunks_v5.tsv'
         elif args.data_name == 'ambiguous':
             passages_path = f'data/nq/corpus.tsv'
@@ -587,7 +586,23 @@ if __name__ == "__main__":
             aggregate_start_idx = 0
             aggregate_end_idx = None
             if args.max_new_tokens is not None:
-                inference_string = f'_max_new_tokens_{args.max_new_tokens}'      
+                inference_string = f'_max_new_tokens_{args.max_new_tokens}'
+        elif inference_mode == 'average':
+            inference_string = '_average'
+            aggregate_start_idx = 0
+            aggregate_end_idx = None
+            if lengths is not None and len(lengths) > 0:
+                new_outputs = []
+                start_idx = 0
+                for i in range(len(lengths)):
+                    new_outputs.append(outputs[start_idx:start_idx+lengths[i]].mean(axis=0).reshape(1, -1))
+                    start_idx += lengths[i]
+                outputs = np.concatenate(new_outputs, axis=0)
+            else:
+                outputs = outputs.reshape(-1, args.max_new_tokens, outputs.shape[-1])
+                outputs = outputs.mean(axis=1)
+            args.max_new_tokens = 1
+            print('outputs', outputs.shape)
         else:
             raise ValueError(f"Invalid inference mode: {inference_mode}")
         

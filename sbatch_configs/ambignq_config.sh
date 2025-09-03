@@ -51,7 +51,7 @@ less_ss=true
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled_woseq"
+MODE="contrastive_all_labels_ordered_woseq"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -208,7 +208,7 @@ else
 fi
 
 # Experiment prefix
-EXP_PREFIX="from_stage1_${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -233,10 +233,10 @@ if [ "$use_inf_base_model" = true ]; then
 else
     # Model checkpoints
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    # BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
-    # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
-    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+    # BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000"
+    # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000_linear.pt"
 fi
 
 

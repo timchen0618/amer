@@ -2,19 +2,19 @@
 
 # GENERATE ARGS
 data_name="ambiguous_qe"
-training_data_name="nq"
-suffix="toy_qemb"
+training_data_name="ambiguous_qe"
+suffix="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
 
 retriever="inf"
-use_best_model=false
+use_best_model=true
 compute_loss=false
-full_finetuning=false
+full_finetuning=true
 base_model="llama-1b"
-checkpoint_num="30000"
+checkpoint_num="70000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=1
+max_new_tokens=2
 num_shards="8"
 use_gpu=true
 machine="torch"

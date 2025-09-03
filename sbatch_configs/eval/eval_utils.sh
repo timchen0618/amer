@@ -3,9 +3,9 @@ split="dev"  # Define split variable (assuming 'dev' as default)
 if [[ "$data_name" == "ambiguous" || "$data_name" == "ambiguous_qe" ]]; then
     dev_data_path="data/questions/${data_name}_${split}_question_only_2_to_5_ctxs.jsonl"
 elif [[ "$data_name" == "qampari_5_to_8" ]]; then
-    dev_data_path="data/questions/${data_name}_${split}_question_only_5_to_8_ctxs.jsonl"
+    dev_data_path="data/questions/qampari_${split}_question_only_5_to_8_ctxs.jsonl"
 elif [[ "$data_name" == "qampari" ]]; then
-    dev_data_path="data/questions/${data_name}_${split}_question_only.jsonl"
+    dev_data_path="data/questions/qampari_${split}_question_only.jsonl"
 elif [[ "$data_name" == "nq" || "$data_name" == "msmarco" || "$data_name" == "wsd_distinct" ]]; then
     dev_data_path="data/questions/${data_name}_${split}_question_only.jsonl"
 else
