@@ -340,6 +340,7 @@ if [ "$multiple_gpus" = true ]; then
     GPU_TYPE="a100"
     GPUS_PER_NODE=4
     GPU_STRING="4"
+    PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
     TIME_LIMIT="96:00:00"
@@ -351,6 +352,7 @@ else
     GPU_TYPE="a100"
     GPUS_PER_NODE=1
     GPU_STRING="1"
+    PYTHON_COMMAND="python train.py"
 fi
 
 # Email for notifications
@@ -359,8 +361,11 @@ EMAIL="hc3337@nyu.edu"
 # Singularity configuration
 if [ "$machine" = "greene" ]; then
     SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+    CONSTRAINT="h100|a100"
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+    CONSTRAINT="h200"   
+    PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"
     exit 1

@@ -35,7 +35,6 @@ class WarmupLinearScheduler(torch.optim.lr_scheduler.LambdaLR):
     def lr_lambda(self, step):
         if step < self.warmup:
             return (1 - self.ratio) * step / float(max(1, self.warmup))
-
         return max(
             0.0,
             1.0 + (self.ratio - 1) * (step - self.warmup) / float(max(1.0, self.total - self.warmup)),
@@ -73,6 +72,7 @@ def set_optim(opt, model):
         "total": opt.total_steps,
         "ratio": opt.lr_min_ratio,
     }
+    print('scheduler_args', scheduler_args)
     if opt.scheduler == "linear":
         scheduler_class = WarmupLinearScheduler
     elif opt.scheduler == "cosine":

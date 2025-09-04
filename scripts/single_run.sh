@@ -5,13 +5,13 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/qampari_config.sh"
+CONFIG_FILE="sbatch_configs/ambignq_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from qampari_config.sh"
+    becho "Please create $CONFIG_FILE or copy from ambignq_config.sh"
     exit 1
 fi
 
@@ -23,7 +23,8 @@ NUM_EPOCHS=${NUM_EPOCHS_LIST[0]}
 WARMUP_RATIO=${WARMUP_RATIOS[0]}
 
 # Generate experiment name
-EXP_NAME="${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+# EXP_NAME="${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
+EXP_NAME="test"
 
 # Set paths
 SAVE_PATH="${BASE_SAVE_PATH}"
@@ -87,9 +88,10 @@ fi
 # Run training
 echo "Starting training at $(date)"
 echo "Logging output to: $OUTPUT_LOG"
+echo "Python command: $PYTHON_COMMAND"
 
 # Use accelerate launch for distributed training support
-HF_TOKEN="$HF_TOKEN" PYTHONPATH=. python train.py $ARGS 2>&1 | tee "$OUTPUT_LOG"
+HF_TOKEN="$HF_TOKEN" ${PYTHON_COMMAND} $ARGS 2>&1 | tee "$OUTPUT_LOG"
 
 EXIT_CODE=${PIPESTATUS[0]}
 

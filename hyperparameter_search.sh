@@ -5,13 +5,13 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/gaussian_config.sh"
+CONFIG_FILE="sbatch_configs/ambignq_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
+    echo "Please create $CONFIG_FILE or copy from ambignq_config.sh"
     exit 1
 fi
 
@@ -63,8 +63,8 @@ create_sbatch_file() {
 #SBATCH --mail-user=${EMAIL}
 #SBATCH --output=${output_file}
 #SBATCH --gres=gpu:${GPU_STRING}
-#SBATCH --requeue
-#SBATCH --partition=h200
+#SBATCH --constraint=${CONSTRAINT}
+${PREEMPTION}
 
 SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
 OVERLAY_FILE=${OVERLAY_FILE}
@@ -106,7 +106,7 @@ ARGS="--project ${BASE_PROJECT} \\
       --log_with ${LOG_WITH}"
 
 
-singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} accelerate launch train_distributed.py \$ARGS & wait)"
+singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} ${PYTHON_COMMAND} \$ARGS & wait)"
 EOF
     
     echo "$sbatch_file"

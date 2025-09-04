@@ -97,7 +97,8 @@ def train(configs):
         train_dataloader, valid_loss_dataloader = data_handler.get_train_dev_dataloader(random_train_loader=False)
     
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
-    total_length = total_length // accelerator.num_processes
+    # total_length = total_length // accelerator.num_processes
+    
     
     assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ']), 'Schedule sampling is only supported for EmbeddingModelSS'
     # Instantiate the model (we build the model here so that the seed also control new weights initialization)
@@ -121,6 +122,7 @@ def train(configs):
     configs.warmup_steps = total_length * configs.num_epochs * configs.warmup_ratio
     optimizer, scheduler = set_optim(configs, model)
 
+    configs.total_steps = configs.total_steps // accelerator.num_processes
     # Prepare everything with accelerator
     model, optimizer, train_dataloader, valid_loss_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, valid_loss_dataloader, scheduler
@@ -159,6 +161,7 @@ def train(configs):
                         batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
                     else:
                         batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                        print('sampling rate', batch['sampling_rate'], 'total_train_steps', total_train_steps, 'configs.total_steps', configs.total_steps)
                     
                 if configs.force_sampling:
                     batch['sampling_rate'] = 1.0

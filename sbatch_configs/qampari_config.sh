@@ -9,12 +9,12 @@
 
 # LEARNING_RATES=(2e-5 1e-5 5e-5 1e-4)
 LEARNING_RATES=(2e-5)
-TEMPERATURES=(0.04 0.03 0.02 0.01)
-# TEMPERATURES=(0.05)
+# TEMPERATURES=(0.04 0.03 0.02 0.01)
+TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
 BATCH_SIZES=(32)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(120)
+NUM_EPOCHS_LIST=(30)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 # Use hard negatives
@@ -37,7 +37,7 @@ normalize=true
 LOG_WITH="wandb"
 use_inf_base_model=false
 machine="torch" # greene, torch
-less_ss=true
+less_ss=false
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
 MODE="hungarian_contrastive"
@@ -268,24 +268,26 @@ if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
     TIME_LIMIT="48:00:00"
     # Memory per job
-    MEMORY="300GB"
+    MEMORY="200GB"
     # Number of CPUs per task
-    CPUS_PER_TASK=40
+    CPUS_PER_TASK=10
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=4
     GPU_STRING="4"
+    PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
     TIME_LIMIT="24:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
-    CPUS_PER_TASK=20
+    CPUS_PER_TASK=10
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=1
     GPU_STRING="1"
+    PYTHON_COMMAND="python train.py"
 fi
 
 # Email for notifications
@@ -294,8 +296,11 @@ EMAIL="hc3337@nyu.edu"
 # Singularity configuration
 if [ "$machine" = "greene" ]; then
     SINGULARITY_IMAGE="/scratch/work/public/singularity/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+    CONSTRAINT="h100|a100"
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
+    CONSTRAINT="h200"
+    PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"
     exit 1
