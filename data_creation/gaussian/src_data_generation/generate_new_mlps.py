@@ -111,7 +111,8 @@ class OpposingPairsMlpSyntheticDataGenerator:
                  num_layers: int = 2,
                  random_seed: int = 42,
                  multiple_query_distributions: bool = False,
-                 ood_distribution: bool = False):
+                 ood_distribution: bool = False,
+                 hard_type: str = 'opposite'):
         """
         Initialize the diverse MLPs synthetic data generator.
         
@@ -126,6 +127,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
             random_seed: Random seed for reproducibility
             multiple_query_distributions: Whether to use multiple query distributions
             ood_distribution: Whether to use OOD distribution (training: first 4 dists, testing: last dist)
+            hard_type: Type of hard transformation (default: opposite), choices=['opposite', 'rotation', 'normal']
         """
         self.d = d
         self.n_train_queries = n_train_queries
@@ -138,7 +140,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
         self.random_seed = random_seed
         self.multiple_query_distributions = multiple_query_distributions
         self.ood_distribution = ood_distribution
-        
+        self.hard_type = hard_type
         # Set random seeds
         np.random.seed(random_seed)
         torch.manual_seed(random_seed)
@@ -193,6 +195,12 @@ class OpposingPairsMlpSyntheticDataGenerator:
         )
         gaussian_noise = np.random.normal(0, 0.1, size=(n_queries, self.d))
         return laplace_queries + gaussian_noise
+    
+    def _generate_shifted_uniform(self, n_queries: int) -> np.ndarray:
+        """Generate queries from uniform distribution [0, 4]^d"""
+        return np.random.uniform(
+            low=0.0, high=4.0, size=(n_queries, self.d)
+        )
 
     def generate_queries(self) -> np.ndarray:
         """
@@ -271,47 +279,17 @@ class OpposingPairsMlpSyntheticDataGenerator:
                 print(f"  → Total: {queries.shape[0]} queries from 5 different distributions (shuffled)")
             
         else:
-            print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...")
-            queries = self._generate_standard_gaussian(self.n_total_queries)
+            if self.n_transformations == 5:
+                print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...standard gaussian")
+                queries = self._generate_standard_gaussian(self.n_total_queries)
+            elif self.n_transformations == 2:
+                print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...shifted uniform")
+                queries = self._generate_shifted_uniform(self.n_total_queries)
             
         self.queries = queries
         return queries
     
-    def generate_transformation_mlps(self) -> List[TransformationMLP]:
-        """
-        Generate 5 distinctly different MLP transformations with very diverse behaviors.
-        This creates varied transformations: [A, B, C, D, E] with maximally different characteristics.
-        
-        Returns:
-            List of 5 MLPs
-        """
-        print(f"Generating highly diverse MLP transformations...")
-        
-        transformation_mlps = []
-        # # get a random rotation matrix of size d x d; make it norm 1
-        # rotation_matrix = np.random.randn(self.d, self.d)
-        # rotation_matrix = rotation_matrix / np.linalg.norm(rotation_matrix)
-        # rotation_matrix = torch.tensor(rotation_matrix, dtype=torch.float32)
-        
-        # # get another rotation matrix of size d x d that is orthogonal to the first one
-        # rotation_matrix2 = np.random.randn(self.d, self.d)
-        # rotation_matrix2 = rotation_matrix2 / np.linalg.norm(rotation_matrix2)
-        # rotation_matrix2 = torch.tensor(rotation_matrix2, dtype=torch.float32)
-        # rotation_matrix2 = rotation_matrix2.T @ rotation_matrix
-        # rotation_matrix2 = rotation_matrix2 / np.linalg.norm(rotation_matrix2)
-        # rotation_matrix2 = torch.tensor(rotation_matrix2, dtype=torch.float32)
-        
-        # # get a random matrix of size d x d that is orthogonal to the first two
-        # rotation_matrix3 = np.random.randn(self.d, self.d)
-        # rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
-        # rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
-        # rotation_matrix3 = rotation_matrix3.T @ rotation_matrix
-        # rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
-        # rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
-        # rotation_matrix3 = rotation_matrix3.T @ rotation_matrix2
-        # rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
-        # rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
-        
+    def generate_rotation(self):
         import torch
 
         def proj_to_SO(X):
@@ -353,47 +331,66 @@ class OpposingPairsMlpSyntheticDataGenerator:
         A = random_rotation(n)
         B = rotation_orthogonal_to([A], n, iters=20)
         C = rotation_orthogonal_to([A, B], n, iters=20)
-        rotation_matrix = A
-        rotation_matrix2 = B
-        rotation_matrix3 = C
-        # rotation_matrix4 = -rotation_matrix2-rotation_matrix3
-        # rotation_matrix5 = -rotation_matrix
+        # D = rotation_orthogonal_to([A, B, C], n, iters=20)
+        # E = rotation_orthogonal_to([A, B, C, D], n, iters=20)
+        return A, B, C
+    
+    def generate_normal(self):
+        # get a random rotation matrix of size d x d; make it norm 1
+        rotation_matrix = np.random.randn(self.d, self.d)
+        rotation_matrix = rotation_matrix / np.linalg.norm(rotation_matrix)
+        rotation_matrix = torch.tensor(rotation_matrix, dtype=torch.float32)
+        
+        # get another rotation matrix of size d x d that is orthogonal to the first one
+        rotation_matrix2 = np.random.randn(self.d, self.d)
+        rotation_matrix2 = rotation_matrix2 / np.linalg.norm(rotation_matrix2)
+        rotation_matrix2 = torch.tensor(rotation_matrix2, dtype=torch.float32)
+        rotation_matrix2 = rotation_matrix2.T @ rotation_matrix
+        rotation_matrix2 = rotation_matrix2 / np.linalg.norm(rotation_matrix2)
+        rotation_matrix2 = torch.tensor(rotation_matrix2, dtype=torch.float32)
+        
+        # get a random matrix of size d x d that is orthogonal to the first two
+        rotation_matrix3 = np.random.randn(self.d, self.d)
+        rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
+        rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
+        rotation_matrix3 = rotation_matrix3.T @ rotation_matrix
+        rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
+        rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
+        rotation_matrix3 = rotation_matrix3.T @ rotation_matrix2
+        rotation_matrix3 = rotation_matrix3 / np.linalg.norm(rotation_matrix3)
+        rotation_matrix3 = torch.tensor(rotation_matrix3, dtype=torch.float32)
+        
+        return rotation_matrix, rotation_matrix2, rotation_matrix3
+    
+    
+    def generate_transformation_mlps(self) -> List[TransformationMLP]:
+        """
+        Generate 5 distinctly different MLP transformations with very diverse behaviors.
+        This creates varied transformations: [A, B, C, D, E] with maximally different characteristics.
+        
+        Returns:
+            List of 5 MLPs
+        """
+        print(f"Generating highly diverse MLP transformations...")
+        
+        transformation_mlps = []
+        
+        if self.n_transformations == 5:
+            
+            if self.hard_type in ['opposite', 'rotation']:
+                rotation_matrix, rotation_matrix2, rotation_matrix3 = self.generate_rotation()
+                if self.hard_type == 'rotation':
+                    rotation_matrix4 = -rotation_matrix2
+                    rotation_matrix5 = -rotation_matrix3
+            else:
+                rotation_matrix, rotation_matrix2, rotation_matrix3 = self.generate_normal()
+                rotation_matrix4 = -rotation_matrix2
+                rotation_matrix5 = -rotation_matrix3
+        elif self.n_transformations == 2:
+            rotation_matrix, _, _ = self.generate_normal()
+            rotation_matrix2 = -rotation_matrix
 
-        
-        # # get a random matrix of size d x d that is orthogonal to the first three
-        # rotation_matrix4 = np.random.randn(self.d, self.d)
-        # rotation_matrix4 = rotation_matrix4 / np.linalg.norm(rotation_matrix4)
-        # rotation_matrix4 = torch.tensor(rotation_matrix4, dtype=torch.float32)
-        # rotation_matrix4 = rotation_matrix4.T @ rotation_matrix
-        # rotation_matrix4 = rotation_matrix4 / np.linalg.norm(rotation_matrix4)
-        # rotation_matrix4 = torch.tensor(rotation_matrix4, dtype=torch.float32)
-        # rotation_matrix4 = rotation_matrix4.T @ rotation_matrix2
-        # rotation_matrix4 = rotation_matrix4 / np.linalg.norm(rotation_matrix4)
-        # rotation_matrix4 = torch.tensor(rotation_matrix4, dtype=torch.float32)
-        # rotation_matrix4 = rotation_matrix4.T @ rotation_matrix3
-        # rotation_matrix4 = rotation_matrix4 / np.linalg.norm(rotation_matrix4)
-        # rotation_matrix4 = torch.tensor(rotation_matrix4, dtype=torch.float32)
-        
-        # # get a random matrix of size d x d that is orthogonal to the first four
-        # rotation_matrix5 = np.random.randn(self.d, self.d)
-        # rotation_matrix5 = rotation_matrix5 / np.linalg.norm(rotation_matrix5)
-        # rotation_matrix5 = torch.tensor(rotation_matrix5, dtype=torch.float32)
-        # rotation_matrix5 = rotation_matrix5.T @ rotation_matrix
-        # rotation_matrix5 = rotation_matrix5 / np.linalg.norm(rotation_matrix5)
-        # rotation_matrix5 = torch.tensor(rotation_matrix5, dtype=torch.float32)
-        # rotation_matrix5 = rotation_matrix5.T @ rotation_matrix2
-        # rotation_matrix5 = rotation_matrix5 / np.linalg.norm(rotation_matrix5)
-        # rotation_matrix5 = torch.tensor(rotation_matrix5, dtype=torch.float32)
-        # rotation_matrix5 = rotation_matrix5.T @ rotation_matrix3
-        # rotation_matrix5 = rotation_matrix5 / np.linalg.norm(rotation_matrix5)
-        # rotation_matrix5 = torch.tensor(rotation_matrix5, dtype=torch.float32)
-        # rotation_matrix5 = rotation_matrix5.T @ rotation_matrix4
-        # rotation_matrix5 = rotation_matrix5 / np.linalg.norm(rotation_matrix5)
-        # rotation_matrix5 = torch.tensor(rotation_matrix5, dtype=torch.float32)
-        
-        
         # 1. Linear-like MLP (small hidden layer, minimal non-linearity)
-        linear_hidden_dim = max(32, self.d // 32)
         mlp1 = nn.Sequential(
             nn.Linear(self.d, self.d),
             nn.GELU(),
@@ -401,13 +398,6 @@ class OpposingPairsMlpSyntheticDataGenerator:
             nn.GELU(),
             nn.Linear(self.d, self.d)
         )
-        # mlp1 = nn.Sequential(
-        #     nn.Linear(self.d, linear_hidden_dim),
-        #     nn.GELU(),
-        #     nn.Linear(linear_hidden_dim, self.d),
-        #     nn.GELU(),
-        #     nn.Linear(self.d, self.d)
-        # )
         with torch.no_grad():
             for param in mlp1.parameters():
                 if len(param.shape) > 1:
@@ -418,12 +408,11 @@ class OpposingPairsMlpSyntheticDataGenerator:
                     nn.init.zeros_(param)
         transformation_mlps.append(mlp1)
         print(f"  ✓ Added Linear-like MLP (A) - minimal non-linearity")
-        print(f"    Architecture: {self.d} → {linear_hidden_dim} → {self.d}")
-        print(f"    Hidden dim ratio: {linear_hidden_dim/self.d:.3f}")
+        print(f"    Architecture: {self.d} → {self.hidden_dim} → {self.d}")
+        print(f"    Hidden dim ratio: {self.hidden_dim/self.d:.3f}")
         print(f"    Initialization: Normal(0, 0.01) for weights, Normal(0, 0.05) for biases")
         
         # 2. High-variance MLP (large weights, strong non-linearity)
-        highvar_hidden_dim = self.hidden_dim * 2
         mlp2 = nn.Sequential(
             nn.Linear(self.d, self.d),
             nn.GELU(),
@@ -431,11 +420,6 @@ class OpposingPairsMlpSyntheticDataGenerator:
             nn.GELU(),
             nn.Linear(self.d, self.d)
         )
-        # mlp2 = nn.Sequential(
-        #     nn.Linear(self.d, highvar_hidden_dim),
-        #     nn.GELU(),
-        #     nn.Linear(highvar_hidden_dim, self.d)
-        # )
         with torch.no_grad():
             for param in mlp2.parameters():
                 if len(param.shape) > 1:
@@ -446,94 +430,81 @@ class OpposingPairsMlpSyntheticDataGenerator:
                     nn.init.zeros_(param)
         transformation_mlps.append(mlp2)
         print(f"  ✓ Added High-variance MLP (B) - strong non-linearity")
-        print(f"    Architecture: {self.d} → {highvar_hidden_dim} → {self.d}")
-        print(f"    Hidden dim ratio: {highvar_hidden_dim/self.d:.3f}")
+        print(f"    Architecture: {self.d} → {self.hidden_dim} → {self.d}")
+        print(f"    Hidden dim ratio: {self.hidden_dim/self.d:.3f}")
         print(f"    Initialization: Normal(0, 1.0) for weights, Normal(0, 0.5) for biases")
         
-        # 3. Bottleneck MLP (very small hidden layer for compression)
-        bottleneck_hidden_dim = max(16, self.d // 64)
-        mlp3 = nn.Sequential(
-            nn.Linear(self.d, self.d),
-            nn.GELU(),
-            nn.Linear(self.d, self.d),
-            nn.GELU(),
-            nn.Linear(self.d, self.d)
-        )
-        # mlp3 = nn.Sequential(
-        #     nn.Linear(self.d, self.d // 2),
-        #     nn.GELU(),
-        #     nn.Linear(self.d // 2, bottleneck_hidden_dim),
-        #     nn.GELU(),
-        #     nn.Linear(bottleneck_hidden_dim, self.d)
-        # )
-        with torch.no_grad():
-            for param in mlp3.parameters():
-                if len(param.shape) > 1:
-                    # nn.init.uniform_(param, -1, 1)
-                    param.data = rotation_matrix3
-                else:
-                    nn.init.zeros_(param)
-        transformation_mlps.append(mlp3)
-        print(f"  ✓ Added Bottleneck MLP (C) - severe compression")
-        print(f"    Architecture: {self.d} → {bottleneck_hidden_dim} → {self.d}")
-        print(f"    Hidden dim ratio: {bottleneck_hidden_dim/self.d:.3f}")
-        print(f"    Initialization: Normal(1, 2) for weights, Normal(1, 2) for biases")
-        
-        # 4. Uniform Distribution MLP (as before)
-        # mlp4 = nn.Sequential(
-        #     nn.Linear(self.d, self.d),
-        #     nn.GELU(),
-        #     nn.Linear(self.d, self.d),
-        #     nn.GELU(),
-        #     nn.Linear(self.d, self.d)
-        # )
-        mlp4 = mlp2
-        # mlp4 = nn.Sequential(
-        #     nn.Linear(self.d, self.d),
-        #     nn.Tanh(),
-        #     nn.Linear(self.d, self.d)
-        # )
-        # with torch.no_grad():
-        #     for param in mlp4.parameters():
-        #         if len(param.shape) > 1:
-        #             # nn.init.uniform_(param, -2, 2)
-        #             param.data = rotation_matrix4
-        #         else:
-        #             nn.init.zeros_(param)
-        transformation_mlps.append(mlp4)
-        print(f"  ✓ Added Uniform Distribution MLP (D)")
-        print(f"    Architecture: {self.d} → {self.d} → {self.d}")
-        print(f"    Hidden dim ratio: {self.d/self.d:.3f}")
-        print(f"    Initialization: Uniform(-2, 2) for weights, Uniform(-1, 1) for biases")
-        
-        # 5. Extreme Sparse MLP (70% weights are zero)
-        # mlp5= nn.Sequential(
-        #     nn.Linear(self.d, self.d),
-        #     nn.GELU(),
-        #     nn.Linear(self.d, self.d),
-        #     nn.GELU(),
-        #     nn.Linear(self.d, self.d)
-        # )
-        mlp5 = mlp3
-        # mlp5 = nn.Sequential(
-        #     nn.Linear(self.d, self.d),
-        #     nn.Sigmoid(),
-        #     nn.Linear(self.d, self.d),
-        #     nn.Sigmoid(),
-        #     nn.Linear(self.d, self.d)
-        # )
-        # with torch.no_grad():
-        #     for param in mlp5.parameters():
-        #         if len(param.shape) > 1:
-        #             # nn.init.uniform_(param, 0, 2)
-        #             param.data = rotation_matrix5
-        #         else:
-        #             nn.init.zeros_(param)
-        transformation_mlps.append(mlp5)
-        print(f"  ✓ Added Sigmoid MLP (E) - strong non-linearity")
-        print(f"    Architecture: {self.d} → {self.d} → {self.d} → {self.d}")
-        print(f"    Hidden dim ratio: {self.d/self.d:.3f}")
-        print(f"    Initialization: Normal(0, 10.0) for weights, Normal(0, 10.0) for biases")
+        if self.n_transformations == 5:
+            # 3. Bottleneck MLP (very small hidden layer for compression)
+            mlp3 = nn.Sequential(
+                nn.Linear(self.d, self.d),
+                nn.GELU(),
+                nn.Linear(self.d, self.d),
+                nn.GELU(),
+                nn.Linear(self.d, self.d)
+            )
+            with torch.no_grad():
+                for param in mlp3.parameters():
+                    if len(param.shape) > 1:
+                        # nn.init.uniform_(param, -1, 1)
+                        param.data = rotation_matrix3
+                    else:
+                        nn.init.zeros_(param)
+            transformation_mlps.append(mlp3)
+            print(f"  ✓ Added Bottleneck MLP (C) - severe compression")
+            print(f"    Architecture: {self.d} → {self.hidden_dim} → {self.d}")
+            print(f"    Hidden dim ratio: {self.hidden_dim/self.d:.3f}")
+            print(f"    Initialization: Normal(1, 2) for weights, Normal(1, 2) for biases")
+            
+            # 4. Uniform Distribution MLP (as before)
+            if self.hard_type == 'opposite':
+                mlp4 = -mlp2
+            else:
+                mlp4 = nn.Sequential(
+                    nn.Linear(self.d, self.d),
+                    nn.GELU(),
+                    nn.Linear(self.d, self.d),
+                    nn.GELU(),
+                    nn.Linear(self.d, self.d)
+                )
+                
+            with torch.no_grad():
+                for param in mlp4.parameters():
+                    if len(param.shape) > 1:
+                        # nn.init.uniform_(param, 0, 2)
+                        param.data = rotation_matrix4
+                    else:
+                        nn.init.zeros_(param)
+            transformation_mlps.append(mlp4)
+            print(f"  ✓ Added Uniform Distribution MLP (D)")
+            print(f"    Architecture: {self.d} → {self.d} → {self.d}")
+            print(f"    Hidden dim ratio: {self.d/self.d:.3f}")
+            print(f"    Initialization: Uniform(-2, 2) for weights, Uniform(-1, 1) for biases")
+            
+            # 5. Extreme Sparse MLP (70% weights are zero)
+            if self.hard_type == 'opposite':
+                mlp5 = -mlp3
+            else:
+                mlp5= nn.Sequential(
+                    nn.Linear(self.d, self.d),
+                    nn.GELU(),
+                    nn.Linear(self.d, self.d),
+                    nn.GELU(),
+                    nn.Linear(self.d, self.d)
+                )
+            
+            with torch.no_grad():
+                for param in mlp5.parameters():
+                    if len(param.shape) > 1:
+                        # nn.init.uniform_(param, 0, 2)
+                        param.data = rotation_matrix5
+                    else:
+                        nn.init.zeros_(param)
+            transformation_mlps.append(mlp5)
+            print(f"  ✓ Added Sigmoid MLP (E) - strong non-linearity")
+            print(f"    Architecture: {self.d} → {self.d} → {self.d} → {self.d}")
+            print(f"    Hidden dim ratio: {self.d/self.d:.3f}")
+            print(f"    Initialization: Normal(0, 10.0) for weights, Normal(0, 10.0) for biases")
         
         # Print parameter counts
         print(f"\nParameter counts:")
@@ -859,6 +830,8 @@ def main():
                        help='Sample a random subset of transformations for each query')
     parser.add_argument('--n-transformations', type=int, default=5,
                        help='Number of transformations to sample for each query (default: 5)')
+    parser.add_argument('--hard-type', type=str, default='opposite',
+                       help='Type of hard transformation (default: opposite)', choices=['opposite', 'rotation', 'normal'])
     
     args = parser.parse_args()
     
@@ -873,7 +846,8 @@ def main():
         random_seed=args.seed,
         multiple_query_distributions=args.multiple_query_distributions,
         ood_distribution=args.ood_distribution,
-        n_transformations=args.n_transformations
+        n_transformations=args.n_transformations,
+        hard_type=args.hard_type
     )
     
     # Generate all data
