@@ -27,8 +27,10 @@ NUM_EPOCHS_LIST=(3000)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
+SAMPLE_RATE_MULTIPLIERS=(1)
 # LR min ratios
 LR_MIN_RATIO=0.0
+
 
 
 # Project name (will be used in wandb)
@@ -38,9 +40,10 @@ full_finetuning=true
 # dataset configurations
 transformation_type="new_mlps" # linear, diverse_mlps
 small=false
-hard_strategy="opposite" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
+hard_strategy="rotation" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
 xlarge=false
 normalize=true
+pred_length_labels=true
 
 # dataset_name="diverse_mlps_multi_query_sm"
 multiple_gpus=false              # whether to use multiple GPUs
@@ -48,15 +51,17 @@ save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 all_data=$small
 force_sampling=false
-less_ss=true
 
 LOG_WITH="wandb"
-machine="torch" # greene, torch
+machine="greene" # greene, torch
 
-MODEL_TYPE="EmbeddingModelSS"
+resume_from_checkpoint=false
+use_stateful_dataloader=false
+
+MODEL_TYPE="EmbeddingModelSSPredLength"
 
 
-MODE="contrastive_all_labels_shuffled_woseq"
+MODE="contrastive_all_labels_shuffled"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -141,21 +146,31 @@ fi
 if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
     MODEL_STR=""
     SCHEDULE_SAMPLING=""
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSS" ]; then
     MODEL_STR="_SS"
     SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
     MODEL_STR="_SSVariable"
     SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
     MODEL_STR="_SSVariableLeftPad"
     SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSAddQ" ]; then
     MODEL_STR="_SSAddQ"
     SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSAvgQ" ]; then
     MODEL_STR="_SSAvgQ"
     SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSPredLength" ]; then
+    MODEL_STR="_SSPredLength"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    PRED_LENGTH="--pred_length"
 fi
 
 # =================================================================
@@ -258,18 +273,31 @@ else
     force_sampling_prefix=""
 fi
 
-if [ "$less_ss" = true ]; then
-    LESS_SS="--less_ss"
-    less_ss_prefix="less_ss_"
+if [ "$pred_length_labels" = true ]; then
+    pred_length_labels_str="_pred_length"
 else
-    LESS_SS=""
-    less_ss_prefix=""
+    pred_length_labels_str=""
 fi
+
+
+
+if [ "$resume_from_checkpoint" = true ]; then
+    RESUME_FROM_CHECKPOINT="--resume_from_checkpoint"
+else
+    RESUME_FROM_CHECKPOINT=""
+fi
+
+if [ "$use_stateful_dataloader" = true ]; then
+    USE_STATEFUL_DATALOADER="--use_stateful_dataloader"
+else
+    USE_STATEFUL_DATALOADER=""
+fi
+
 
 dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
 BASE_SAVE_PATH="results/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
-BASE_TRAIN_PATH="training_datasets/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${data_small_suffix}"
-EXP_DATA_PREFIX="${force_sampling_prefix}${less_ss_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}"
+BASE_TRAIN_PATH="training_datasets/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${pred_length_labels_str}${data_small_suffix}"
+EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}${pred_length_labels_str}"
 
 
 # elif [ "$transformation_type" = "linear" ]; then
@@ -343,7 +371,7 @@ if [ "$multiple_gpus" = true ]; then
     PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
-    TIME_LIMIT="96:00:00"
+    TIME_LIMIT="24:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -446,11 +474,12 @@ generate_custom_exp_name() {
     local warmup=$5
     local use_hard_negatives=$6
     local prefix=$7
+    local srm=$8    
     
     # Default naming scheme    
     if [ "$use_hard_negatives" = true ]; then
-        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_srm${srm}_hn"
     else
-        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_srm${srm}"
     fi
 } 

@@ -5,13 +5,13 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/ambignq_config.sh"
+CONFIG_FILE="sbatch_configs/gaussian_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    becho "Please create $CONFIG_FILE or copy from ambignq_config.sh"
+    becho "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
@@ -21,6 +21,7 @@ TEMPERATURE=${TEMPERATURES[0]}
 BATCH_SIZE=${BATCH_SIZES[0]}
 NUM_EPOCHS=${NUM_EPOCHS_LIST[0]}
 WARMUP_RATIO=${WARMUP_RATIOS[0]}
+SAMPLE_RATE_MULTIPLIER=${SAMPLE_RATE_MULTIPLIERS[0]}
 
 # Generate experiment name
 # EXP_NAME="${EXP_PREFIX}_lr${LEARNING_RATE}_temp${TEMPERATURE}_batch${BATCH_SIZE}_ep${NUM_EPOCHS}_warmup${WARMUP_RATIO}"
@@ -73,8 +74,12 @@ ARGS="--project ${BASE_PROJECT} \
       ${LEFT_PADDING} \
       ${NORMALIZE_STR} \
       ${FORCE_SAMPLING} \
-      ${LESS_SS} \
-      --log_with ${LOG_WITH}"
+      --sample_rate_multiplier ${SAMPLE_RATE_MULTIPLIER} \
+      --log_with ${LOG_WITH} \
+      ${RESUME_FROM_CHECKPOINT} \
+      ${USE_STATEFUL_DATALOADER} \
+      ${PRED_LENGTH}
+      "
 
 echo "Training arguments:"
 echo "$ARGS"

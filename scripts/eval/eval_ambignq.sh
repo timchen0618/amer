@@ -1,8 +1,10 @@
 #!/bin/bash
 # GENERATE ARGS
 data_name="ambiguous_qe"
-training_data_name="nq"
-suffix_list="toy_contrastive"
+training_data_name="ambiguous_qe"
+suffix_list=(
+    "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+)
 file_list="retrieval_out_dev_ambiguous_qe_max_new_tokens_1.jsonl"
 retriever="inf"
 base_model="llama-1b"
@@ -38,10 +40,10 @@ else
 fi
 
 
-for suffix in $suffix_list
+for suffix in ${suffix_list[@]}
 do
     echo "Evaluating retrieval results for $suffix"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${suffix}/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/sanity_check/${suffix}/"
     python eval.py --data-type $data_name \
         --root $ROOT_DIR \
         --topk $topk_list $has_gold_id_str $select_indices_file_str $file_list_str

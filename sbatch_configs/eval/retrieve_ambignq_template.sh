@@ -3,7 +3,7 @@
 # GENERATE ARGS
 data_name="ambiguous_qe"
 training_data_name="ambiguous_qe"
-suffix="normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05"
+suffix="[suffix]"
 
 retriever="inf"
 use_best_model=true
@@ -14,7 +14,7 @@ checkpoint_num="70000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=2
+max_new_tokens=1
 num_shards="8"
 use_gpu=true
 machine="torch"
@@ -22,7 +22,7 @@ machine="torch"
 # SLURM CONFIGURATION BEGINS
 SBATCH_DIR="sbatch_jobs_eval"
 JOB_OUTPUT_DIR="sbatch_outputs_eval"
-TIME_LIMIT="4:00:00"
+TIME_LIMIT="1:00:00"
 MEMORY="200GB"
 CPUS_PER_TASK=10
 GPU_STRING="1"

@@ -1,20 +1,20 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari_5_to_8"
+data_name="qampari"
 training_data_name="qampari"
-suffix="toy_qemb_from_nq"
+suffix="[suffix]"
 
 retriever="inf"
-use_best_model=false
+use_best_model=true
 compute_loss=false
-full_finetuning=false
+full_finetuning=true
 base_model="llama-1b"
 checkpoint_num="30000"
 
 # inference_modes="all first second"
-inference_modes="first"
-max_new_tokens=2
+inference_modes="all"
+max_new_tokens=5
 num_shards="8"
 use_gpu=true
 machine="torch"
@@ -24,7 +24,7 @@ SBATCH_DIR="sbatch_jobs_eval"
 JOB_OUTPUT_DIR="sbatch_outputs_eval"
 TIME_LIMIT="4:00:00"
 MEMORY="200GB"
-CPUS_PER_TASK=20
+CPUS_PER_TASK=10
 GPU_STRING="1"
 EMAIL="hc3337@nyu.edu"
 # Singularity 
@@ -34,7 +34,7 @@ if [ "$machine" = "greene" ]; then
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.8.1-cudnn9.8.0-ubuntu24.04.2.sif"
     SLURM_EXTRA_ARGS="#SBATCH --requeue
-#SBATCH --partition=h200"
+#SBATCH --constraint=h200"
 else
     echo "Invalid machine"
     exit 1

@@ -8,12 +8,12 @@
 # =================================================================
 
 # Learning rates to test
-# LEARNING_RATES=(1e-5 2e-5 5e-5 1e-4)
+# LEARNING_RATES=(5e-4 2e-4 1e-4)
 LEARNING_RATES=(5e-5)
 
 # Temperature values for contrastive loss
+# TEMPERATURES=(0.04 0.03 0.02 0.01)
 TEMPERATURES=(0.05)
-# TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
@@ -27,9 +27,10 @@ NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
-
+SAMPLE_RATE_MULTIPLIERS=(1)
 # LR min ratios
 LR_MIN_RATIO=0.0
+
 
 
 # =================================================================
@@ -47,11 +48,13 @@ normalize=true
 LOG_WITH="wandb"
 use_inf_base_model=false
 machine="torch" # greene, torch
-less_ss=true
+
+resume_from_checkpoint=false
+use_stateful_dataloader=false
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="hungarian_contrastive"
+MODE="contrastive_all_labels_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -137,18 +140,27 @@ if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
     MODEL_STR=""
     SCHEDULE_SAMPLING=""
     LEFT_PADDING=""
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSS" ]; then
     MODEL_STR="_SS"
     SCHEDULE_SAMPLING="--schedule_sampling"
     LEFT_PADDING=""
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
     MODEL_STR="_SSVariable"
     SCHEDULE_SAMPLING="--schedule_sampling"
     LEFT_PADDING=""
+    PRED_LENGTH=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
     MODEL_STR="_SSVariableLeftPad"
     SCHEDULE_SAMPLING="--schedule_sampling"
     LEFT_PADDING="--left_padding"
+    PRED_LENGTH=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSPredLength" ]; then
+    MODEL_STR="_SSPredLength"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING="--left_padding"
+    PRED_LENGTH="--pred_length"
 fi
 
 
@@ -199,16 +211,22 @@ else
     base_prefix=""
 fi
 
-if [ "$less_ss" = true ]; then
-    LESS_SS="--less_ss"
-    less_ss_prefix="less_SS_"
+
+
+if [ "$resume_from_checkpoint" = true ]; then
+    RESUME_FROM_CHECKPOINT="--resume_from_checkpoint"
 else
-    LESS_SS=""
-    less_ss_prefix=""
+    RESUME_FROM_CHECKPOINT=""
+fi
+
+if [ "$use_stateful_dataloader" = true ]; then
+    USE_STATEFUL_DATALOADER="--use_stateful_dataloader"
+else
+    USE_STATEFUL_DATALOADER=""
 fi
 
 # Experiment prefix
-EXP_PREFIX="${less_ss_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -305,7 +323,7 @@ if [ "$machine" = "greene" ]; then
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
     CONSTRAINT="h200"
-    PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
+    # PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"
     exit 1
@@ -385,11 +403,12 @@ generate_custom_exp_name() {
     local warmup=$5
     local use_hard_negatives=$6
     local prefix=$7
+    local srm=$8
     
     # Default naming scheme    
     if [ "$use_hard_negatives" = true ]; then
-        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn"
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_srm${srm}_hn"
     else
-        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}"
+        echo "${prefix}_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_srm${srm}"
     fi
 } 

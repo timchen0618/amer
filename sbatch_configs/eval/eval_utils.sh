@@ -1,5 +1,13 @@
 # Set dev_data_path based on data_name
 split="dev"  # Define split variable (assuming 'dev' as default)
+sanity_check=true
+
+if [ "$sanity_check" = true ]; then
+    sanity_check_str="sanity_check/"
+else
+    sanity_check_str=""
+fi
+
 if [[ "$data_name" == "ambiguous" || "$data_name" == "ambiguous_qe" ]]; then
     dev_data_path="data/questions/${data_name}_${split}_question_only_2_to_5_ctxs.jsonl"
 elif [[ "$data_name" == "ambiguous_qe_query_exp" ]]; then
@@ -30,24 +38,24 @@ fi
 
 if [ "$use_best_model" = true ]; then
     if [ "$full_finetuning" = true ]; then
-        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model"
+        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/best_model"
         adapter_path=None
     else
-        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model"
+        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/best_model"
     fi
-    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model_linear.pt"
+    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/best_model_linear.pt"
 else
     if [ "$full_finetuning" = true ]; then
-        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}"
+        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/checkpoint_${checkpoint_num}"
         adapter_path=None
     else
-        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}"
+        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/checkpoint_${checkpoint_num}"
     fi
-    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}_linear.pt"
+    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/checkpoint_${checkpoint_num}_linear.pt"
 fi
 exp_name="${base_model}_${training_data_name}_${retriever}_${suffix}"
 # set up output path
-output_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/retrieval_out_${split}_${data_name}.jsonl"
+output_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/retrieval_out_${split}_${data_name}.jsonl"
 
 
 #
