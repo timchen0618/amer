@@ -439,6 +439,8 @@ def parse_args():
                        help='Retriever to use')
     parser.add_argument('--dev_data_path', type=str, default='data_creation/raw_data/ambiguous_qe_dev_question_only.jsonl',
                        help='Path to the dev data')
+    parser.add_argument('--save_embeddings', action='store_true', default=False,
+                       help='Whether to save embeddings')
     
     # Indexing configuration
     parser.add_argument('--use_gpu', action='store_true', default=False,
@@ -572,82 +574,85 @@ if __name__ == "__main__":
     )
     assert len(lengths) > 0 or args.max_new_tokens is not None, "Lengths can only be empty if max_new_tokens is not None"
     
-    for inference_mode in args.inference_modes:
-        if inference_mode == 'first':
-            inference_string = '_single'
-            aggregate_start_idx = 0
-            aggregate_end_idx = 1
-        elif inference_mode == 'second':
-            inference_string = '_from_2nd_to_3rd'
-            aggregate_start_idx = 1
-            aggregate_end_idx = 2
-        elif inference_mode == 'all':
-            inference_string = ''
-            aggregate_start_idx = 0
-            aggregate_end_idx = None
-            if args.max_new_tokens is not None:
-                inference_string = f'_max_new_tokens_{args.max_new_tokens}'
-        elif inference_mode == 'average':
-            inference_string = '_average'
-            aggregate_start_idx = 0
-            aggregate_end_idx = None
-            if lengths is not None and len(lengths) > 0:
-                new_outputs = []
-                start_idx = 0
-                for i in range(len(lengths)):
-                    new_outputs.append(outputs[start_idx:start_idx+lengths[i]].mean(axis=0).reshape(1, -1))
-                    start_idx += lengths[i]
-                outputs = np.concatenate(new_outputs, axis=0)
+    if args.save_embeddings:
+        np.save(args.output_path.replace('.jsonl', '.npy'), outputs)
+    else:
+        for inference_mode in args.inference_modes:
+            if inference_mode == 'first':
+                inference_string = '_single'
+                aggregate_start_idx = 0
+                aggregate_end_idx = 1
+            elif inference_mode == 'second':
+                inference_string = '_from_2nd_to_3rd'
+                aggregate_start_idx = 1
+                aggregate_end_idx = 2
+            elif inference_mode == 'all':
+                inference_string = ''
+                aggregate_start_idx = 0
+                aggregate_end_idx = None
+                if args.max_new_tokens is not None:
+                    inference_string = f'_max_new_tokens_{args.max_new_tokens}'
+            elif inference_mode == 'average':
+                inference_string = '_average'
+                aggregate_start_idx = 0
+                aggregate_end_idx = None
+                if lengths is not None and len(lengths) > 0:
+                    new_outputs = []
+                    start_idx = 0
+                    for i in range(len(lengths)):
+                        new_outputs.append(outputs[start_idx:start_idx+lengths[i]].mean(axis=0).reshape(1, -1))
+                        start_idx += lengths[i]
+                    outputs = np.concatenate(new_outputs, axis=0)
+                else:
+                    outputs = outputs.reshape(-1, args.max_new_tokens, outputs.shape[-1])
+                    outputs = outputs.mean(axis=1)
+                args.max_new_tokens = 1
+                print('outputs', outputs.shape)
             else:
-                outputs = outputs.reshape(-1, args.max_new_tokens, outputs.shape[-1])
-                outputs = outputs.mean(axis=1)
-            args.max_new_tokens = 1
-            print('outputs', outputs.shape)
-        else:
-            raise ValueError(f"Invalid inference mode: {inference_mode}")
-        
-        # start retrieval
-        if not args.google_api:
-            # Load passages
-            logger.info(f"Loading passages from {passages_path}")
-            passages = load_passages(passages_path)
-            passage_id_map = {x["id"]: x for x in passages}
-            # Retrieve and evaluate
-            retrieve(
-                num_shards=args.num_shards, 
-                retriever=args.retriever, 
-                passage_embeddings_map=passage_embeddings_map, 
-                passage_id_map=passage_id_map,
-                raw_data_path=args.dev_data_path,
-                embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
-                lengths=lengths,
-                question_embeddings=outputs,
-                output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
-                MAX_LATENTS=args.max_new_tokens,
-                top_k_per_query=args.top_k_per_query,
-                top_k=args.top_k,
-                start_idx=args.start_idx,
-                end_idx=args.end_idx,
-                aggregate_start_idx=aggregate_start_idx,
-                aggregate_end_idx=aggregate_end_idx
-            )
-        else:
-            # Google API path
-            main_test_google(
-                passages_embeddings=passage_embeddings_map[args.retriever]["embedding_path"], 
-                passages_path=passages_path, 
-                raw_data_path=args.dev_data_path,
-                embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
-                lengths=lengths,
-                question_embeddings=outputs,
-                output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
-                MAX_LATENTS=args.max_new_tokens,
-                top_k_per_query=args.top_k_per_query,
-                top_k=args.top_k,
-                start_idx=args.start_idx,
-                end_idx=args.end_idx,
-                aggregate_start_idx=aggregate_start_idx,
-                aggregate_end_idx=aggregate_end_idx
-            )
+                raise ValueError(f"Invalid inference mode: {inference_mode}")
+            
+            # start retrieval
+            if not args.google_api:
+                # Load passages
+                logger.info(f"Loading passages from {passages_path}")
+                passages = load_passages(passages_path)
+                passage_id_map = {x["id"]: x for x in passages}
+                # Retrieve and evaluate
+                retrieve(
+                    num_shards=args.num_shards, 
+                    retriever=args.retriever, 
+                    passage_embeddings_map=passage_embeddings_map, 
+                    passage_id_map=passage_id_map,
+                    raw_data_path=args.dev_data_path,
+                    embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
+                    lengths=lengths,
+                    question_embeddings=outputs,
+                    output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
+                    MAX_LATENTS=args.max_new_tokens,
+                    top_k_per_query=args.top_k_per_query,
+                    top_k=args.top_k,
+                    start_idx=args.start_idx,
+                    end_idx=args.end_idx,
+                    aggregate_start_idx=aggregate_start_idx,
+                    aggregate_end_idx=aggregate_end_idx
+                )
+            else:
+                # Google API path
+                main_test_google(
+                    passages_embeddings=passage_embeddings_map[args.retriever]["embedding_path"], 
+                    passages_path=passages_path, 
+                    raw_data_path=args.dev_data_path,
+                    embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
+                    lengths=lengths,
+                    question_embeddings=outputs,
+                    output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
+                    MAX_LATENTS=args.max_new_tokens,
+                    top_k_per_query=args.top_k_per_query,
+                    top_k=args.top_k,
+                    start_idx=args.start_idx,
+                    end_idx=args.end_idx,
+                    aggregate_start_idx=aggregate_start_idx,
+                    aggregate_end_idx=aggregate_end_idx
+                )
             
 

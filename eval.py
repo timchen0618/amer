@@ -1,4 +1,5 @@
 import argparse
+import csv
 import pandas as pd
 from src.eval_utils import read_jsonl, eval_retrieve_docs, eval_retrieve_docs_for_repeats, evaluate, mrr
 
@@ -216,13 +217,30 @@ def main():
         columns = ['MRecall@100', 'Recall@100', 'Precision@100', 'nDCG@100', 
                   'MRecall@10', 'Recall@10', 'Precision@10', 'nDCG@10']
     
-    df = pd.DataFrame(all_scores, columns=columns[:len(all_scores[0]) if all_scores else len(columns)], index=file_list)
-    df.index.name = 'file_name'
-    df.to_csv(args.output_csv, index=True)
+    # Determine the actual number of columns to use
+    num_columns = len(all_scores[0]) if all_scores else len(columns)
+    actual_columns = columns[:num_columns]
+    
+    # Write CSV using csv writer
+    with open(args.output_csv, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        
+        # # Write header row with file_name as first column
+        # header = ['file_name'] + actual_columns
+        # writer.writerow(header)
+        
+        # Write data rows
+        for _, scores in zip(file_list, all_scores):
+            row = [eval_root.strip('/').split('/')[-1]] + scores
+            writer.writerow(row)
+    
     print(f"\nResults saved to: {args.output_csv}")
-    print(f"Shape: {df.shape}")
+    print(f"Shape: ({len(all_scores)}, {len(actual_columns) + 1})")  # +1 for eval_root.strip('/').split('/')[-1] column
     print("\nSample results:")
-    print(df.head())
+    if all_scores:
+        # print(f"Headers: {header}")
+        for i, (scores) in enumerate(all_scores[:5]):  # Show first 5 rows
+            print(f"Row {i+1}: {[eval_root.strip('/').split('/')[-1]] + scores}")
 
 
 if __name__ == "__main__":
