@@ -5,13 +5,13 @@
 # and submits them as separate jobs
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/ambignq_config.sh"
+CONFIG_FILE="sbatch_configs/gaussian_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    echo "Please create $CONFIG_FILE or copy from ambignq_config.sh"
+    echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
     exit 1
 fi
 
@@ -29,11 +29,12 @@ generate_exp_name() {
     local warmup=$5
     local use_hard_negatives=$6
     local prefix=$7
+    local srm=$8
 
     if declare -f generate_custom_exp_name > /dev/null; then
-        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$use_hard_negatives" "$prefix"
+        generate_custom_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$use_hard_negatives" "$prefix" "$srm"
     else
-        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_hn${use_hard_negatives}"
+        echo "hypersearch_lr${lr}_temp${temp}_batch${batch}_ep${epochs}_warmup${warmup}_srm${srm}_hn${use_hard_negatives}"
     fi
 }
 
@@ -45,6 +46,7 @@ create_sbatch_file() {
     local batch=$4
     local epochs=$5
     local warmup=$6
+    local srm=$7
 
     local sbatch_file="${SBATCH_DIR}/run_${exp_name}.SBATCH"
     local output_file="${JOB_OUTPUT_DIR}/run_${exp_name}.out"
@@ -102,8 +104,11 @@ ARGS="--project ${BASE_PROJECT} \\
       ${LEFT_PADDING} \\
       ${NORMALIZE_STR} \\
       ${FORCE_SAMPLING} \\
-      ${LESS_SS} \\
-      --log_with ${LOG_WITH}"
+      --sample_rate_multiplier ${srm} \\
+      --log_with ${LOG_WITH} \\
+      ${RESUME_FROM_CHECKPOINT} \\
+      ${USE_STATEFUL_DATALOADER} \\
+      ${PRED_LENGTH}"
 
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} ${PYTHON_COMMAND} \$ARGS & wait)"
@@ -139,9 +144,11 @@ calculate_total_combinations() {
             for batch in "${BATCH_SIZES[@]}"; do
                 for epochs in "${NUM_EPOCHS_LIST[@]}"; do
                     for warmup in "${WARMUP_RATIOS[@]}"; do
-                        if filter_combinations "$lr" "$temp" "$batch" "$epochs" "$warmup"; then
-                            ((total++))
-                        fi
+                        for srm in "${SAMPLE_RATE_MULTIPLIERS[@]}"; do
+                            if filter_combinations "$lr" "$temp" "$batch" "$epochs" "$warmup"; then
+                                ((total++))
+                            fi
+                        done
                     done
                 done
             done
@@ -170,47 +177,49 @@ for lr in "${LEARNING_RATES[@]}"; do
         for batch in "${BATCH_SIZES[@]}"; do
             for epochs in "${NUM_EPOCHS_LIST[@]}"; do
                 for warmup in "${WARMUP_RATIOS[@]}"; do
-                    # Apply filtering
-                    if ! filter_combinations "$lr" "$temp" "$batch" "$epochs" "$warmup"; then
-                        echo "Skipping filtered combination: lr=$lr, temp=$temp, batch=$batch, epochs=$epochs, warmup=$warmup"
-                        continue
-                    fi
-                    
-                    exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$USE_HARD_NEGATIVES" "$EXP_PREFIX")
-                    
-                    echo "Creating experiment: $exp_name"
-                    
-                    # Create SBATCH file
-                    sbatch_file=$(create_sbatch_file "$exp_name" "$lr" "$temp" "$batch" "$epochs" "$warmup")
-                    
-                    # Submit job (if not dry run)
-                    if [[ "$DRY_RUN" != "true" ]]; then
-                        if [[ ${#submitted_jobs[@]} -lt $MAX_CONCURRENT_JOBS ]]; then
-                            job_id=$(submit_job "$sbatch_file")
-                            submitted_jobs+=("$job_id")
-                            echo "  Submitted job $job_id for $exp_name"
-                        else
-                            # Wait for one of the jobs to finish before submitting new one
-                            if [[ "$USE_DEPENDENCIES" == "true" ]]; then
-                                oldest_job=${submitted_jobs[0]}
-                                submitted_jobs=("${submitted_jobs[@]:1}")  # Remove first element
-                                job_id=$(submit_job "$sbatch_file" "$oldest_job")
-                                submitted_jobs+=("$job_id")
-                                echo "  Submitted job $job_id for $exp_name (waiting for $oldest_job)"
-                            else
+                    for srm in "${SAMPLE_RATE_MULTIPLIERS[@]}"; do
+                        # Apply filtering
+                        if ! filter_combinations "$lr" "$temp" "$batch" "$epochs" "$warmup"; then
+                            echo "Skipping filtered combination: lr=$lr, temp=$temp, batch=$batch, epochs=$epochs, warmup=$warmup"
+                            continue
+                        fi
+                        
+                        exp_name=$(generate_exp_name "$lr" "$temp" "$batch" "$epochs" "$warmup" "$USE_HARD_NEGATIVES" "$EXP_PREFIX" "$srm")
+                        
+                        echo "Creating experiment: $exp_name"
+                        
+                        # Create SBATCH file
+                        sbatch_file=$(create_sbatch_file "$exp_name" "$lr" "$temp" "$batch" "$epochs" "$warmup" "$srm")
+                        
+                        # Submit job (if not dry run)
+                        if [[ "$DRY_RUN" != "true" ]]; then
+                            if [[ ${#submitted_jobs[@]} -lt $MAX_CONCURRENT_JOBS ]]; then
                                 job_id=$(submit_job "$sbatch_file")
                                 submitted_jobs+=("$job_id")
                                 echo "  Submitted job $job_id for $exp_name"
+                            else
+                                # Wait for one of the jobs to finish before submitting new one
+                                if [[ "$USE_DEPENDENCIES" == "true" ]]; then
+                                    oldest_job=${submitted_jobs[0]}
+                                    submitted_jobs=("${submitted_jobs[@]:1}")  # Remove first element
+                                    job_id=$(submit_job "$sbatch_file" "$oldest_job")
+                                    submitted_jobs+=("$job_id")
+                                    echo "  Submitted job $job_id for $exp_name (waiting for $oldest_job)"
+                                else
+                                    job_id=$(submit_job "$sbatch_file")
+                                    submitted_jobs+=("$job_id")
+                                    echo "  Submitted job $job_id for $exp_name"
+                                fi
                             fi
                         fi
-                    fi
-                    
-                    ((job_counter++))
-                    
-                    # Add delay between submissions
-                    if [[ "$DRY_RUN" != "true" && $SUBMISSION_DELAY -gt 0 ]]; then
-                        sleep $SUBMISSION_DELAY
-                    fi
+                        
+                        ((job_counter++))
+                        
+                        # Add delay between submissions
+                        if [[ "$DRY_RUN" != "true" && $SUBMISSION_DELAY -gt 0 ]]; then
+                            sleep $SUBMISSION_DELAY
+                        fi
+                    done
                 done
             done
         done

@@ -215,6 +215,23 @@ def main(args):
         print(f'loading query vectors from {query_path}')
         query_vectors = np.load(query_path)
         
+    elif args.data_type == 'results_qampari' or args.data_type == 'results_ambiguous_qe':
+        length = 5 if args.data_type == 'results_qampari' else 2
+        data = normalize_np(np.load(args.data_path))
+        target_vectors_list = []
+        # target vectors every "legnth" steps
+        for i in range(0, len(data), length):
+            target_vectors_list.append(data[i:i+length])
+        
+        # query vector
+        rootdir='/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf'
+        if args.data_type == 'results_ambiguous_qe':
+            query_path = f'{rootdir}/questions_embeddings_ambiguous_qe_dev_question_only_2_to_5_ctxs.npy'
+        elif args.data_type == 'results_qampari':
+            query_path = f'{rootdir}/questions_embeddings_qampari_dev_question_only_5_to_8_ctxs.npy'
+        print(f'loading query vectors from {query_path}')
+        query_vectors = np.load(query_path)
+        
     elif args.data_type == 'multi_source':
         data = read_json(args.data_path)
         
