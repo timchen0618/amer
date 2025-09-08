@@ -44,7 +44,7 @@ def get_training_args():
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning")
     parser.add_argument("--schedule_sampling", action="store_true", default=False, help="Schedule sampling")
     parser.add_argument("--force_sampling", action="store_true", default=False, help="Force sampling")
-    parser.add_argument("--less_ss", action="store_true", default=False, help="Less Schedule Sampling")
+    parser.add_argument("--sample_rate_multiplier", type=float, default=1.0, help="Sample rate multiplier")
     
     # Training options
     parser.add_argument("--shuffle_sequence", action="store_true", default=False, help="Shuffle sequence during training")
@@ -52,6 +52,8 @@ def get_training_args():
     parser.add_argument("--save_only_improve", action="store_true", default=False, help="Save only when validation improves")
     parser.add_argument("--take_first", action="store_true", default=False, help="Take first sequence")
     parser.add_argument("--left_padding", action="store_true", default=False, help="Left padding")
+    parser.add_argument("--pred_length", action="store_true", default=False, help="Predict length")
+    
     # Model architecture
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")
     parser.add_argument("--loss_function", type=str, default="Hungarian_Contrastive", 
@@ -70,6 +72,8 @@ def get_training_args():
     parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="Model ID")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=int, default=0, help="Resume from epoch")
+    parser.add_argument("--resume_from_checkpoint", action="store_true", default=False, help="Resume from checkpoint")
+    parser.add_argument("--use_stateful_dataloader", action="store_true", default=False, help="Use stateful dataloader")
     
     # Optimizer configuration
     parser.add_argument("--beta1", type=float, default=0.9, help="Adam beta1")

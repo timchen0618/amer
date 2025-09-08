@@ -88,7 +88,7 @@ def train(configs):
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     
     # model loading
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength']), 'Schedule sampling is only supported for EmbeddingModelSS'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                   base_model_id=configs.model_id, 
@@ -114,6 +114,7 @@ def train(configs):
     total_train_steps = 0
     best_val_loss = 10000
     losses = []
+    ntp_losses = []
     for epoch in range(configs.resume, configs.num_epochs):
         ##############
         # Do Training
@@ -161,7 +162,8 @@ def train(configs):
             
             if log_with_wandb:
                 losses.append(loss.detach().float().cpu().item())
-                
+                if configs.pred_length:
+                    ntp_losses.append(outputs.ntp_loss.detach().float().cpu().item())
                 
             if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(
                 train_dataloader
@@ -180,8 +182,11 @@ def train(configs):
                     "train/lr": scheduler.get_last_lr()[0],
                     "train/sampling_rate": batch['sampling_rate']
                 }
+                if configs.pred_length:
+                    log_dict["train/ntp_loss"] = sum(ntp_losses)/ len(ntp_losses)
                 wandb_run.log(log_dict, step=total_train_steps)
                 losses = []
+                ntp_losses = []
             pbar.set_description(
                 f"Training Epoch: {epoch+1}/{configs.num_epochs}, batch {step}/{len(train_dataloader)} "
                 f"completed (loss): {round(float(loss.detach().float() * configs.gradient_accumulation_steps), 4)}"
@@ -202,6 +207,7 @@ def train(configs):
 
                 # val loss
                 total_loss = 0
+                total_ntp_loss = 0
                 with torch.no_grad():
                     model.eval()
                     for step, batch in enumerate(tqdm(valid_loss_dataloader)):
@@ -209,21 +215,27 @@ def train(configs):
                             batch[k] = v.to(device)
                         
                         if configs.schedule_sampling:
-                            if configs.less_ss:
-                                batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
-                            else:
-                                batch['sampling_rate'] = total_train_steps / float(configs.total_steps)
+                            # if configs.less_ss:
+                            #     batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
+                            # else:
+                            # batch['sampling_rate'] = configs.sample_rate_multiplier * total_train_steps / float(configs.total_steps)
+                            batch['sampling_rate'] = 1.0
                         outputs = model(**batch)
                         
                         loss = outputs.loss
                         total_loss += loss.item()
-
+                        if configs.pred_length:
+                            total_ntp_loss += outputs.ntp_loss.item()
                     if log_with_wandb:
                         log_dict = {
                             "eval/loss": (total_loss / len(valid_loss_dataloader)),
                         }
+                        if configs.pred_length:
+                            log_dict["eval/ntp_loss"] = (total_ntp_loss / len(valid_loss_dataloader))
                         wandb_run.log(log_dict, step=total_train_steps)
                         logger.info("eval loss", eval_loss=(total_loss / len(valid_loss_dataloader)))
+                        if configs.pred_length:
+                            logger.info("eval ntp_loss", eval_ntp_loss=(total_ntp_loss / len(valid_loss_dataloader)))
                         
                         
                         
