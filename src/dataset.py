@@ -417,11 +417,13 @@ if __name__ == "__main__":
         #     write_jsonl(combined_data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs.jsonl')
     if command == 'combine_pred_length':
         for split in ['train', 'test']:
-            trans_5_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_5_{split}_dataset_1b_contrastive_pred_length')
-            trans_2_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_2_{split}_dataset_1b_contrastive_pred_length')
-            
-            combined_dataset = concatenate_datasets([trans_5_data, trans_2_data])
-            combined_dataset.save_to_disk(f'data_creation/gaussian_new_mlps_rotation_{split}_dataset_1b_contrastive_pred_length')
+            for sm_str in ['', '_sm']:
+                trans_5_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_5_{split}_dataset_1b_contrastive_pred_length{sm_str}')
+                trans_2_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_2_{split}_dataset_1b_contrastive_pred_length{sm_str}')
+                
+                combined_dataset = concatenate_datasets([trans_5_data, trans_2_data])
+                print('len(combined_dataset)', len(combined_dataset))
+                combined_dataset.save_to_disk(f'data_creation/gaussian_new_mlps_rotation_{split}_dataset_1b_contrastive_pred_length{sm_str}')
 
                 
     if command == 'combine_ambiguous_and_qampari':

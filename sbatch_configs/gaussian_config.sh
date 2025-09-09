@@ -39,7 +39,7 @@ full_finetuning=true
 
 # dataset configurations
 transformation_type="new_mlps" # linear, diverse_mlps
-small=false
+small=true
 hard_strategy="rotation" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
 xlarge=false
 normalize=true
@@ -61,7 +61,7 @@ use_stateful_dataloader=false
 MODEL_TYPE="EmbeddingModelSSPredLength"
 
 
-MODE="contrastive_all_labels_shuffled"
+MODE="hungarian_contrastive"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -297,7 +297,8 @@ fi
 dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
 BASE_SAVE_PATH="results/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
 BASE_TRAIN_PATH="training_datasets/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${pred_length_labels_str}${data_small_suffix}"
-EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}${pred_length_labels_str}"
+# EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}${pred_length_labels_str}"
+EXP_DATA_PREFIX="test"
 
 
 # elif [ "$transformation_type" = "linear" ]; then
@@ -316,7 +317,8 @@ EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_pre
 # fi
 
 # Experiment prefix
-EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+# EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="test"
 
 # Model checkpoints
 MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"

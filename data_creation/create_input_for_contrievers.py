@@ -631,7 +631,7 @@ if __name__ == '__main__':
             }
             
         @torch.no_grad()
-        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH, hard_negatives=None, pred_length_labels=False, model_name='meta-llama/Llama-3.2-1B-Instruct'):
+        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH, hard_negatives=None, pred_length_labels=False, length_label=5, model_name='meta-llama/Llama-3.2-1B-Instruct'):
             instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
             response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
             if pred_length_labels:
@@ -658,7 +658,7 @@ if __name__ == '__main__':
                         random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
 
                 if pred_length_labels:
-                    length_labels = tokenizer(str(5) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
+                    length_labels = tokenizer(str(length_label) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
                     # print('length_labels', length_labels)
                     # length_labels = {k: v.cuda() for k, v in length_labels.items()}
                     # outputs = model(**length_labels, output_hidden_states=True)
@@ -755,6 +755,7 @@ if __name__ == '__main__':
         LENGTH = 8
         normalize = False
         pred_length_labels = True
+        length_label = 2
         # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
             
@@ -772,7 +773,7 @@ if __name__ == '__main__':
             
             create_synthetic_dataset(out_dataset_path=out_data_path, 
                                     pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH, 
-                                    hard_negatives=hard_negatives, pred_length_labels=pred_length_labels, model_name=model_name)
+                                    hard_negatives=hard_negatives, pred_length_labels=pred_length_labels, length_label=length_label, model_name=model_name)
             
             # mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
             # create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 

@@ -775,6 +775,8 @@ class EmbeddingModelSSPredLength(EmbeddingModel):
         # get the length labels
         query_length = 1
         length_labels = inputs['length_labels_input_ids']  # (bsz, 4)
+        print('length_labels', length_labels)
+        print('inputs length labels input ids', inputs['length_labels_input_ids'])
         outputs = self.base_causallm(input_ids=inputs['length_labels_input_ids'], attention_mask=inputs['length_labels_attention_mask'], output_hidden_states=True)
         length_labels_hidden_states = outputs.hidden_states[0].clone().detach()  # (bsz, 4, 2048)
         query_input_embeds = self.input_projection(inputs['inputs_embeds'])[:, :query_length, :] # (bsz, 1, 2048)
@@ -924,6 +926,8 @@ class EmbeddingModelSSPredLength(EmbeddingModel):
         # hidden_states torch.Size([1, 39, 2048])
         # attention_mask torch.Size([1, 39])
         # question_embeddings torch.Size([1, 1536])
+        # 5 -> 20,     27,  12529,     29,
+        # 2 -> 17,     27,  12529,     29,
         
         # HC Implementation
         next_embs = []
@@ -934,40 +938,38 @@ class EmbeddingModelSSPredLength(EmbeddingModel):
         else:
             assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
         
-        # if 'input_ids' in inputs:
-        #     outputs = self.base_causallm.generate(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True, max_new_tokens=4, return_dict_in_generate=True, output_scores=True)
-        # else:
-        #     outputs = self.base_causallm.generate(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True, max_new_tokens=4, return_dict_in_generate=True, output_scores=True)
-        # tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-3.2-1B-Instruct')
-        # print('outputs', tokenizer.decode(outputs[0], skip_special_tokens=True))
-        # scores = outputs.scores                                    # list length = steps
-        # If you want probabilities or the prob of each chosen token:
-        # probs = [torch.softmax(s, dim=-1) for s in scores]
-        # print('probs', len(probs), len(probs[0]), len(probs[0][0]))
-        # print('probs: 17', probs[0][0][17])
-        # print('probs: 20', probs[0][0][20])
-
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True)
-            
-        logits = outputs.logits
-        print('logits', logits.shape)
-        print('logits: 17', logits[0, 0, 17])
-        print('logits: 20', logits[0, 0, 20])
-        # softmax the logits
-        logits = torch.softmax(logits, dim=-1)
-        print('logits: 17', logits[0, 0, 17])
-        print('logits: 20', logits[0, 0, 20])
-        exit(0)
         
-        # predict the first pass; also get the input embeddings from the base causal language model
+        max_new_tokens = 0
+        query_length = 1
+        tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-3.2-1B-Instruct')
+        tokenizer.pad_token = tokenizer.eos_token
+        self.base_causallm.config.pad_token_id = self.base_causallm.config.eos_token_id
+
+        # input_embeds -> (1, 1, 1024)
+        # attention mask -> (1, 1)
+        
+        # first generate the length labels
         if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
+            outputs = self.base_causallm.generate(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], max_new_tokens=4, do_sample=False, output_hidden_states=True)
         else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True)
+            outputs = self.base_causallm.generate(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), attention_mask=inputs['attention_mask'], max_new_tokens=4, do_sample=False, output_hidden_states=True)
+        
+        # decode the outputs
+        decoded_outputs = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        print('decoded outputs', decoded_outputs)
+        max_new_tokens = int(decoded_outputs[0])
+    
+        outputs = self.base_causallm(input_ids=outputs, attention_mask=inputs['attention_mask'], output_hidden_states=True)
+        length_labels_hidden_states = outputs.hidden_states[0].clone()  # (bsz, 4, 2048)
+
+        query_input_embeds = self.input_projection(inputs['inputs_embeds'])[:, :query_length, :] # (bsz, 1, 2048)
+        inputs['inputs_embeds'] = torch.cat((query_input_embeds, length_labels_hidden_states), dim=1) # (bsz, 5, 2048)
+        outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], output_hidden_states=True)
+    
+        # # # predict the first pass; also get the input embeddings from the base causal language model
+        # outputs = self.base_causallm(input_ids=outputs, attention_mask=inputs['attention_mask'], output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0]
+        # print('hidden states', outputs.hidden_states[0].size())
         
         
         if use_gt_q_embed: # use the ground truth question embeddings; the first step doesn't count, generate the rest of the tokens

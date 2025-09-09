@@ -43,7 +43,7 @@ fi
 for suffix in ${suffix_list[@]}
 do
     echo "Evaluating retrieval results for $suffix"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/sanity_check/${suffix}/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${suffix}/"
     python eval.py --data-type $data_name \
         --root $ROOT_DIR \
         --topk $topk_list $has_gold_id_str $select_indices_file_str $file_list_str
