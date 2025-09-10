@@ -289,7 +289,7 @@ MAX_CONCURRENT_JOBS=100
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="24:00:00"
+    TIME_LIMIT="4:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task

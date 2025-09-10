@@ -38,51 +38,6 @@ from data_creation.gaussian.eval_utils import compute_similarities_and_rankings,
 from gen_ret_and_eval import evaluate_loop
 from typing import List, Dict, Any
 
-# def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True):
-
-#     all_outputs = []
-#     all_losses = []
-#     all_labels = []
-#     all_lengths = []
-#     adaptive_max_new_tokens = (max_new_tokens is None)
-        
-#     for batch in tqdm(dataloader):
-#         for k, v in batch.items():
-#             batch[k] = v.to(device)
-#         if 'positive_embeddings' in batch and adaptive_max_new_tokens:
-#             max_new_tokens = batch['positive_embeddings'].size(1)
-        
-
-#         output = model.generate(
-#             max_new_tokens=max_new_tokens,
-#             use_gt_q_embed=use_gt_q_embed,
-#             use_eos=use_eos,
-#             **batch
-#         )
-#         all_outputs.append(output.view(-1, output.size(-1)))
-
-#         if compute_loss:
-#             if 'labels' in batch:
-#                 # compute the loss
-#                 # print(output.size(), batch['labels'].size())
-#                 assert output.size() == batch['labels'].size(), (output.size(), batch['labels'].size())
-#                 loss = model.loss_fct(output.float(), batch['labels'].float())
-#                 # print('loss', loss.item())
-#                 all_lengths.append(batch['labels'].size(1))
-#                 all_losses.append(loss.item())
-#                 all_labels.append(batch['labels'].view(-1, batch['labels'].size(-1)))
-#             elif 'positive_embeddings' in batch:
-#                 # print(output.size(), batch['positive_embeddings'].size(), batch['negative_embeddings'].size())
-#                 loss = model.loss_fct(output.float(), batch['positive_embeddings'].float(), batch['negative_embeddings'].float())
-#                 all_lengths.append(batch['positive_embeddings'].size(1))
-#                 all_labels.append(batch['positive_embeddings'].view(-1, batch['positive_embeddings'].size(-1)))
-#                 all_losses.append(loss.item())
-    
-#     if compute_loss:
-#         return torch.cat(all_outputs, dim=0).cpu().numpy(), sum(all_losses) / len(all_losses), torch.cat(all_labels, dim=0).cpu().numpy(), all_lengths
-#     else:
-#         return torch.cat(all_outputs, dim=0).cpu().numpy(), None, None, all_lengths
-
 
 def load_synthetic_dataset(data_dir='./synthetic_data', split='test', normalize=False, indexed_corpus=None):
     """
@@ -378,7 +333,13 @@ def main(args):
                     elif args.data_dir == './data_creation/gaussian/data/new_mlps_harder_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_harder_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_harder_data_large':
                         dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_harder/inf/gaussian_new_mlps_harder_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation/inf/gaussian_new_mlps_rotation_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                        if args.pred_length:
+                            print('reading from data_creation/gaussian_new_mlps_rotation_5_test_dataset_1b_contrastive_pred_length/')
+                            dataloader = load_input_data(f'data_creation/gaussian_new_mlps_rotation_5_test_dataset_1b_contrastive_pred_length/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)    
+                        else:
+                            dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation/inf/gaussian_new_mlps_rotation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_large_2/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large_2/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large_2':
+                        dataloader = load_input_data(f'data_creation/gaussian_new_mlps_rotation_2_test_dataset_1b_contrastive_pred_length/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/new_mlps_normal_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_normal_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_normal_large':
                         dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_normal/inf/gaussian_new_mlps_normal_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large':
@@ -405,9 +366,15 @@ def main(args):
                         all_outputs = torch.cat(all_outputs, dim=0).cpu().numpy()
                         print('all outputs', all_outputs.shape)
                     else:
-                        # Evaluate model
+                        # # Evaluate model
+                        # data_iter = iter(dataloader)
+
+                        # skip first n batches
+                        # for _ in range(1000):
+                        #     next(data_iter, None)
                         all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
                         print('all outputs', all_outputs.shape)
+                        all_outputs = all_outputs
 
                     # Evaluate Results
                     rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)

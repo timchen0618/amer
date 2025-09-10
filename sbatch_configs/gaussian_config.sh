@@ -39,11 +39,10 @@ full_finetuning=true
 
 # dataset configurations
 transformation_type="new_mlps" # linear, diverse_mlps
-small=true
-hard_strategy="rotation" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
+small=false
+hard_strategy="rotation_ood" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite
 xlarge=false
 normalize=true
-pred_length_labels=true
 
 # dataset_name="diverse_mlps_multi_query_sm"
 multiple_gpus=false              # whether to use multiple GPUs
@@ -58,10 +57,10 @@ machine="greene" # greene, torch
 resume_from_checkpoint=false
 use_stateful_dataloader=false
 
-MODEL_TYPE="EmbeddingModelSSPredLength"
+MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="hungarian_contrastive"
+MODE="contrastive_one_label_shuffled"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label
@@ -147,30 +146,37 @@ if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
     MODEL_STR=""
     SCHEDULE_SAMPLING=""
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSS" ]; then
     MODEL_STR="_SS"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariable" ]; then
     MODEL_STR="_SSVariable"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPad" ]; then
     MODEL_STR="_SSVariableLeftPad"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSAddQ" ]; then
     MODEL_STR="_SSAddQ"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSAvgQ" ]; then
     MODEL_STR="_SSAvgQ"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH=""
+    pred_length_labels_str=""
 elif [ "$MODEL_TYPE" == "EmbeddingModelSSPredLength" ]; then
     MODEL_STR="_SSPredLength"
     SCHEDULE_SAMPLING="--schedule_sampling"
     PRED_LENGTH="--pred_length"
+    pred_length_labels_str="_pred_length"
 fi
 
 # =================================================================
@@ -252,6 +258,10 @@ elif [ "$hard_strategy" = "normal" ]; then
     hard_strategy_suffix="_normal"
 elif [ "$hard_strategy" = "opposite" ]; then
     hard_strategy_suffix="_opposite"
+elif [ "$hard_strategy" = "rotation_multi_query" ]; then
+    hard_strategy_suffix="_rotation_multi_query"
+elif [ "$hard_strategy" = "rotation_ood" ]; then
+    hard_strategy_suffix="_rotation_ood"
 else
     echo "Invalid hard strategy"
     exit 1
@@ -273,12 +283,6 @@ else
     force_sampling_prefix=""
 fi
 
-if [ "$pred_length_labels" = true ]; then
-    pred_length_labels_str="_pred_length"
-else
-    pred_length_labels_str=""
-fi
-
 
 
 if [ "$resume_from_checkpoint" = true ]; then
@@ -297,8 +301,7 @@ fi
 dataset_name="${transformation_type}${hard_strategy_suffix}${data_small_suffix}"
 BASE_SAVE_PATH="results/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}_inf/"
 BASE_TRAIN_PATH="training_datasets/llama-1b/gaussian_${transformation_type}${hard_strategy_suffix}/inf/gaussian_${transformation_type}${hard_strategy_suffix}_train_dataset_1b_contrastive${pred_length_labels_str}${data_small_suffix}"
-# EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}${pred_length_labels_str}"
-EXP_DATA_PREFIX="test"
+EXP_DATA_PREFIX="${force_sampling_prefix}${normalize_prefix}${exp_name_large_prefix}${transformation_type_suffix}_gaussian${hard_strategy_suffix}${pred_length_labels_str}"
 
 
 # elif [ "$transformation_type" = "linear" ]; then
@@ -317,8 +320,7 @@ EXP_DATA_PREFIX="test"
 # fi
 
 # Experiment prefix
-# EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
-EXP_PREFIX="test"
+EXP_PREFIX="${EXP_DATA_PREFIX}${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Model checkpoints
 MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"

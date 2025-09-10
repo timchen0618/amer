@@ -14,7 +14,8 @@ checkpoint_num="30000"
 
 # inference_modes="all first second"
 inference_modes="all"
-max_new_tokens=1
+round_robin_percentage=1.0
+max_new_tokens=5
 num_shards="8"
 use_gpu=true
 machine="torch"

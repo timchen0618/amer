@@ -458,7 +458,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
             
             # 4. Uniform Distribution MLP (as before)
             if self.hard_type == 'opposite':
-                mlp4 = -mlp2
+                mlp4 = mlp2
             else:
                 mlp4 = nn.Sequential(
                     nn.Linear(self.d, self.d),
@@ -483,7 +483,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
             
             # 5. Extreme Sparse MLP (70% weights are zero)
             if self.hard_type == 'opposite':
-                mlp5 = -mlp3
+                mlp5 = mlp3
             else:
                 mlp5= nn.Sequential(
                     nn.Linear(self.d, self.d),
@@ -597,7 +597,7 @@ class OpposingPairsMlpSyntheticDataGenerator:
                 query_batch = query.unsqueeze(0)  # Add batch dimension
                 for mlp_idx, mlp in enumerate(self.transformation_mlps[:self.n_transformations]):
                     # Apply MLP to this specific query
-                    if mlp_idx >= 3:
+                    if self.hard_type == 'opposite' and mlp_idx >= 3:
                         transformed_query = -mlp(query_batch).squeeze(0).numpy()
                     else:
                         transformed_query = mlp(query_batch).squeeze(0).numpy()

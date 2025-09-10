@@ -1,6 +1,7 @@
 import torch
 import torch.distributed
 import torch.optim as optim
+import copy
 import numpy as np
 import argparse
 
@@ -203,7 +204,7 @@ def load_data(data_path):
     return data
   
 
-def aggregate_different_queries_by_length(top_ids_and_scores, lengths=None, MAX_LATENTS=None, top_k=100, aggregate_start_idx=0, aggregate_end_idx=None):
+def aggregate_different_queries_by_length(top_ids_and_scores, lengths=None, MAX_LATENTS=None, top_k=100, aggregate_start_idx=0, aggregate_end_idx=None, round_robin_percentage=1.0):
     # aggregate top_ids_and_scores for different queries
     if MAX_LATENTS is not None:
         assert len(top_ids_and_scores) % (MAX_LATENTS) == 0, (len(top_ids_and_scores), MAX_LATENTS)
@@ -244,10 +245,17 @@ def aggregate_different_queries_by_length(top_ids_and_scores, lengths=None, MAX_
                     aggregated_top_ids_and_scores_per_inst.append((current_id, current_score))
                     seen_ids.add(current_id)
                 
+                if len(aggregated_top_ids_and_scores_per_inst) >= top_k * round_robin_percentage:
+                    break
+            if len(aggregated_top_ids_and_scores_per_inst) >= top_k * round_robin_percentage:
+                break
+        
+        if round_robin_percentage < 1.0:
+            print('round_robin_percentage < 1.0', len(aggregated_top_ids_and_scores_per_inst), top_k, 'idx', idx, 'max_len', max_len)
+            for j in range(idx+1, max_len):
+                aggregated_top_ids_and_scores_per_inst.append(ids_and_scores_to_aggregate[0][j])
                 if len(aggregated_top_ids_and_scores_per_inst) >= top_k:
                     break
-            if len(aggregated_top_ids_and_scores_per_inst) >= top_k:
-                break
         aggregated_top_ids_and_scores_per_inst = list(zip(*aggregated_top_ids_and_scores_per_inst))
         aggregated_top_ids_and_scores.append(aggregated_top_ids_and_scores_per_inst)
     
@@ -281,7 +289,8 @@ def load_index(embedding_size, passages_embeddings, save_or_load_index=False, us
 def main_test_google(passages_embeddings, passages_path, output_path, 
               raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
               question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
-              start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None):
+              start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None, 
+              round_robin_percentage=1.0, save_before_aggregation=False):
     
     # loading question embeddings
     logger.info('question embeddings shape: %s', question_embeddings.shape)
@@ -306,6 +315,11 @@ def main_test_google(passages_embeddings, passages_path, output_path,
         assert lengths is None, (lengths, MAX_LATENTS)
         lengths = [MAX_LATENTS] * len(data)
 
+    data_before_aggregation = []
+    for j, l in enumerate(lengths):
+        for _ in range(l):
+            data_before_aggregation.append(copy.deepcopy(data[j]))
+        
     start = 0
     for i in range(len(data)):
         # load index and passages for each query
@@ -319,13 +333,17 @@ def main_test_google(passages_embeddings, passages_path, output_path,
         start_time_retrieval = time.time()
         top_ids_and_scores_inst = index.search_knn(question_embeddings[start:start+lengths[i]].reshape(-1, embedding_size), top_k_per_query)
         logger.info(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
-        top_ids_and_scores_inst = aggregate_different_queries_by_length(top_ids_and_scores_inst, [lengths[i]], None, top_k, aggregate_start_idx, aggregate_end_idx)
+        for j in range(lengths[i]):
+            add_passages_single_instance(data_before_aggregation[start+j], passage_id_map, top_ids_and_scores_inst[j])
+        
+        top_ids_and_scores_inst = aggregate_different_queries_by_length(top_ids_and_scores_inst, [lengths[i]], None, top_k, aggregate_start_idx, aggregate_end_idx, round_robin_percentage)
         assert len(top_ids_and_scores_inst) == 1, (len(top_ids_and_scores_inst))
         logger.info("top_ids_and_scores_inst[0][0]", lens=len(top_ids_and_scores_inst[0][0]))
         add_passages_single_instance(data[i], passage_id_map, top_ids_and_scores_inst[0])
         
         start += lengths[i]
         
+    
     assert start == len(question_embeddings), (start, len(question_embeddings))
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -335,11 +353,19 @@ def main_test_google(passages_embeddings, passages_path, output_path,
             fout.write("\n")
     logger.info(f"Saved results to {output_path}")
     
+    if save_before_aggregation:
+        with open(output_path.replace('.jsonl', '_before_agg.jsonl'), "w") as fout:
+            for ex in data_before_aggregation:
+                json.dump(ex, fout, ensure_ascii=False)
+                fout.write("\n")
+        logger.info(f"Saved results to {output_path.replace('.jsonl', '_before_agg.jsonl')}")
+    
       
 def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, output_path, 
               raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
               question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
-              start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None):
+              start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None, 
+              round_robin_percentage=1.0, save_before_aggregation=False):
     
     # loading question embeddings
     # logger.info('loading question embeddings and attempt to retrieve from %s', data_path)
@@ -361,6 +387,16 @@ def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, outp
     else:
         lengths = None
         
+    data_before_aggregation = []
+    if lengths is not None:
+        for j, l in enumerate(lengths):
+            for _ in range(l):
+                data_before_aggregation.append(copy.deepcopy(data[j]))
+    else:
+        for j in range(len(data)):
+            for _ in range(MAX_LATENTS):
+                data_before_aggregation.append(copy.deepcopy(data[j]))
+            
     # Start Retrieving!
     all_sharded_ids_and_scores = []
     for shard_id in range(num_shards):
@@ -383,8 +419,9 @@ def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, outp
     
     top_ids_and_scores = aggregate_sharded_results(all_sharded_ids_and_scores, num_shards)
     logger.info(f"aggregated top_ids_and_scores for {num_shards} shards")
+    add_passages(data_before_aggregation, passage_id_map, top_ids_and_scores)
     
-    top_ids_and_scores = aggregate_different_queries_by_length(top_ids_and_scores, lengths, MAX_LATENTS, top_k, aggregate_start_idx, aggregate_end_idx)
+    top_ids_and_scores = aggregate_different_queries_by_length(top_ids_and_scores, lengths, MAX_LATENTS, top_k, aggregate_start_idx, aggregate_end_idx, round_robin_percentage)
     logger.info(f"length of the data to be retrieved: {len(data)}, length of the retrieved results: {len(top_ids_and_scores)}")
     add_passages(data, passage_id_map, top_ids_and_scores)
 
@@ -394,6 +431,13 @@ def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, outp
             json.dump(ex, fout, ensure_ascii=False)
             fout.write("\n")
     logger.info(f"Saved results to {output_path}")
+    
+    if save_before_aggregation:
+        with open(output_path.with_name(output_path.name.replace('.jsonl', '_before_agg.jsonl')), "w") as fout:
+            for ex in data_before_aggregation:
+                json.dump(ex, fout, ensure_ascii=False)
+                fout.write("\n")
+        logger.info(f"Saved results to {output_path.with_name(output_path.name.replace('.jsonl', '_before_agg.jsonl'))}")
     
     
 def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards):
@@ -502,6 +546,10 @@ def parse_args():
                        help='Inference mode')
     parser.add_argument('--output_path', type=str, default=None,
                        help='Output path')
+    parser.add_argument('--round_robin_percentage', type=float, default=1.0,
+                       help='Round robin percentage')
+    parser.add_argument('--save_before_aggregation', action='store_true', default=False,
+                       help='Whether to save before aggregation')
     return parser.parse_args()
 
 
@@ -634,7 +682,9 @@ if __name__ == "__main__":
                     start_idx=args.start_idx,
                     end_idx=args.end_idx,
                     aggregate_start_idx=aggregate_start_idx,
-                    aggregate_end_idx=aggregate_end_idx
+                    aggregate_end_idx=aggregate_end_idx,
+                    round_robin_percentage=args.round_robin_percentage,
+                    save_before_aggregation=args.save_before_aggregation
                 )
             else:
                 # Google API path
@@ -652,7 +702,9 @@ if __name__ == "__main__":
                     start_idx=args.start_idx,
                     end_idx=args.end_idx,
                     aggregate_start_idx=aggregate_start_idx,
-                    aggregate_end_idx=aggregate_end_idx
+                    aggregate_end_idx=aggregate_end_idx,
+                    round_robin_percentage=args.round_robin_percentage,
+                    save_before_aggregation=args.save_before_aggregation
                 )
             
 

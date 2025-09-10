@@ -1,6 +1,6 @@
 # Set dev_data_path based on data_name
 split="dev"  # Define split variable (assuming 'dev' as default)
-sanity_check=true
+sanity_check=false
 
 if [ "$sanity_check" = true ]; then
     sanity_check_str="sanity_check/"
@@ -54,9 +54,14 @@ else
     linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/checkpoint_${checkpoint_num}_linear.pt"
 fi
 exp_name="${base_model}_${training_data_name}_${retriever}_${suffix}"
-# set up output path
-output_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/retrieval_out_${split}_${data_name}.jsonl"
 
+# set up output path
+if [ "$round_robin_percentage" != 1.0 ]; then
+    output_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/retrieval_out_${split}_${data_name}_rr_${round_robin_percentage}.jsonl"
+else
+    output_path="results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/retrieval_out_${split}_${data_name}.jsonl"
+fi
+echo "output_path", $output_path
 
 #
 ###############################

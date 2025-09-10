@@ -754,19 +754,19 @@ if __name__ == '__main__':
         
         LENGTH = 8
         normalize = False
-        pred_length_labels = True
+        pred_length_labels = False
         length_label = 2
         # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
             
         for split in ['train', 'test']:
-            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_large_2/', normalize=normalize)
+            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_ood_large/', normalize=normalize)
             pairs = data['pairs_data'][split]
             
             pred_length_labels_str = '_pred_length' if pred_length_labels else ''
             normalized_str = '_normalized' if normalize else ''
             hard_negatives_str = '' if hard_negatives is None else '_hn'
-            out_data_path = f'gaussian_new_mlps_rotation_2_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
+            out_data_path = f'gaussian_new_mlps_rotation_ood_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
             
             model_name = 'meta-llama/Llama-3.2-1B-Instruct'
             

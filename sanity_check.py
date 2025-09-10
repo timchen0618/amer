@@ -310,7 +310,8 @@ def main(args):
     all_cosine_similarities.append(cosine_similarity.round(3))
     
     
-    if args.data_type != 'synthetic':
+    # if args.data_type != 'synthetic':
+    if True:
         all_l2_distances.extend([0, 0, 0, 0])
         all_cosine_similarities.extend([0, 0, 0, 0])
     else:
