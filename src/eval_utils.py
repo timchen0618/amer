@@ -115,8 +115,6 @@ def load_data(file_path):
     return data
 
 
-
-
 import pytrec_eval
 import json
 
@@ -135,6 +133,7 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
     if selected_indices is not None:
         dataset = [dataset[i] for i in selected_indices]
         retrieved_docs = [retrieved_docs[i] for i in selected_indices]
+        
     
     qid = 0
     for gold_inst, docs in tqdm(zip(dataset, retrieved_docs)):
@@ -218,6 +217,7 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
         mAP = sum(maps) / len(maps)
         
     MRR = sum(mrrs) / len(mrrs)
+    
     mrecall_score = score_mrecall(preds)
     recall_score = score_recall(preds)
     precision_score = score_precision(preds, topk)

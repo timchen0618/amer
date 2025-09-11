@@ -88,7 +88,7 @@ def train(configs):
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, left_padding=configs.left_padding, use_eos=configs.use_eos)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
-    data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 4)
+    data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
         
     if configs.train_on_all_data:
         train_dataloader = data_handler.get_full_dataloader()
@@ -100,7 +100,7 @@ def train(configs):
     # total_length = total_length // accelerator.num_processes
     
     
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength']), 'Schedule sampling is only supported for EmbeddingModelSS'
     # Instantiate the model (we build the model here so that the seed also control new weights initialization)
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                 base_model_id=configs.model_id, 

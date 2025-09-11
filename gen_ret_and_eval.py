@@ -151,7 +151,8 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
          loss_function = 'Contrastive',
          batch_size_training = 1,
          use_gt_q_embed = False,
-         use_eos = False):
+         use_eos = False,
+         pred_length = False):
     
     # check base model type
     if base_model_id == 'infly/inf-retriever-v1-1.5b':
@@ -174,6 +175,7 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
                                   adapter_path=adapter_path, 
                                   linear_checkpoint_path=linear_checkpoint_path,
                                   embedding_model_dim=embedding_model_dim, 
+                                  model_type='EmbeddingModelSSVariableLeftPadPredLength' if pred_length else 'EmbeddingModel', 
                                   loss_function=loss_function)
     
     logger.info(f"Generating input data from {input_data_path}, using the raw text")
@@ -475,7 +477,7 @@ def parse_args():
                        choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'arguana_generated', 'kialo', 'opinionqa', 'wsd_distinct', 'limit', 'limit-small', 'qampari_5_to_8', 'qampari_query_exp_5_to_8', 'ambiguous_qe_query_exp', 'qampari_query_exp'],
                        help='Name of the dataset to evaluate on')
     parser.add_argument('--training_data_name', type=str, default='ambiguous_qe',
-                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct'],
+                       choices=['nq', 'msmarco', 'qampari', 'ambiguous', 'ambiguous_qe', 'wsd_distinct', 'qampari+ambiguous_qe'],
                        help='Name of the dataset used for training')
     parser.add_argument('--split', type=str, default='dev', choices=['dev', 'train', 'train-held-out'],
                        help='Data split to evaluate on')
@@ -508,6 +510,8 @@ def parse_args():
                        help='Maximum number of new tokens to generate')
     parser.add_argument('--compute_loss', action='store_true', default=False,
                        help='Whether to compute loss during evaluation')
+    parser.add_argument('--pred_length', action='store_true', default=False,
+                       help='Whether to predict length')
     # Google API configuration
     parser.add_argument('--google_api', action='store_true', default=False,
                        help='Whether to use Google API')
@@ -618,7 +622,8 @@ if __name__ == "__main__":
         loss_function=args.loss_function,
         batch_size_training=args.batch_size_training,
         use_gt_q_embed=args.use_gt_q_embed,
-        use_eos=args.use_eos
+        use_eos=args.use_eos,
+        pred_length=args.pred_length
     )
     assert len(lengths) > 0 or args.max_new_tokens is not None, "Lengths can only be empty if max_new_tokens is not None"
     
