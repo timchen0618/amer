@@ -284,7 +284,8 @@ class OpposingPairsMlpSyntheticDataGenerator:
                 queries = self._generate_standard_gaussian(self.n_total_queries)
             elif self.n_transformations == 2:
                 print(f"Generating {self.n_total_queries} query vectors of dimension {self.d}...shifted uniform")
-                queries = self._generate_shifted_uniform(self.n_total_queries)
+                # queries = self._generate_shifted_uniform(self.n_total_queries)
+                queries = self._generate_uniform(self.n_total_queries)
             
         self.queries = queries
         return queries

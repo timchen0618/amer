@@ -117,11 +117,22 @@
 
 
 
-echo "================================================================"
-echo "New MLP Rotation, large"
-echo "================================================================"
+# echo "================================================================"
+# echo "New MLP Rotation, large"
+# echo "================================================================"
 
 # python test.py --model_paths  results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_pred_length_full_finetuning_SSPredLength_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05_srm1 --checkpoint_name best_model -n 5  --split test --k_values 1 5 10 20 50 100 500 --model_type EmbeddingModelSSPredLength --embedding_model_dim 1024 -d data_creation/gaussian/data/new_mlps_rotation_large/ --full_finetuning  --pred_length
 
 
-python test.py --model_paths  results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_pred_length_full_finetuning_SSPredLength_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep1500_warmup0.05_srm1 --checkpoint_name best_model -n 2  --split test --k_values 1 5 10 20 50 100 500 --model_type EmbeddingModelSSPredLength --embedding_model_dim 1024 -d data_creation/gaussian/data/new_mlps_rotation_large_2/ --full_finetuning  --pred_length
+# python test.py --model_paths  results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_pred_length_full_finetuning_SSPredLength_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch128_ep1500_warmup0.05_srm1 --checkpoint_name best_model -n 5  --split test --k_values 1 5 10 20 50 100 500 --model_type EmbeddingModelSSPredLength --embedding_model_dim 1024 -d data_creation/gaussian/data/new_mlps_rotation_large/ --full_finetuning  --pred_length
+
+# python test.py --model_paths  results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_pred_length_full_finetuning_SSPredLength_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch128_ep1500_warmup0.05_srm1 --checkpoint_name best_model -n 2  --split test --k_values 1 5 10 20 50 100 500 --model_type EmbeddingModelSSPredLength --embedding_model_dim 1024 -d data_creation/gaussian/data/new_mlps_rotation_large_2/ --full_finetuning  --pred_length --num_gt 2
+
+
+
+
+echo "================================================================"
+echo "New MLP Rotation, large"
+echo "================================================================"
+# New MLP Rotation, Multi-query, large
+python test.py --model_paths  results/llama-1b/gaussian_new_mlps_rotation_multi_query_inf/normalized_large_new_mlps_gaussian_rotation_multi_query_full_finetuning_SS_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch128_ep3000_warmup0.05_srm1 results/llama-1b/gaussian_new_mlps_rotation_multi_query_inf/normalized_large_new_mlps_gaussian_rotation_multi_query_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05_srm1 results/llama-1b/gaussian_new_mlps_rotation_multi_query_inf/normalized_large_new_mlps_gaussian_rotation_multi_query_full_finetuning_SS_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch128_ep3000_warmup0.05_srm1 --checkpoint_name best_model -n 5  --split test --k_values 1 5 10 20 50 100 500 --model_type EmbeddingModel --embedding_model_dim 1024 -d data_creation/gaussian/data/new_mlps_rotation_multi_query_large/ --full_finetuning 

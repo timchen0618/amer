@@ -282,7 +282,8 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
                                       batch_size=32, 
                                       positive_embeddings_path='', 
                                       negative_embeddings_path='', 
-                                      out_dataset_path=''):
+                                      out_dataset_path='',
+                                      pred_length_labels=False):
     """
         Create a dataset of input embeddings for the query.
         What do we need:
@@ -369,6 +370,19 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
                               "attention_mask": batch['attention_mask'][0].cpu().numpy(), 
                               "positive_embeddings": positive, 
                               "negative_embeddings": negative})
+        
+        if pred_length_labels:
+            length_label = positive.shape[0]
+            # print('length_label', length_label)
+            length_labels = tokenizer(str(length_label) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
+            # print('input_ids', dataset_dicts[-1]['input_ids'].shape)
+            # print('attention_mask', dataset_dicts[-1]['attention_mask'].shape)
+            dataset_dicts[-1]['length_labels_input_ids'] = length_labels['input_ids'][:, 1:5].squeeze(0).cpu().numpy()
+            dataset_dicts[-1]['length_labels_attention_mask'] = length_labels['attention_mask'][:, 1:5].squeeze(0).cpu().numpy()
+            # print('length_labels_input_ids', dataset_dicts[-1]['length_labels_input_ids'].shape)
+            # print('length_labels_attention_mask', dataset_dicts[-1]['length_labels_attention_mask'].shape)
+            
+            # exit(0)
                         
                         
         
@@ -430,7 +444,7 @@ if __name__ == '__main__':
     rootdir = Path(__file__).parent
     print(rootdir)
     
-    generate_split = 'gaussian_synthetic'
+    generate_split = 'contrastive'
     if generate_split in ['qampari_train', 'qampari_dev']:
         tag='qampari_org'
     elif generate_split in ['wsd_train', 'wsd_dev']:
@@ -570,33 +584,38 @@ if __name__ == '__main__':
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
         split='dev'
         length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
-        # model_name = 'meta-llama/Llama-3.2-1B-Instruct'
-        base_model_name = 'infly/inf-retriever-v1-1.5b'
+        base_model_name = 'meta-llama/Llama-3.2-1B-Instruct'
+        # base_model_name = 'infly/inf-retriever-v1-1.5b'
+        pred_length_labels = True
+        pred_length_labels_str = '_pred_length' if pred_length_labels else ''
         
         use_hard_negatives = False
         for split in ['train', 'dev']:
-            # for length in [5,6,7,8]:
+            # for length in [5,6,7,8, 9, 10]:
             for length in [2,3,4,5]:
-                # for model_name in ['inf']:
-                for model_name in ['cont', 'stella', 'inf']:
+                for model_name in ['inf']:
+                # for model_name in ['cont', 'stella', 'inf']:
                     # for data_name in ['nq', 'msmarco']:
                     # for data_name in ['qampari']:
                     for data_name in ['ambiguous_qe']:
                         rootdir = Path('raw_data/')
                         if length == 1:
+                            assert pred_length_labels == False, "pred_length_labels is not supported for length 1"
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
                                                             model_name=base_model_name,
                                                             input_data_path=rootdir / f'{data_name}_{split}_question_only.jsonl', 
                                                             positive_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_question_only.npy', 
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings.npy',
-                                                            out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_query' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_query')
+                                                            out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_query' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_query',
+                                                            pred_length_labels=pred_length_labels)
                         else:
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
                                                             model_name=base_model_name,
                                                             input_data_path=rootdir / f'{data_name}_{split}_question_only_{length}_ctxs.jsonl', 
                                                             positive_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_positive_embeddings_{length}.npy', 
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings_{length}.npy' if not use_hard_negatives else rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_hard_negative_embeddings_{length}.npy',
-                                                            out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_{length}_ctxs' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_{length}_ctxs')
+                                                            out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_{length}_ctxs{pred_length_labels_str}' if not use_hard_negatives else f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_hard_negative_{length}_ctxs{pred_length_labels_str}',
+                                                            pred_length_labels=pred_length_labels)
                         print(len(data_indices)) 
     
     if generate_split == 'gaussian_synthetic':
@@ -754,19 +773,19 @@ if __name__ == '__main__':
         
         LENGTH = 8
         normalize = False
-        pred_length_labels = False
+        pred_length_labels = True
         length_label = 2
         # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
             
         for split in ['train', 'test']:
-            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_ood_large/', normalize=normalize)
+            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_large_2_unshifted/', normalize=normalize)
             pairs = data['pairs_data'][split]
             
             pred_length_labels_str = '_pred_length' if pred_length_labels else ''
             normalized_str = '_normalized' if normalize else ''
             hard_negatives_str = '' if hard_negatives is None else '_hn'
-            out_data_path = f'gaussian_new_mlps_rotation_ood_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
+            out_data_path = f'gaussian_new_mlps_rotation_2_unshifted_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
             
             model_name = 'meta-llama/Llama-3.2-1B-Instruct'
             

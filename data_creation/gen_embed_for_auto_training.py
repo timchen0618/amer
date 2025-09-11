@@ -369,7 +369,7 @@ Viable Commands:
 
 """
 
-
+machine='torch'
 
 # command = 'gen_distill'
 # command = 'write_question_only'
@@ -378,18 +378,19 @@ command = 'gen_contrastive'
 
 from pathlib import Path
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+project_dir = '/scratch/cluster/hungting/projects' if machine == 'orca' else '/scratch/hc3337/projects'
 data_mapping = {
-    'qampari': {'train': '/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl',
-                'dev': '/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl'},
-    'nq': {'train': '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_train_question_only.jsonl',
-        'dev': '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_dev_question_only.jsonl'},
-    'msmarco': {'train': '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_train_question_only.jsonl',
-                'dev': '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_dev_question_only.jsonl'},
-    'ambiguous': {'train': '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.jsonl',
-                'dev': '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl'},
-    'ambiguous_qe': {'train': '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.jsonl',
-                'dev': '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl'},
-    'berds': {'train': '/scratch/cluster/hungting/projects/autoregressive/data/berds/berds_with_gold_docs.jsonl',}
+    'qampari': {'train': f'{project_dir}/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl',
+                'dev': f'{project_dir}/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl'},
+    'nq': {'train': f'{project_dir}/autoregressive/data_creation/raw_data/nq_train_question_only.jsonl',
+        'dev': f'{project_dir}/autoregressive/data_creation/raw_data/nq_dev_question_only.jsonl'},
+    'msmarco': {'train': f'{project_dir}/autoregressive/data_creation/raw_data/msmarco_train_question_only.jsonl',
+                'dev': f'{project_dir}/autoregressive/data_creation/raw_data/msmarco_dev_question_only.jsonl'},
+    'ambiguous': {'train': f'{project_dir}/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.jsonl',
+                'dev': f'{project_dir}/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl'},
+    'ambiguous_qe': {'train': f'{project_dir}/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.jsonl',
+                'dev': f'{project_dir}/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl'},
+    'berds': {'train': f'{project_dir}/autoregressive/data/berds/berds_with_gold_docs.jsonl',}
 }
 model_mapping = {
     'inf': 'infly/inf-retriever-v1-1.5b',
@@ -476,18 +477,20 @@ if command == 'gen_contrastive':
     
     # for data_name in ['nq']:
     for data_name in ['qampari']:
-        rootdir = Path('../../autoregressive/data_creation/raw_data/')
+    # for data_name in ['qampari', 'ambiguous_qe']:
+        rootdir = Path(f'{project_dir}/autoregressive/data_creation/raw_data/')
         rootdir.mkdir(parents=True, exist_ok=True)
         
         for model_name in ['inf', 'cont', 'stella']:
-            rootdir = Path('../../autoregressive/data_creation/raw_data/') / f'{data_name}_{model_name}'
+            rootdir = Path(f'{project_dir}/autoregressive/data_creation/raw_data/') / f'{data_name}_{model_name}'
+            rootdir.mkdir(parents=True, exist_ok=True)
             model, tokenizer = load_model(model_mapping[model_name])
             model = model.to(device)
             # model, tokenizer = None, None
             length_maps = {
                 'msmarco': [1],
                 'nq': [1],
-                'qampari': [5,6,7,8],
+                'qampari': [5,6,7,8,9,10],
                 'ambiguous': [2,3,4,5],
                 'ambiguous_qe':[2,3,4,5],
                 'arguana': [2],
@@ -496,9 +499,9 @@ if command == 'gen_contrastive':
                 'berds': [2],
             }
             
-            # for length in length_maps[data_name]:
-            for length in [5]:
-                for split in ['train']:
+            for length in length_maps[data_name]:
+            # for length in [5]:
+                for split in ['train', 'dev']:
                     if data_name == 'msmarco':
                         data, cid2corpus = load_msmarco_data(split=split, return_corpus=True)
                     elif data_name == 'nq':
@@ -519,8 +522,9 @@ if command == 'gen_contrastive':
                         else:
                             write_data = [{"question": l['question']} for l in data]
                         print(len(write_data))
-                        write_jsonl(write_data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{length}_ctxs.jsonl')
-                        corpus = read_tsv('/scratch/cluster/hungting/chunks_v5.tsv')
+                        write_jsonl(write_data, f'{project_dir}/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{length}_ctxs.jsonl')
+                        tsv_file = '/scratch/cluster/hungting/chunks_v5.tsv' if machine == 'orca' else'/scratch/hc3337/wikipedia_chunks/chunks_v5.tsv'
+                        corpus = read_tsv(tsv_file)
                         # corpus = read_tsv('/datastor1/hungting/MassiveDS-140B/massive_ds_140b.tsv')
                         cid2corpus = {c[0]: {"title": c[2], "text": c[1]} for c in corpus}
                     print('loaded data for {} with {} instances'.format(data_name, len(data)))

@@ -3,17 +3,24 @@
 data_name="qampari"
 training_data_name="qampari"
 suffix_list=(
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    "normalized_qampari_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    "normalized_qampari_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    "normalized_qampari_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    "normalized_qampari_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
+    "normalized_qampari_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
 )
+
 file_list="retrieval_out_dev_qampari_max_new_tokens_5.jsonl"
 retriever="inf"
 base_model="llama-1b"
 
 # EVALUATE ARGS
 has_gold_id=false
-topk_list="100 10"
+topk_list="200 100"
 # inference_modes="all first second"
 inference_modes="all"
 # select_indices_file="data/qampari/large_distance_indices_inf.txt"
@@ -57,7 +64,7 @@ fi
 for suffix in "${suffix_list[@]}"
 do
     echo "Evaluating retrieval results for $suffix"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${suffix}/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/sanity_check/${suffix}/"
     # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${suffix}/"
     echo "Evaluating retrieval results for $retriever"
     python eval.py --data-type $data_name \

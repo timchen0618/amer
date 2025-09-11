@@ -16,7 +16,7 @@ checkpoint_num="70000"
 inference_modes="all"
 round_robin_percentage=1.0
 max_new_tokens=2
-num_shards="8"
+num_shards="16"
 use_gpu=true
 machine="torch"
 

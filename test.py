@@ -186,19 +186,20 @@ def eval_metrics(rankings, test_pairs, k_values, _print=True):
             print(f"  MRecall@{k}: {mrecall:.4f}")
     return results
 
-def eval_on_each_gt(rankings, test_pairs, k_values, _print=True):
+def eval_on_each_gt(rankings, test_pairs, k_values, _print=True, num_gt=5):
     ### Evaluate on each GT
     all_results = []
-    for i in range(5):
+    for i in range(num_gt):
         new_test_pairs = []
         for t in test_pairs:
             new_test_pairs.append(t.copy())
             new_test_pairs[-1]['ground_truth_indices'] = [t['ground_truth_indices'][i]]
         result_per_gt = eval_metrics(rankings, new_test_pairs, k_values, _print=False)
         all_results.append(result_per_gt)
-    scores = [['Metric', 'GT 1', 'GT 2', 'GT 3', 'GT 4', 'GT 5']]
+    
+    scores = [['Metric'] + [f'GT {i+1}' for i in range(num_gt)]]
     for k in k_values:
-        scores.append([f'Recall@{k}'] + ['%2.2f' % all_results[i][f'recall@{k}'] for i in range(5)])
+        scores.append([f'Recall@{k}'] + ['%2.2f' % all_results[i][f'recall@{k}'] for i in range(num_gt)])
         
     if _print:
         import prettytable
@@ -344,6 +345,10 @@ def main(args):
                         dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_normal/inf/gaussian_new_mlps_normal_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     elif args.data_dir == './data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large':
                         dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_opposite/inf/gaussian_new_mlps_opposite_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_multi_query_large':
+                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation_multi_query/inf/gaussian_new_mlps_rotation_multi_query_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
+                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_ood_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_ood_large':
+                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation_ood/inf/gaussian_new_mlps_rotation_ood_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
                     else:
                         raise ValueError(f'Invalid data directory: {args.data_dir}')
 
@@ -379,7 +384,7 @@ def main(args):
                     # Evaluate Results
                     rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
                     results = eval_metrics(rankings, pairs_data[args.split], args.k_values)
-                    _, scores = eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True)
+                    _, scores = eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True, num_gt=args.num_gt)
                     
                     print('rankings', rankings.shape)
                     np.save(os.path.join(model_path, f'max_new_tokens_{max_new_tokens}_rankings.npy'), rankings)
@@ -415,6 +420,7 @@ if __name__ == "__main__":
     parser.add_argument("--embedding_model_dim", type=int, default=1024)
     parser.add_argument("--use_ground_truth_for_eval", action='store_true')
     parser.add_argument("--pred_length", action='store_true')
+    parser.add_argument("--num_gt", type=int, default=5)
     args = parser.parse_args()
     main(args)
 

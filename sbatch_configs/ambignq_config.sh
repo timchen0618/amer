@@ -54,7 +54,7 @@ use_stateful_dataloader=false
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled"
+MODE="hungarian_contrastive"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -301,7 +301,7 @@ if [ "$multiple_gpus" = true ]; then
     PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
-    TIME_LIMIT="8:00:00"
+    TIME_LIMIT="4:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -323,7 +323,7 @@ if [ "$machine" = "greene" ]; then
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
     CONSTRAINT="h200"
-    # PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
+    PREEMPTION="#SBATCH --comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"
     exit 1

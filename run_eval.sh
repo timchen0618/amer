@@ -2,11 +2,12 @@
 # Hyperparameter Search Script
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
-
-data_type="ambignq"
+use_sbatch=true
+data_type="qampari+ambiguous_qe"
 save_embeddings_str="" # "--save_embeddings"
+save_before_aggregation_str="" # "--save_before_aggregation"
 suffix_list=(
-    "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep60_warmup0.05_srm10"
 )
 
 # Function to create SBATCH file
@@ -43,12 +44,12 @@ ARGS="--data_name $data_name \\
     --adapter_path $adapter_path \\
     --linear_checkpoint_path $linear_checkpoint_path \\
     --base_model_type $base_model \\
-    $max_new_tokens_str $compute_loss_str \\
+    $max_new_tokens_str $compute_loss_str $pred_length_str --round_robin_percentage $round_robin_percentage \\
     --top_k_per_query 500 \\
     --top_k 500 \\
     --inference_modes $inference_modes \\
     --output_path $output_path \\
-    $google_api $save_embeddings_str"
+    $google_api $save_embeddings_str $save_before_aggregation_str"
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} python gen_ret_and_eval.py \$ARGS & wait)"
 EOF
@@ -58,8 +59,6 @@ EOF
 
 for suffix in "${suffix_list[@]}"
 do
-    use_sbatch=true
-
     # write retrieve script
     echo "Writing retrieve script for $suffix"
     python write_retrieve.py $suffix  $data_type
@@ -106,11 +105,11 @@ do
         --adapter_path $adapter_path \
         --linear_checkpoint_path $linear_checkpoint_path \
         --base_model_type $base_model \
-        $max_new_tokens_str $compute_loss_str \
+        $max_new_tokens_str $compute_loss_str $pred_length_str --round_robin_percentage $round_robin_percentage \
         --top_k_per_query 500 \
         --top_k 500 \
         --inference_modes $inference_modes \
         --output_path $output_path \
-        $google_api $save_embeddings_str
+        $google_api $save_embeddings_str $save_before_aggregation_str
     fi
 done

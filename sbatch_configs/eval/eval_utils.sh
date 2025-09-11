@@ -98,3 +98,9 @@ if [ "$full_finetuning" = true ]; then
 else
     full_finetuning_str=""
 fi
+
+if [ "$pred_length" = true ]; then
+    pred_length_str="--pred_length"
+else
+    pred_length_str=""
+fi

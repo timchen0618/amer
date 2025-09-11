@@ -2,7 +2,7 @@
 
 # GENERATE ARGS
 data_name="qampari"
-training_data_name="qampari"
+training_data_name="qampari+ambiguous_qe"
 suffix="[suffix]"
 
 retriever="inf"
@@ -11,6 +11,7 @@ compute_loss=false
 full_finetuning=true
 base_model="llama-1b"
 checkpoint_num="30000"
+pred_length=true
 
 # inference_modes="all first second"
 inference_modes="all"

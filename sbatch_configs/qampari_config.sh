@@ -7,14 +7,14 @@
 # HYPERPARAMETER SEARCH SPACE
 # =================================================================
 
-LEARNING_RATES=(1e-5 2e-5 5e-5)
+LEARNING_RATES=(5e-5)
 # LEARNING_RATES=(2e-5)
 TEMPERATURES=(0.05)
 # TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
-BATCH_SIZES=(32)
+BATCH_SIZES=(16)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(120)
+NUM_EPOCHS_LIST=(60)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
@@ -38,6 +38,8 @@ multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
+pred_length_labels=false
+
 LOG_WITH="wandb"
 use_inf_base_model=false
 machine="torch" # greene, torch
@@ -47,7 +49,7 @@ resume_from_checkpoint=false
 use_stateful_dataloader=false
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled"
+MODE="contrastive_all_labels_ordered"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -156,6 +158,11 @@ elif [ "$MODEL_TYPE" == "EmbeddingModelSSPredLength" ]; then
     SCHEDULE_SAMPLING="--schedule_sampling"
     LEFT_PADDING="--left_padding"
     PRED_LENGTH="--pred_length"
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPadPredLength" ]; then
+    MODEL_STR="_SSVariableLeftPadPredLength"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING="--left_padding"
+    PRED_LENGTH="--pred_length"
 fi
 
 # =================================================================
@@ -218,8 +225,15 @@ else
     USE_STATEFUL_DATALOADER=""
 fi
 
+if [ "$pred_length_labels" = true ]; then
+    pred_length_labels_str="_pred_length"
+else
+    pred_length_labels_str=""
+fi
+
 # Experiment prefix
 EXP_PREFIX="${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+# EXP_PREFIX="test"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
@@ -288,7 +302,7 @@ MAX_CONCURRENT_JOBS=40
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="48:00:00"
+    TIME_LIMIT="12:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -300,7 +314,7 @@ if [ "$multiple_gpus" = true ]; then
     PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
-    TIME_LIMIT="24:00:00"
+    TIME_LIMIT="12:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -321,8 +335,8 @@ if [ "$machine" = "greene" ]; then
     CONSTRAINT="h100|a100"
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
-    CONSTRAINT="h200"
-    # PREEMPTION="--comment=\"preemption=yes;requeue=yes\""
+    CONSTRAINT="h200|l40s"
+    PREEMPTION="#SBATCH --comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"
     exit 1
