@@ -56,19 +56,37 @@ def main(args):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    
+    project_dir = '/scratch/hc3337/projects/autoregressive'
     if args.base_retriever == 'inf':
         # base
-        rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+        rootdir = f'{project_dir}/results/base_retrievers/inf/'
         data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
     elif args.base_retriever == 'qampari_stage1':
         # stage 1 qampari
-        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
+        rootdir = f'{project_dir}/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
         data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_1']
     elif args.base_retriever == 'nq_stage2':
         # stage 2 nq
-        rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/nq_inf/toy_contrastive/'
+        rootdir = f'{project_dir}/results/llama-1b/nq_inf/toy_contrastive/'
         data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
+    elif args.base_retriever == 'qampari_hungarian_contrastive':
+        rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10'
+        data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    elif args.base_retriever == 'qampari_contrastive_all_labels_shuffled':
+        rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10'
+        data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    elif args.base_retriever == 'qampari_contrastive_all_labels_ordered':
+        rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05_srm10'
+        data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    elif args.base_retriever == 'ambiguous_qe_hungarian_contrastive':
+        rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch32_ep120_warmup0.05_srm1'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    elif args.base_retriever == 'ambiguous_qe_contrastive_all_labels_shuffled':
+        rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    elif args.base_retriever == 'ambiguous_qe_contrastive_all_labels_ordered':
+        rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
     
     
     doc_sim = DocSimilarity(model, tokenizer, device, args)
@@ -99,7 +117,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="infly/inf-retriever-v1-1.5b")
     parser.add_argument("--num_docs", type=int, default=500)
-    parser.add_argument("--base_retriever", type=str, default='inf', choices=['inf', 'qampari_stage1', 'nq_stage2'])
+    parser.add_argument("--base_retriever", type=str, default='inf', choices=['inf', 'qampari_stage1', 'nq_stage2', 'qampari_hungarian_contrastive', 'qampari_contrastive_all_labels_shuffled', 'qampari_contrastive_all_labels_ordered', 'ambiguous_qe_hungarian_contrastive', 'ambiguous_qe_contrastive_all_labels_shuffled', 'ambiguous_qe_contrastive_all_labels_ordered'])
     args = parser.parse_args()
     
     main(args)

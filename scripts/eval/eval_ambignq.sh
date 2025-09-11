@@ -4,6 +4,9 @@ data_name="ambiguous_qe"
 training_data_name="ambiguous_qe"
 suffix_list=(
     "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
 )
 file_list="retrieval_out_dev_ambiguous_qe_max_new_tokens_2.jsonl"
 retriever="inf"
@@ -14,8 +17,8 @@ has_gold_id=false
 topk_list="100 10"
 # inference_modes="all first second"
 inference_modes="all"
-# select_indices_file="data/ambiguous/qampari_embeddings_data/small_distance_indices_inf.txt"
-select_indices_file=""
+select_indices_file="data/ambiguous/qampari_embeddings_data/large_distance_indices_inf.txt"
+# select_indices_file=""
 
 ###############################
 ### Define strings for args ###
