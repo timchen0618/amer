@@ -87,14 +87,23 @@ def train(configs):
         collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only, left_padding=configs.left_padding)
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, left_padding=configs.left_padding, use_eos=configs.use_eos)
+        
+        
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
     data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
+
+    if configs.mix_one_label_shuffled:
+        one_label_collator = functools.partial(ContrastiveTrainCollator(), shuffle=True, take_first=True, left_padding=configs.left_padding, use_eos=configs.use_eos)
+        one_label_data_handler = DataHandler(full_dataset, one_label_collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
+
         
     if configs.train_on_all_data:
         train_dataloader = data_handler.get_full_dataloader()
         valid_loss_dataloader = data_handler.get_full_dataloader()
     else:
         train_dataloader, valid_loss_dataloader = data_handler.get_train_dev_dataloader(random_train_loader=False)
+        if configs.mix_one_label_shuffled:
+            one_label_train_dataloader, one_label_valid_loss_dataloader = one_label_data_handler.get_train_dev_dataloader(random_train_loader=False)
     
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     # total_length = total_length // accelerator.num_processes
@@ -125,9 +134,14 @@ def train(configs):
     # for distributed training, the total steps is the total steps for one process
     configs.total_steps = configs.total_steps // accelerator.num_processes
     # Prepare everything with accelerator
-    model, optimizer, train_dataloader, valid_loss_dataloader, scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, valid_loss_dataloader, scheduler
-    )    
+    if configs.mix_one_label_shuffled:
+        model, optimizer, train_dataloader, valid_loss_dataloader, one_label_train_dataloader, one_label_valid_loss_dataloader, scheduler = accelerator.prepare(
+            model, optimizer, train_dataloader, valid_loss_dataloader, one_label_train_dataloader, one_label_valid_loss_dataloader, scheduler
+        )    
+    else:
+        model, optimizer, train_dataloader, valid_loss_dataloader, scheduler = accelerator.prepare(
+            model, optimizer, train_dataloader, valid_loss_dataloader, scheduler
+        )    
     
 
     total_train_steps = 0
@@ -196,17 +210,20 @@ def train(configs):
             train_dataloader = data_handler.get_full_dataloader()
         else:
             train_dataloader = data_handler.get_sequential_train_dataloader()
-        
         train_dataloader = accelerator.prepare(train_dataloader)
+        
+        if configs.mix_one_label_shuffled:
+            one_label_data_handler.length_aware_shuffle()
+            if configs.train_on_all_data:
+                one_label_train_dataloader = one_label_data_handler.get_full_dataloader()
+            else:
+                one_label_train_dataloader = one_label_data_handler.get_sequential_train_dataloader()
+            one_label_train_dataloader = iter(accelerator.prepare(one_label_train_dataloader))
         
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 if configs.schedule_sampling:
-                    # if configs.less_ss:
-                    #     batch['sampling_rate'] = min((total_train_steps*5 / float(configs.total_steps)), 1.0)
-                    # else:
                     batch['sampling_rate'] = min(configs.sample_rate_multiplier * total_train_steps / float(configs.total_steps), 0.8)
-                    # print('sampling rate', batch['sampling_rate'], 'total_train_steps', total_train_steps, 'configs.total_steps', configs.total_steps)
                     
                 if configs.force_sampling:
                     batch['sampling_rate'] = 1.0
@@ -222,7 +239,6 @@ def train(configs):
                         grad_norm += p.grad.data.norm(2).item()**2
                 grad_norm = grad_norm**0.5
 
-                
                 # clip the gradient
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), configs.max_grad_norm)
@@ -231,6 +247,26 @@ def train(configs):
                 scheduler.step()
                 optimizer.zero_grad()
                 
+                
+                if configs.mix_one_label_shuffled:
+                    one_label_batch = next(one_label_train_dataloader)
+                    with accelerator.accumulate(model):
+                        if configs.schedule_sampling:
+                            one_label_batch['sampling_rate'] = min(configs.sample_rate_multiplier * total_train_steps / float(configs.total_steps), 0.8)
+                        if configs.force_sampling:
+                            one_label_batch['sampling_rate'] = 1.0
+                        outputs = model(**one_label_batch)
+                        one_label_loss = outputs.loss
+                        accelerator.backward(one_label_loss)
+                        
+                        # clip the gradient
+                        if accelerator.sync_gradients:
+                            accelerator.clip_grad_norm_(model.parameters(), configs.max_grad_norm)
+
+                        optimizer.step()
+                        optimizer.zero_grad()
+                        
+                        
                 if log_with_wandb:
                     losses.append(loss.detach().float().cpu().item())
                     if configs.pred_length:
@@ -248,10 +284,13 @@ def train(configs):
                             log_dict["train/sampling_rate"] = batch['sampling_rate']
                         if configs.pred_length:
                             log_dict["train/ntp_loss"] = sum(ntp_losses)/ len(ntp_losses)
+                        if configs.mix_one_label_shuffled:
+                            log_dict["train/one_label_loss"] = one_label_loss.detach().float().cpu().item()
                         accelerator.log(log_dict, step=total_train_steps)
                         losses = []
                         ntp_losses = []
-                
+                        
+                        
                 # update the progress bar
                 if accelerator.is_main_process:
                     if (step + 1) % configs.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:

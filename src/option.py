@@ -53,6 +53,7 @@ def get_training_args():
     parser.add_argument("--take_first", action="store_true", default=False, help="Take first sequence")
     parser.add_argument("--left_padding", action="store_true", default=False, help="Left padding")
     parser.add_argument("--pred_length", action="store_true", default=False, help="Predict length")
+    parser.add_argument("--mix_one_label_shuffled", action="store_true", default=False, help="Mix one label shuffled")
     
     # Model architecture
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for contrastive loss")

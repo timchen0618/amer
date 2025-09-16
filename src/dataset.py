@@ -427,12 +427,34 @@ if __name__ == "__main__":
                 combined_dataset.save_to_disk(f'data_creation/gaussian_new_mlps_rotation{unshifted_str}_{split}_dataset_1b_contrastive_pred_length{sm_str}')
 
     if command == 'combine_ambiguous_and_qampari_pred_length':
+        # for split in ['train', 'dev']:
+        #     dataset_paths = [
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_3_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_4_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/", 
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_6_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_7_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_8_ctxs_pred_length/" 
+        #     ]
+        #     datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
+        #     combined_dataset = concatenate_datasets(datasets_to_concat)
+        #     print('len(combined_dataset)', len(combined_dataset))
+        #     combined_dataset.save_to_disk(f"data_creation/autoregressive_qampari+ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_to_8_ctxs_pred_length")
         for split in ['train', 'dev']:
             dataset_paths = [
                 f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_ctxs_pred_length/",
                 f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_3_ctxs_pred_length/",
                 f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_4_ctxs_pred_length/",
                 f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/",
+            ]
+            datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
+            combined_dataset = concatenate_datasets(datasets_to_concat)
+            print('len(combined_dataset)', len(combined_dataset))
+            combined_dataset.save_to_disk(f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_to_5_ctxs_pred_length")
+            
+            dataset_paths = [
                 f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/", 
                 f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_6_ctxs_pred_length/",
                 f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_7_ctxs_pred_length/",
@@ -441,7 +463,7 @@ if __name__ == "__main__":
             datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
             combined_dataset = concatenate_datasets(datasets_to_concat)
             print('len(combined_dataset)', len(combined_dataset))
-            combined_dataset.save_to_disk(f"data_creation/autoregressive_qampari+ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_to_8_ctxs_pred_length")
+            combined_dataset.save_to_disk(f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_to_8_ctxs_pred_length")
             
     if command == 'combine_ambiguous_and_qampari':
         for retriever in ['cont', 'stella', 'inf']:

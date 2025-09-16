@@ -133,7 +133,8 @@ def train(configs):
             train_dataloader = data_handler.get_full_dataloader()
         else:
             train_dataloader = data_handler.get_sequential_train_dataloader()
-        
+
+
         for step, batch in enumerate(train_dataloader):
             for k, v in batch.items():
                 batch[k] = v.to(device)
@@ -156,7 +157,7 @@ def train(configs):
 
             loss = outputs.loss / configs.gradient_accumulation_steps
             loss.backward()
-            
+
             # clip gradients
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=configs.max_grad_norm)
             

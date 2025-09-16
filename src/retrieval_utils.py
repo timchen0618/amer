@@ -55,7 +55,7 @@ def index_encoded_data(index, embedding_files, indexing_batch_size, shard_id=0, 
 def add_passages(data, passages, top_passages_and_scores):
     # add passages to original data
     merged_data = []
-    assert len(data) == len(top_passages_and_scores)
+    assert len(data) == len(top_passages_and_scores), (len(data), len(top_passages_and_scores))
     for i, d in enumerate(data):
         results_and_scores = top_passages_and_scores[i]
         docs = [passages[doc_id] for doc_id in results_and_scores[0]]
