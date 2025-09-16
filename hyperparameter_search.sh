@@ -108,7 +108,8 @@ ARGS="--project ${BASE_PROJECT} \\
       --log_with ${LOG_WITH} \\
       ${RESUME_FROM_CHECKPOINT} \\
       ${USE_STATEFUL_DATALOADER} \\
-      ${PRED_LENGTH}"
+      ${PRED_LENGTH} \\
+      ${MIX_ONE_LABEL_SHUFFLED}"
 
 
 singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} ${PYTHON_COMMAND} \$ARGS & wait)"

@@ -5,13 +5,13 @@
 # Uses default parameters from the hyperparameter search configuration
 
 # Load configuration
-CONFIG_FILE="sbatch_configs/qampari_config.sh"
+CONFIG_FILE="sbatch_configs/qampari+ambiguous_qe_config.sh"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
     echo "Loaded configuration from $CONFIG_FILE"
 else
     echo "Error: Configuration file $CONFIG_FILE not found!"
-    becho "Please create $CONFIG_FILE or copy from qampari_config.sh"
+    becho "Please create $CONFIG_FILE or copy from qampari+ambiguous_qe_config.sh"
     exit 1
 fi
 
@@ -78,7 +78,8 @@ ARGS="--project ${BASE_PROJECT} \
       --log_with ${LOG_WITH} \
       ${RESUME_FROM_CHECKPOINT} \
       ${USE_STATEFUL_DATALOADER} \
-      ${PRED_LENGTH}
+      ${PRED_LENGTH} \
+      ${MIX_ONE_LABEL_SHUFFLED}
       "
 
 echo "Training arguments:"

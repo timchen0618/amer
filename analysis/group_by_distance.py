@@ -153,8 +153,8 @@ if data_name in ['ambiguous', 'ambiguous_qe', 'qampari_5_to_8']:
         avg_distances.append(average_pairwise_distances(batch['positive_embeddings']))
 
     avg_distances = torch.tensor(avg_distances)
-    quantile_1 = torch.quantile(avg_distances, 1/3, interpolation='nearest')
-    quantile_2 = torch.quantile(avg_distances, 2/3, interpolation='nearest')
+    quantile_1 = torch.quantile(avg_distances, 1/4, interpolation='nearest')
+    quantile_2 = torch.quantile(avg_distances, 3/4, interpolation='nearest')
     logger.info('avg_distances', quantile_1=quantile_1, quantile_2=quantile_2)
 
     for i, batch in enumerate(dataloader):
@@ -179,8 +179,8 @@ elif data_name in ['qampari']:
         all_embeddings.append(embeddings)
         
     avg_distances = torch.tensor(avg_distances)
-    quantile_1 = torch.quantile(avg_distances, 1/3, interpolation='nearest')
-    quantile_2 = torch.quantile(avg_distances, 2/3, interpolation='nearest')
+    quantile_1 = torch.quantile(avg_distances, 1/4, interpolation='nearest')
+    quantile_2 = torch.quantile(avg_distances, 3/4, interpolation='nearest')
     logger.info('avg_distances', quantile_1=quantile_1, quantile_2=quantile_2)
 
     for i, embeddings in enumerate(all_embeddings):
@@ -195,5 +195,5 @@ elif data_name in ['qampari']:
 # write_list_to_file(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/large_distance_indices_{retriever}.txt', large_distance_indices)
 # write_list_to_file(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/small_distance_indices_{retriever}.txt', small_distance_indices)
 
-write_list_to_file(f'{project_dir}/autoregressive/data/qampari/large_distance_indices_{retriever}.txt', large_distance_indices)
-write_list_to_file(f'{project_dir}/autoregressive/data/qampari/small_distance_indices_{retriever}.txt', small_distance_indices)
+write_list_to_file(f'{project_dir}/autoregressive/data/qampari/large_distance_indices_quarter_{retriever}.txt', large_distance_indices)
+write_list_to_file(f'{project_dir}/autoregressive/data/qampari/small_distance_indices_quarter_{retriever}.txt', small_distance_indices)
