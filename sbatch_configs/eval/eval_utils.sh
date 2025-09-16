@@ -1,9 +1,9 @@
 # Set dev_data_path based on data_name
 split="dev"  # Define split variable (assuming 'dev' as default)
-sanity_check=false
+sanity_check=true
 
 if [ "$sanity_check" = true ]; then
-    sanity_check_str="sanity_check/"
+    sanity_check_str="fixed_model/"
 else
     sanity_check_str=""
 fi

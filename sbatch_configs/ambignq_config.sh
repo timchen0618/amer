@@ -27,7 +27,7 @@ NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
-SAMPLE_RATE_MULTIPLIERS=(1)
+SAMPLE_RATE_MULTIPLIERS=(3)
 # LR min ratios
 LR_MIN_RATIO=0.0
 
@@ -48,13 +48,16 @@ normalize=true
 LOG_WITH="wandb"
 use_inf_base_model=false
 machine="torch" # greene, torch
+pred_length_labels=false
 
+mix_one_label_shuffled=true
 resume_from_checkpoint=false
 use_stateful_dataloader=false
+use_l40s=false
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="hungarian_contrastive"
+MODE="contrastive_all_labels_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -161,6 +164,16 @@ elif [ "$MODEL_TYPE" == "EmbeddingModelSSPredLength" ]; then
     SCHEDULE_SAMPLING="--schedule_sampling"
     LEFT_PADDING="--left_padding"
     PRED_LENGTH="--pred_length"
+elif [ "$MODEL_TYPE" == "EmbeddingModelFixed" ]; then
+    MODEL_STR="_Fixed"
+    SCHEDULE_SAMPLING=""
+    LEFT_PADDING=""
+    PRED_LENGTH=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelSSVariableLeftPadPredLength" ]; then
+    MODEL_STR="_SSVariableLeftPadPredLength"
+    SCHEDULE_SAMPLING="--schedule_sampling"
+    LEFT_PADDING="--left_padding"
+    PRED_LENGTH="--pred_length"
 fi
 
 
@@ -225,21 +238,36 @@ else
     USE_STATEFUL_DATALOADER=""
 fi
 
+if [ "$mix_one_label_shuffled" = true ]; then
+    MIX_ONE_LABEL_SHUFFLED="--mix_one_label_shuffled"
+    mix_one_label_shuffled_prefix="mix_one_"
+else
+    MIX_ONE_LABEL_SHUFFLED=""
+    mix_one_label_shuffled_prefix=""
+fi
+
+if [ "$pred_length_labels" = true ]; then
+    pred_length_labels_str="_pred_length"
+else
+    pred_length_labels_str=""
+fi
+
+
 # Experiment prefix
-EXP_PREFIX="${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
     BASE_SAVE_PATH="results/inf/ambiguous_qe_inf"
 else
-    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf/sanity_check"
+    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf/fixed_model"
 fi
 
 # Training dataset path
 if [ "$use_inf_base_model" = true ]; then
-    BASE_TRAIN_PATH="training_datasets/inf/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
+    BASE_TRAIN_PATH="training_datasets/inf/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs${pred_length_labels_str}/"
 else
-    BASE_TRAIN_PATH="training_datasets/llama-1b/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs/"
+    BASE_TRAIN_PATH="training_datasets/llama-1b/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs${pred_length_labels_str}/"
 fi
 
 
@@ -265,7 +293,7 @@ fi
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=10
+SAVE_EVERY_N_STEPS=100
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -289,11 +317,11 @@ MAX_CONCURRENT_JOBS=100
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="4:00:00"
+    TIME_LIMIT="8:00:00"
     # Memory per job
-    MEMORY="200GB"
+    MEMORY="128GB"
     # Number of CPUs per task
-    CPUS_PER_TASK=20
+    CPUS_PER_TASK=8
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=4
@@ -322,7 +350,11 @@ if [ "$machine" = "greene" ]; then
     CONSTRAINT="h100|a100"
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
-    CONSTRAINT="h200"
+    if [ "$use_l40s" = true ]; then
+        CONSTRAINT="h200|l40s"
+    else
+        CONSTRAINT="h200"
+    fi
     PREEMPTION="#SBATCH --comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"

@@ -38,12 +38,12 @@ BASE_PROJECT="diverse_retrieval"
 full_finetuning=true
 
 # dataset configurations
-transformation_type="new_mlps" # linear, diverse_mlps
+transformation_type="linear" # linear, diverse_mlps, new_mlps
 small=false
-hard_strategy="rotation_unshifted" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite, rotation_unshifted
+hard_strategy="ood" #  "", multi_query, ood, sample_transformation, rotation, normal, opposite, rotation_unshifted
 xlarge=false
 normalize=true
-pred_length_labels=true
+pred_length_labels=false
 
 # dataset_name="diverse_mlps_multi_query_sm"
 multiple_gpus=false              # whether to use multiple GPUs
@@ -58,10 +58,10 @@ machine="greene" # greene, torch
 resume_from_checkpoint=false
 use_stateful_dataloader=false
 
-MODEL_TYPE="EmbeddingModelSSPredLength"
+MODEL_TYPE="EmbeddingModelSS"
 
 
-MODE="contrastive_all_labels_shuffled"
+MODE="contrastive_one_label_shuffled"
 # MODES -> 
 # 1. hungarian_contrastive
 # 2. contrastive_first_label

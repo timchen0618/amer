@@ -7,14 +7,14 @@
 # HYPERPARAMETER SEARCH SPACE
 # =================================================================
 
-LEARNING_RATES=(5e-5)
+LEARNING_RATES=(2e-5)
 # LEARNING_RATES=(2e-5)
 TEMPERATURES=(0.05)
 # TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
-BATCH_SIZES=(16)
+BATCH_SIZES=(32)
 # NUM_EPOCHS_LIST=(20 10 30 40)
-NUM_EPOCHS_LIST=(60)
+NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
@@ -38,7 +38,7 @@ multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
-pred_length_labels=false
+pred_length_labels=true
 
 LOG_WITH="wandb"
 use_inf_base_model=false
@@ -47,9 +47,11 @@ machine="torch" # greene, torch
 
 resume_from_checkpoint=false
 use_stateful_dataloader=false
+mix_one_label_shuffled=false
+use_l40s=false
 
-MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_ordered"
+MODEL_TYPE="EmbeddingModelSSVariableLeftPadPredLength"
+MODE="contrastive_all_labels_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -135,6 +137,11 @@ fi
 # Experiment prefix
 if [ "$MODEL_TYPE" == "EmbeddingModel" ]; then
     MODEL_STR=""
+    SCHEDULE_SAMPLING=""
+    LEFT_PADDING=""
+    PRED_LENGTH=""
+elif [ "$MODEL_TYPE" == "EmbeddingModelFixed" ]; then
+    MODEL_STR="_Fixed"
     SCHEDULE_SAMPLING=""
     LEFT_PADDING=""
     PRED_LENGTH=""
@@ -231,29 +238,36 @@ else
     pred_length_labels_str=""
 fi
 
+if [ "$mix_one_label_shuffled" = true ]; then
+    MIX_ONE_LABEL_SHUFFLED="--mix_one_label_shuffled"
+    mix_one_label_shuffled_prefix="mix_one_"
+else
+    MIX_ONE_LABEL_SHUFFLED=""
+    mix_one_label_shuffled_prefix=""
+fi
+
 # Experiment prefix
-EXP_PREFIX="${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
-# EXP_PREFIX="test"
+EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
 if [ "$use_inf_base_model" = true ]; then
     BASE_SAVE_PATH="results/inf/qampari_inf"
 else
-    BASE_SAVE_PATH="results/llama-1b/qampari_inf/sanity_check"
+    BASE_SAVE_PATH="results/llama-1b/qampari_inf/fixed_model"
 fi
 
 # Training dataset path
 if [ "$use_inf_base_model" = true ]; then
     if [ "$USE_HARD_NEGATIVES" = true ]; then
-        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs${pred_length_labels_str}/"
     else
-        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs${pred_length_labels_str}/"
     fi
 else
     if [ "$USE_HARD_NEGATIVES" = true ]; then
-        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs/"
+        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs${pred_length_labels_str}/"
     else
-        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs/"
+        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs${pred_length_labels_str}/"
     fi
 fi
 
@@ -268,6 +282,9 @@ else
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
     BASE_ADAPTER_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
     BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+    # MODEL_ID="results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05/best_model"
+    # BASE_ADAPTER_PATH=None
+    # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05/best_model_linear.pt"
 fi
 
 
@@ -279,7 +296,7 @@ fi
 EMBEDDING_MODEL_DIM=1536
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=100
+SAVE_EVERY_N_STEPS=250
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1
@@ -302,11 +319,11 @@ MAX_CONCURRENT_JOBS=40
 
 if [ "$multiple_gpus" = true ]; then
     # SLURM job time limit
-    TIME_LIMIT="12:00:00"
+    TIME_LIMIT="24:00:00"
     # Memory per job
-    MEMORY="200GB"
+    MEMORY="128GB"
     # Number of CPUs per task
-    CPUS_PER_TASK=10
+    CPUS_PER_TASK=8
     # GPU configuration
     GPU_TYPE="a100"
     GPUS_PER_NODE=4
@@ -314,7 +331,7 @@ if [ "$multiple_gpus" = true ]; then
     PYTHON_COMMAND="accelerate launch train_distributed.py"
 else
     # SLURM job time limit
-    TIME_LIMIT="12:00:00"
+    TIME_LIMIT="16:00:00"
     # Memory per job
     MEMORY="200GB"
     # Number of CPUs per task
@@ -335,7 +352,11 @@ if [ "$machine" = "greene" ]; then
     CONSTRAINT="h100|a100"
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif"
-    CONSTRAINT="h200|l40s"
+    if [ "$use_l40s" = true ]; then
+        CONSTRAINT="h200|l40s"
+    else
+        CONSTRAINT="h200"
+    fi
     PREEMPTION="#SBATCH --comment=\"preemption=yes;requeue=yes\""
 else
     echo "Invalid machine"

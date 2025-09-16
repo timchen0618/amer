@@ -34,8 +34,13 @@ if [ "$machine" = "greene" ]; then
     SLURM_EXTRA_ARGS=""
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.8.1-cudnn9.8.0-ubuntu24.04.2.sif"
-    SLURM_EXTRA_ARGS="#SBATCH --requeue
-#SBATCH --constraint=h200"
+    if [ "$use_l40s" = true ]; then
+        CONSTRAINT="h200|l40s"
+    else
+        CONSTRAINT="h200"
+    fi
+    SLURM_EXTRA_ARGS="#SBATCH --comment=\"preemption=yes;requeue=yes\"
+#SBATCH --constraint=\"$CONSTRAINT\""
 else
     echo "Invalid machine"
     exit 1

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari"
+data_name="qampari_5_to_8"
 training_data_name="qampari"
 suffix="[suffix]"
 
@@ -15,10 +15,11 @@ checkpoint_num="30000"
 # inference_modes="all first second"
 inference_modes="all"
 round_robin_percentage=1.0
-max_new_tokens=5
+max_new_tokens=1
 num_shards="16"
 use_gpu=true
 machine="torch"
+use_l40s=false
 
 # SLURM CONFIGURATION BEGINS
 SBATCH_DIR="sbatch_jobs_eval"
@@ -34,8 +35,13 @@ if [ "$machine" = "greene" ]; then
     SLURM_EXTRA_ARGS=""
 elif [ "$machine" = "torch" ]; then
     SINGULARITY_IMAGE="/share/apps/images/cuda12.8.1-cudnn9.8.0-ubuntu24.04.2.sif"
-    SLURM_EXTRA_ARGS="#SBATCH --requeue
-#SBATCH --constraint=\"h200|l40s\""
+    if [ "$use_l40s" = true ]; then
+        CONSTRAINT="h200|l40s"
+    else
+        CONSTRAINT="h200"
+    fi
+    SLURM_EXTRA_ARGS="#SBATCH --comment=\"preemption=yes;requeue=yes\"
+#SBATCH --constraint=\"$CONSTRAINT\""
 else
     echo "Invalid machine"
     exit 1
