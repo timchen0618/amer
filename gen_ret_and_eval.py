@@ -61,6 +61,7 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
             use_eos=use_eos,
             **batch
         )
+        instance_length = output.size(1)
         all_outputs.append(output.view(-1, output.size(-1)))
 
         if compute_loss:
@@ -79,6 +80,9 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
                 all_lengths.append(batch['positive_embeddings'].size(1))
                 all_labels.append(batch['positive_embeddings'].view(-1, batch['positive_embeddings'].size(-1)))
                 all_losses.append(loss.item())
+        else:
+            if adaptive_max_new_tokens:
+                all_lengths.append(instance_length)
     
     if compute_loss:
         return torch.cat(all_outputs, dim=0).cpu().numpy(), sum(all_losses) / len(all_losses), torch.cat(all_labels, dim=0).cpu().numpy(), all_lengths
@@ -384,6 +388,7 @@ def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, outp
 
     # loading lengths; making sure the data and question embeddings are aligned
     if MAX_LATENTS is None:
+        print('using lengths', len(lengths), 'len(data)', len(data))
         assert len(data) == len(lengths), (len(data), len(lengths))
         assert question_embeddings.shape[0] == sum(lengths), (question_embeddings.shape[0], sum(lengths))
     else:
