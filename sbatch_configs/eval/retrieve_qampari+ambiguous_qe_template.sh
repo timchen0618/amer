@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # GENERATE ARGS
-data_name="qampari_5_to_8"  # qampari_5_to_8, ambiguous_qe, qampari
-training_data_name="qampari+ambiguous_qe"
+data_name="ambiguous_qe"  # qampari_5_to_8, ambiguous_qe, qampari
+training_data_name="ambiguous_qe"  # qampari+ambiguous_qe, ambiguous_qe, qampari
 suffix="[suffix]"
 
 retriever="inf"

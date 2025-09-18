@@ -9,6 +9,12 @@ from sentence_transformers import SentenceTransformer
 import torch
 import pickle
 
+""" 
+    The script is used to check the distance between target vector embeddings.
+    And also used to check the distance between predicted question embeddings. 
+"""
+
+
 def normalize_np(x, p=2, dim=1, eps=1e-12):
     """
     NumPy implementation of torch.nn.functional.normalize

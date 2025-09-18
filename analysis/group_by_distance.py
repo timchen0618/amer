@@ -17,6 +17,15 @@ from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 import json
 
+
+"""
+    The script is used to group the data by the distance between the target document embeddings.
+    The distance is calculated using the L2 distance.
+    The data is grouped into two groups: large distance and small distance.
+    Decided by the 1/4 and 3/4 quantiles of the distance.
+"""
+
+
 def read_jsonl(data_path):
     import json
     data = []

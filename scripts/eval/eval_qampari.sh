@@ -1,9 +1,8 @@
 #!/bin/bash
 # GENERATE ARGS
-data_name="qampari_5_to_8"
-training_data_name="qampari+ambiguous_qe"  # qampari, qampari+ambiguous_qe
-# sanity_check_str="fixed_model/"
-sanity_check_str=""
+data_name="qampari"
+training_data_name="qampari"  # qampari, qampari+ambiguous_qe
+sanity_check_str="fixed_model/"
 suffix_list=(
     # best model before detach()
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10"
@@ -33,12 +32,13 @@ suffix_list=(
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
 
     # Fixed Model - QAMPARI  -> LoRA (SRM 10) #####
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
@@ -53,13 +53,18 @@ suffix_list=(
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     
     # Pred Length
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-    "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
+    # qampari
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    
 )
 
-file_list="retrieval_out_dev_qampari_5_to_8.jsonl"  # retrieval_out_dev_qampari_5_to_8_max_new_tokens_1.jsonl
+# file_list="retrieval_out_dev_qampari_5_to_8_max_new_tokens_1.jsonl"  # retrieval_out_dev_qampari_5_to_8_max_new_tokens_1.jsonl
+file_list="dev_data_gt_qampari_corpus.jsonl"
 retriever="inf"
 base_model="llama-1b"
 
@@ -109,8 +114,8 @@ fi
 for suffix in "${suffix_list[@]}"
 do
     echo "Evaluating retrieval results for $suffix"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/"
-    # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${suffix}/"
+    # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/base_retrievers/stella/"
     echo "Evaluating retrieval results for $retriever"
     python eval.py --data-type $data_name \
         --root $ROOT_DIR \

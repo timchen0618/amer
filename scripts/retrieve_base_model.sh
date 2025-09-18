@@ -77,32 +77,32 @@ rootdir="/scratch/hc3337"
 #      --output_file "ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs_query_exp.jsonl"
 
 
-python retrieval_base.py \
-     --model_name_or_path infly/inf-retriever-v1-1.5b \
-     --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit/corpus.tsv" \
-     --passages_embeddings "${data_dir}/inf/limit/*" \
-     --data "/scratch/hc3337/projects/autoregressive/data/questions/limit_question_only.jsonl"  \
-     --output_dir results/base_retrievers/inf/ \
-     --projection_size 1536 \
-     --per_gpu_batch_size 4 \
-     --n_docs 500 \
-     --use_gpu \
-     --num_shards 1 \
-     --output_file "limit_retrieved.jsonl" 
+# python retrieval_base.py \
+#      --model_name_or_path infly/inf-retriever-v1-1.5b \
+#      --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit/corpus.tsv" \
+#      --passages_embeddings "${data_dir}/inf/limit/*" \
+#      --data "/scratch/hc3337/projects/autoregressive/data/questions/limit_question_only.jsonl"  \
+#      --output_dir results/base_retrievers/inf/ \
+#      --projection_size 1536 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --use_gpu \
+#      --num_shards 1 \
+#      --output_file "limit_retrieved.jsonl" 
 
 
-python retrieval_base.py \
-     --model_name_or_path infly/inf-retriever-v1-1.5b \
-     --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit-small/corpus.tsv" \
-     --passages_embeddings "${data_dir}/inf/limit-small/*" \
-     --data "/scratch/hc3337/projects/autoregressive/data/questions/limit-small_question_only.jsonl"  \
-     --output_dir results/base_retrievers/inf/ \
-     --projection_size 1536 \
-     --per_gpu_batch_size 4 \
-     --n_docs 500 \
-     --use_gpu \
-     --num_shards 1 \
-     --output_file "limit-small_retrieved.jsonl" 
+# python retrieval_base.py \
+#      --model_name_or_path infly/inf-retriever-v1-1.5b \
+#      --passages "/scratch/hc3337/projects/autoregressive/data/limit/data/limit-small/corpus.tsv" \
+#      --passages_embeddings "${data_dir}/inf/limit-small/*" \
+#      --data "/scratch/hc3337/projects/autoregressive/data/questions/limit-small_question_only.jsonl"  \
+#      --output_dir results/base_retrievers/inf/ \
+#      --projection_size 1536 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --use_gpu \
+#      --num_shards 1 \
+#      --output_file "limit-small_retrieved.jsonl" 
 
 # # EVALUATE ARGS
 # has_gold_id=false
@@ -130,4 +130,46 @@ python retrieval_base.py \
 #     --topk $topk_list $has_gold_id_str $select_indices_file_str --file-list ${file_list}
 
 
-    
+
+#### For Ploting ######
+
+# python retrieval_base.py \
+#      --model_name_or_path infly/inf-retriever-v1-1.5b \
+#      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+#      --passages_embeddings "${data_dir}/inf/qampari_embeddings/*" \
+#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl"  \
+#      --output_dir results/base_retrievers/inf/ \
+#      --projection_size 1536 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --use_gpu \
+#      --num_shards 16 \
+#      --output_file "dev_data_gt_qampari_corpus.jsonl" 
+
+
+# python retrieval_base.py \
+#      --model_name_or_path NovaSearch/stella_en_400M_v5 \
+#      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+#      --passages_embeddings "${data_dir}/stella_en_400M_v5/qampari_embeddings/*" \
+#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl"  \
+#      --output_dir results/base_retrievers/stella/ \
+#      --projection_size 1024 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --use_gpu \
+#      --num_shards 6 \
+#      --output_file "dev_data_gt_qampari_corpus.jsonl" 
+
+
+python retrieval_base.py \
+     --model_name_or_path NovaSearch/stella_en_400M_v5 \
+     --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+     --passages_embeddings "${data_dir}/stella_en_400M_v5/qampari_embeddings/*" \
+     --data "${rootdir}/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"  \
+     --output_dir results/base_retrievers/stella/ \
+     --projection_size 1024 \
+     --per_gpu_batch_size 4 \
+     --n_docs 500 \
+     --use_gpu \
+     --num_shards 6 \
+     --output_file "ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"

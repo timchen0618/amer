@@ -378,32 +378,32 @@ if __name__ == "__main__":
             return json.load(f)  
         
     
-    command = 'combine_ambiguous_and_qampari_pred_length'
+    command = 'combine_datasets'
     
     if command == 'combine_datasets':
         # for retriever in ['cont', 'stella', 'inf']:
         use_hard_negatives = False
-        for retriever in ['inf']:
-            data_name = 'ambiguous_qe'
-            split = 'dev'
-            base_model_name = 'inf'
-            for split in ['train', 'dev']:
-                start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
-                if use_hard_negatives:
-                    dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{i}_ctxs' \
-                    for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
-                else:
-                    dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{i}_ctxs' \
-                    for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
-                assert len(dataset_paths) == 4
-                dataset_paths = [load_from_disk(path) for path in dataset_paths]
-                # dataset_paths = [d.select([i for i in range(30)]) for d in dataset_paths]
+        for retriever in ['inf', 'stella']:
+            # data_name = 'ambiguous_qe'
+            for data_name in ['qampari', 'ambiguous_qe']:
+                base_model_name = 'llama-8b'  # llama-1b, qwen3-4b, llama-3b, llama-8b
+                for split in ['train', 'dev']:
+                    start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
+                    if use_hard_negatives:
+                        dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{i}_ctxs' \
+                        for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
+                    else:
+                        dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{i}_ctxs' \
+                        for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
+                    assert len(dataset_paths) == 4
+                    dataset_paths = [load_from_disk(path) for path in dataset_paths]
+                    # dataset_paths = [d.select([i for i in range(30)]) for d in dataset_paths]
 
-                combined_dataset = concatenate_datasets(dataset_paths)
-                if use_hard_negatives:
-                    combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
-                else:
-                    combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
+                    combined_dataset = concatenate_datasets(dataset_paths)
+                    if use_hard_negatives:
+                        combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
+                    else:
+                        combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
                 
         # for split in ['train', 'dev']:
         #     start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}

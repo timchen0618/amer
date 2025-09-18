@@ -5,6 +5,7 @@ import string
 from tqdm import tqdm
 import unicodedata
 from nltk import word_tokenize
+import numpy as np
 
 def score_recall(preds):
     # average 
@@ -12,7 +13,7 @@ def score_recall(preds):
     for inst in preds:
         recalls.append(sum([any(preds_per_perspective) for preds_per_perspective in inst])/len(inst))
 
-    return sum(recalls) / float(len(recalls))
+    return sum(recalls) / float(len(recalls)), np.array(recalls)
 
 def score_mrecall(preds):
     # average 
@@ -24,7 +25,7 @@ def score_mrecall(preds):
         else:
             mrecalls.append(int(all([any(preds_per_perspective) for preds_per_perspective in inst])))
 
-    return sum(mrecalls) / float(len(mrecalls))
+    return sum(mrecalls) / float(len(mrecalls)), np.array(mrecalls)
 
 def score_precision(preds, topk):
     # average 
@@ -218,15 +219,15 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
         
     MRR = sum(mrrs) / len(mrrs)
     
-    mrecall_score = score_mrecall(preds)
-    recall_score = score_recall(preds)
+    mrecall_score, mrecall_list = score_mrecall(preds)
+    recall_score, recall_list = score_recall(preds)
     precision_score = score_precision(preds, topk)
     if has_gold_id:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | mAP: {mAP:.4f} | nDCG: {nDCG:.4f} | MRR: {MRR:.4f}')
-        return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(mAP), '%2.4f'%(nDCG), '%2.4f'%(MRR), qrel, run
+        return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(mAP), '%2.4f'%(nDCG), '%2.4f'%(MRR), qrel, run, mrecall_list, recall_list
     else:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | MRR: {MRR:.4f}')
-        return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR), qrel, run
+        return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR), qrel, run, mrecall_list, recall_list
     # print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | nDCG: {nDCG:.4f} | mAP: {mAP:.4f}')
     print('Average number of retrieved documents:', sum(len_docs) / len(len_docs)) 
     
@@ -315,8 +316,8 @@ def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, top
         mAP = sum(maps) / len(maps)
         
     MRR = sum(mrrs) / len(mrrs)
-    mrecall_score = score_mrecall(preds)
-    recall_score = score_recall(preds)
+    mrecall_score, mrecall_list = score_mrecall(preds)
+    recall_score, recall_list = score_recall(preds)
     precision_score = score_precision(preds, topk)
     if has_gold_id:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | mAP: {mAP:.4f} | nDCG: {nDCG:.4f} | MRR: {MRR:.4f}')
@@ -353,8 +354,8 @@ def eval_retrieve_docs_for_repeats(retrieved_docs_path, data_path, topk=100):
         
         preds.append(pred_inst)    
 
-    mrecall_score = score_mrecall(preds)
-    recall_score = score_recall(preds)
+    mrecall_score, mrecall_list = score_mrecall(preds)
+    recall_score, recall_list = score_recall(preds)
     precision_score = score_precision(preds, topk)
     print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f}')
     print('Average number of retrieved documents:', sum(len_docs) / len(len_docs)) 

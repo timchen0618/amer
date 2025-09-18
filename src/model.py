@@ -2152,7 +2152,6 @@ class EmbeddingModelSSVariableLeftPadPredLength(EmbeddingModel):
             assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
         
         NUM_LENGTH_LABELS = 4
-        max_new_tokens = 0
         query_length = inputs['input_ids'].size(1) if 'input_ids' in inputs else inputs['inputs_embeds'].size(1)
         tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-3.2-1B-Instruct')
         tokenizer.pad_token = tokenizer.eos_token
@@ -2177,10 +2176,15 @@ class EmbeddingModelSSVariableLeftPadPredLength(EmbeddingModel):
         query_length = inputs['attention_mask'][0].sum()
         decoded_outputs = tokenizer.decode(outputs[0][query_length:], skip_special_tokens=True)
         print('decoded outputs', decoded_outputs)
-        max_new_tokens = int(decoded_outputs[0])
+        if max_new_tokens is None or max_new_tokens == 0:
+            max_new_tokens = int(decoded_outputs[0])
+        else:
+            max_new_tokens = max_new_tokens
         # max_new_tokens = 2
         print('outputs', outputs)
         # outputs[0][0] = 17
+        if max_new_tokens != 0:
+            outputs[0][query_length] = 15 + max_new_tokens
         outputs[0][query_length+1] = 27
         outputs[0][query_length+2] = 12529
         outputs[0][query_length+3] = 29

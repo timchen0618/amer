@@ -17,7 +17,7 @@ TEMPERATURES=(0.05)
 
 # Batch sizes
 # BATCH_SIZES=(8 16 32)
-BATCH_SIZES=(32)
+BATCH_SIZES=(8)
 
 # Number of epochs
 # NUM_EPOCHS_LIST=(10 20 30)
@@ -27,7 +27,7 @@ NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
 WARMUP_RATIOS=(0.05)
 
-SAMPLE_RATE_MULTIPLIERS=(3)
+SAMPLE_RATE_MULTIPLIERS=(1)
 # LR min ratios
 LR_MIN_RATIO=0.0
 
@@ -39,25 +39,27 @@ LR_MIN_RATIO=0.0
 
 # Project name (will be used in wandb)
 BASE_PROJECT="diverse_retrieval"
-full_finetuning=true            # whether to use full finetuning
+full_finetuning=false            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
 LOG_WITH="wandb"
-use_inf_base_model=false
 machine="torch" # greene, torch
 pred_length_labels=false
 
-mix_one_label_shuffled=true
+doc_encoder="inf"
+base_model_name="llama-8b" # llama-1b, qwen3-4b, llama-3b, llama-8b
+
+mix_one_label_shuffled=false
 resume_from_checkpoint=false
 use_stateful_dataloader=false
 use_l40s=false
 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
-MODE="contrastive_all_labels_shuffled"
+MODE="contrastive_one_label_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -218,10 +220,10 @@ else
     NORMALIZE_STR=""
 fi
 
-if [ "$use_inf_base_model" = true ]; then
-    base_prefix="inf_"
+if [ "$base_model_name" = "llama-1b" ]; then
+    base_model_prefix=""
 else
-    base_prefix=""
+    base_model_prefix="${base_model_name}_"
 fi
 
 
@@ -254,35 +256,42 @@ fi
 
 
 # Experiment prefix
-EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_model_prefix}${normalize_prefix}ambiguous_qe${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
-if [ "$use_inf_base_model" = true ]; then
-    BASE_SAVE_PATH="results/inf/ambiguous_qe_inf"
-else
-    BASE_SAVE_PATH="results/llama-1b/ambiguous_qe_inf/fixed_model"
-fi
+BASE_SAVE_PATH="results/${base_model_name}/ambiguous_qe_${doc_encoder}"
 
 # Training dataset path
-if [ "$use_inf_base_model" = true ]; then
-    BASE_TRAIN_PATH="training_datasets/inf/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs${pred_length_labels_str}/"
-else
-    BASE_TRAIN_PATH="training_datasets/llama-1b/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs${pred_length_labels_str}/"
-fi
+BASE_TRAIN_PATH="training_datasets/${base_model_name}/ambiguous_qe/${doc_encoder}/autoregressive_ambiguous_qe_${doc_encoder}_train_dataset_1b_contrastive_2_to_5_ctxs${pred_length_labels_str}/"
 
 
 # Model checkpoints
-if [ "$use_inf_base_model" = true ]; then
+if [ "$base_model_name" = "inf" ]; then
     MODEL_ID="infly/inf-retriever-v1-1.5b"
     BASE_ADAPTER_PATH=None
     BASE_LINEAR_CHECKPOINT_PATH=None
-else
+elif [ "$base_model_name" = "llama-1b" ]; then
     # Model checkpoints
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_contrastive/checkpoint_70000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/nq_${doc_encoder}/toy_contrastive/checkpoint_70000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_${doc_encoder}/toy_contrastive/checkpoint_70000_linear.pt"
     # BASE_ADAPTER_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000"
     # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/nq_inf/toy_qemb/checkpoint_30000_linear.pt"
+elif [ "$base_model_name" = "qwen3-4b" ]; then
+    MODEL_ID="Qwen/Qwen3-4B-Instruct-2507"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+elif [ "$base_model_name" = "llama-3b" ]; then
+    MODEL_ID="meta-llama/Llama-3.2-3B-Instruct"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+elif [ "$base_model_name" = "llama-8b" ]; then
+    MODEL_ID="meta-llama/Llama-3.1-8B-Instruct"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+else
+    echo "Invalid base model name"
+    exit 1
 fi
 
 
@@ -290,10 +299,14 @@ fi
 # FIXED HYPERPARAMETERS
 # =================================================================
 # Model embedding dimension
-EMBEDDING_MODEL_DIM=1536
+if [ "$doc_encoder" == "inf" ]; then
+    EMBEDDING_MODEL_DIM=1536
+else
+    EMBEDDING_MODEL_DIM=1024
+fi
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=100
+SAVE_EVERY_N_STEPS=200
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1

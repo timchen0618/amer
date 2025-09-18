@@ -41,17 +41,20 @@ def write_jsonl(data, output_path):
             f.write(json.dumps(inst) + '\n')
 
 
-def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True):
+def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True, pred_length = False):
 
     all_outputs = []
     all_losses = []
     all_labels = []
     all_lengths = []
-    adaptive_max_new_tokens = (max_new_tokens is None)
-        
+    all_length_labels = []
+    adaptive_max_new_tokens = (max_new_tokens is None and not pred_length)  # if doing pred length, we don't need to do adaptive max new tokens
+    print('whether doing adaptive_max_new_tokens', adaptive_max_new_tokens)
     for batch in tqdm(dataloader):
         for k, v in batch.items():
             batch[k] = v.to(device)
+            
+        # if doing adaptive max new tokens, just assign the max new tokens to the batch
         if 'positive_embeddings' in batch and adaptive_max_new_tokens:
             max_new_tokens = batch['positive_embeddings'].size(1)
 
@@ -62,7 +65,9 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
             **batch
         )
         instance_length = output.size(1)
+        print('instance_length', instance_length)
         all_outputs.append(output.view(-1, output.size(-1)))
+        
 
         if compute_loss:
             if 'labels' in batch:
@@ -81,7 +86,7 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
                 all_labels.append(batch['positive_embeddings'].view(-1, batch['positive_embeddings'].size(-1)))
                 all_losses.append(loss.item())
         else:
-            if adaptive_max_new_tokens:
+            if adaptive_max_new_tokens or pred_length:  # if doing pred length, we need to append the instance length.
                 all_lengths.append(instance_length)
     
     if compute_loss:
@@ -191,8 +196,9 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
         model = model.to(device)
         model.eval()
         
-        outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=use_gt_q_embed, use_eos=use_eos, compute_loss=compute_loss)
+        outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=use_gt_q_embed, use_eos=use_eos, compute_loss=compute_loss, pred_length=pred_length)
         print('len all lengths', len(all_lengths))
+        print('all_lengths', all_lengths)
         return outputs, loss, all_labels, all_lengths
     
 
@@ -634,6 +640,8 @@ if __name__ == "__main__":
     
     if args.save_embeddings:
         np.save(args.output_path.replace('.jsonl', '.npy'), outputs)
+        if lengths is not None and len(lengths) > 0:
+            np.save(args.output_path.replace('.jsonl', '_lengths.npy'), lengths)
     else:
         for inference_mode in args.inference_modes:
             if inference_mode == 'first':

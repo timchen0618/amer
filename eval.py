@@ -2,6 +2,7 @@ import argparse
 import csv
 import pandas as pd
 from src.eval_utils import read_jsonl, eval_retrieve_docs, eval_retrieve_docs_for_repeats, evaluate, mrr
+import numpy as np
 
 # root = '/scratch/cluster/hungting/projects/Multi_Answer/contriever/outputs/contriever_msmarco_nq/'
 # root = '/scratch/cluster/hungting/projects/Multi_Answer/mteb_retriever/outputs/'
@@ -177,9 +178,14 @@ def main():
                     selected_indices=selected_indices
                 )
                 
-                qrels = scores[-2]
-                runs = scores[-1]
-                main_scores = scores[:-2]
+                mrecall_list = scores[-2]
+                recall_list = scores[-1]
+                print('writing to file: ', input_file.replace('.jsonl', f'_mrecall_topk{topk}.npy'))
+                np.save(input_file.replace('.jsonl', f'_mrecall_topk{topk}.npy'), mrecall_list)
+                np.save(input_file.replace('.jsonl', f'_recall_topk{topk}.npy'), recall_list)
+                qrels = scores[-4]
+                runs = scores[-3]
+                main_scores = scores[:-4]
                 
                 # Second stage evaluation if enabled
                 if args.second_stage:

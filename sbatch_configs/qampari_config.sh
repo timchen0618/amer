@@ -12,7 +12,7 @@ LEARNING_RATES=(2e-5)
 TEMPERATURES=(0.05)
 # TEMPERATURES=(0.05)
 # BATCH_SIZES=(16 8 32)
-BATCH_SIZES=(32)
+BATCH_SIZES=(8)
 # NUM_EPOCHS_LIST=(20 10 30 40)
 NUM_EPOCHS_LIST=(120)
 # WARMUP_RATIOS=(0.05 0.1)
@@ -32,26 +32,27 @@ LR_MIN_RATIO=0.0
 
 # Project name (will be used in wandb)
 BASE_PROJECT="diverse_retrieval"
-full_finetuning=true            # whether to use full finetuning
+full_finetuning=false            # whether to use full finetuning
 all_data=false                  # whether to train on all data
 multiple_gpus=true              # whether to use multiple GPUs
 save_only_improve=true          # whether to save only improve
 save_best_model=true            # whether to save best model
 normalize=true
-pred_length_labels=true
+pred_length_labels=false
+
+doc_encoder="inf"
+base_model_name="llama-8b"  # llama-1b, qwen3-4b, llama-3b, llama-8b
 
 LOG_WITH="wandb"
-use_inf_base_model=false
 machine="torch" # greene, torch
 
-
+mix_one_label_shuffled=false
 resume_from_checkpoint=false
 use_stateful_dataloader=false
-mix_one_label_shuffled=false
 use_l40s=false
 
-MODEL_TYPE="EmbeddingModelSSVariableLeftPadPredLength"
-MODE="contrastive_all_labels_shuffled"
+MODEL_TYPE="EmbeddingModelSSVariableLeftPad"
+MODE="contrastive_one_label_shuffled"
 
 # MODES -> 
 # 1. hungarian_contrastive
@@ -213,10 +214,10 @@ else
     NORMALIZE_STR=""
 fi
 
-if [ "$use_inf_base_model" = true ]; then
-    base_prefix="inf_"
+if [ "$base_model_name" = "llama-1b" ]; then
+    base_model_prefix=""
 else
-    base_prefix=""
+    base_model_prefix="${base_model_name}_"
 fi  
 
 
@@ -247,44 +248,47 @@ else
 fi
 
 # Experiment prefix
-EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
+EXP_PREFIX="${mix_one_label_shuffled_prefix}${base_model_prefix}${normalize_prefix}qampari${GPUS_PREFIX}${FINETUNING_STR}${MODEL_STR}_${MODE}"
 
 # Base directory for saving results
-if [ "$use_inf_base_model" = true ]; then
-    BASE_SAVE_PATH="results/inf/qampari_inf"
-else
-    BASE_SAVE_PATH="results/llama-1b/qampari_inf/fixed_model"
-fi
+BASE_SAVE_PATH="results/${base_model_name}/qampari_${doc_encoder}"
 
 # Training dataset path
-if [ "$use_inf_base_model" = true ]; then
-    if [ "$USE_HARD_NEGATIVES" = true ]; then
-        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs${pred_length_labels_str}/"
-    else
-        BASE_TRAIN_PATH="training_datasets/inf/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs${pred_length_labels_str}/"
-    fi
+if [ "$USE_HARD_NEGATIVES" = true ]; then
+    BASE_TRAIN_PATH="training_datasets/${base_model_name}/qampari/${doc_encoder}/autoregressive_qampari_${doc_encoder}_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs${pred_length_labels_str}/"
 else
-    if [ "$USE_HARD_NEGATIVES" = true ]; then
-        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_hard_negative_5_to_8_ctxs${pred_length_labels_str}/"
-    else
-        BASE_TRAIN_PATH="training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs${pred_length_labels_str}/"
-    fi
+    BASE_TRAIN_PATH="training_datasets/${base_model_name}/qampari/${doc_encoder}/autoregressive_qampari_${doc_encoder}_train_dataset_1b_contrastive_5_to_8_ctxs${pred_length_labels_str}/"
 fi
 
 
 
 # Model checkpoints
-if [ "$use_inf_base_model" = true ]; then
+if [ "$base_model_name" = "inf" ]; then
     MODEL_ID="infly/inf-retriever-v1-1.5b"
     BASE_ADAPTER_PATH=None
     BASE_LINEAR_CHECKPOINT_PATH=None
-else
+elif [ "$base_model_name" = "llama-1b" ]; then
     MODEL_ID="meta-llama/Llama-3.2-1B-Instruct"
-    BASE_ADAPTER_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000"
-    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt"
+    BASE_ADAPTER_PATH="results/llama-1b/qampari_${doc_encoder}/toy_qemb_from_nq/checkpoint_30000"
+    BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/qampari_${doc_encoder}/toy_qemb_from_nq/checkpoint_30000_linear.pt"
     # MODEL_ID="results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05/best_model"
     # BASE_ADAPTER_PATH=None
     # BASE_LINEAR_CHECKPOINT_PATH="results/llama-1b/gaussian_new_mlps_rotation_inf/normalized_large_new_mlps_gaussian_rotation_full_finetuning_SS_hungarian_contrastive_lr5e-5_temp0.05_batch128_ep3000_warmup0.05/best_model_linear.pt"
+elif [ "$base_model_name" = "qwen3-4b" ]; then
+    MODEL_ID="Qwen/Qwen3-4B-Instruct-2507"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+elif [ "$base_model_name" = "llama-3b" ]; then
+    MODEL_ID="meta-llama/Llama-3.2-3B-Instruct"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+elif [ "$base_model_name" = "llama-8b" ]; then
+    MODEL_ID="meta-llama/Llama-3.1-8B-Instruct"
+    BASE_ADAPTER_PATH=None
+    BASE_LINEAR_CHECKPOINT_PATH=None
+else
+    echo "Invalid base model name"
+    exit 1
 fi
 
 
@@ -293,10 +297,14 @@ fi
 # FIXED HYPERPARAMETERS
 # =================================================================
 # Model embedding dimension
-EMBEDDING_MODEL_DIM=1536
+if [ "$doc_encoder" == "inf" ]; then
+    EMBEDDING_MODEL_DIM=1536
+else
+    EMBEDDING_MODEL_DIM=1024
+fi
 
 # How often to save checkpoints (in steps)
-SAVE_EVERY_N_STEPS=250
+SAVE_EVERY_N_STEPS=500
 
 # Gradient accumulation steps
 GRADIENT_ACCUMULATION_STEPS=1

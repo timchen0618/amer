@@ -311,13 +311,16 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
         print('Using infly/inf-retriever-v1-1.5b')
         instruction_template = "Instruct: "
         response_template = ""
-    elif model_name == "meta-llama/Llama-3.2-1B-Instruct":
-        print('Using meta-llama/Llama-3.2-1B-Instruct')
+    elif model_name == "meta-llama/Llama-3.2-1B-Instruct" or model_name == "meta-llama/Llama-3.2-3B-Instruct" or model_name == "meta-llama/Llama-3.1-8B-Instruct":
+        print('Using model: ', model_name)
         instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
         response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+    elif model_name == "Qwen/Qwen3-4B-Instruct-2507":
+        instruction_template = "<|im_start|>user\n"
+        response_template = "<|im_end|>\n<|im_start|>assistant\n"
     else:
         raise ValueError(f"Invalid model name: {model_name}")
-    instruction = (f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]\n{response_template}').strip('\n')
+    instruction = (f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]{response_template}').strip('\n')
     
     # Load dataset
     dataset = load_dataset("json", data_files=str(input_data_path))
@@ -580,24 +583,31 @@ if __name__ == '__main__':
         # /scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_dev_question_only.jsonl 
         # /scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_dev_question_only.jsonl 
     if generate_split == 'contrastive':
+
+        
+
         import sys
         # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
         split='dev'
         length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
-        base_model_name = 'meta-llama/Llama-3.2-1B-Instruct'
+        # base_model_name = 'meta-llama/Llama-3.2-1B-Instruct'
+        # base_model_name = "Qwen/Qwen3-4B-Instruct-2507"
+        # base_model_name = 'meta-llama/Llama-3.2-3B-Instruct'
+        base_model_name = 'meta-llama/Llama-3.1-8B-Instruct'
         # base_model_name = 'infly/inf-retriever-v1-1.5b'
-        pred_length_labels = True
+        
+        pred_length_labels = False
         pred_length_labels_str = '_pred_length' if pred_length_labels else ''
         
         use_hard_negatives = False
         for split in ['train', 'dev']:
-            # for length in [5,6,7,8, 9, 10]:
-            for length in [2,3,4,5]:
-                for model_name in ['inf']:
-                # for model_name in ['cont', 'stella', 'inf']:
+            for length in [5,6,7,8]:
+            # for length in [2,3,4,5]:
+                # for model_name in ['inf']:
+                for model_name in ['stella', 'inf']:
                     # for data_name in ['nq', 'msmarco']:
-                    # for data_name in ['qampari']:
-                    for data_name in ['ambiguous_qe']:
+                    for data_name in ['qampari']:
+                    # for data_name in ['ambiguous_qe']:
                         rootdir = Path('raw_data/')
                         if length == 1:
                             assert pred_length_labels == False, "pred_length_labels is not supported for length 1"
