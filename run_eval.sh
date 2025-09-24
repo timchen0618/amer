@@ -3,8 +3,8 @@
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
 use_sbatch=true
-data_type="qampari" # qampari, qampari+ambiguous_qe, ambignq, berds
-save_embeddings_str="--save_embeddings" # "--save_embeddings"
+data_type="ambignq" # qampari, qampari+ambiguous_qe, ambignq, berds
+save_embeddings_str="" # "--save_embeddings"
 save_before_aggregation_str="" # "--save_before_aggregation"
 suffix_list=(
     # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
@@ -35,9 +35,9 @@ suffix_list=(
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
     # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
 
     # fixed model - AmbigNQ  -> LoRA (SRM 1)
     # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
@@ -90,6 +90,95 @@ suffix_list=(
     # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
     # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
     # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+
+    # STELLA, QAMPARI
+    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+
+    # STELLA, AmbigNQ
+    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+
+    # Qwen3-4b, AmbigNQ
+    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # qwen3-4b, qampari
+    # "qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    
+    # # llama-3b, AmbigNQ
+    # "llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # # llama-3b, qampari
+    # "llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+
+    # # llama-8b, AmbigNQ
+    # "llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"=
+    # # llama-8b, qampari
+    # "llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+
+    
+    # qwen3-4b/ambiguous_qe_stella/
+    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # qwen3-4b/qampari_stella/
+    # "qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    
+    # llama-3b/ambiguous_qe_stella/
+    # "llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # llama-3b/qampari_stella/
+    # "llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    
+    # llama-8b/ambiguous_qe_stella/
+    # "llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # llama-8b/qampari_stella/
+    # "llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+    # "mix_one_llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
+
+
+    # # FROM BASE Inf, QAMPARI
+    # "normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # # FROM BASE Stella, QAMPARI
+    # "normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
+
+    # FROM BASE Inf, AmbigNQ
+    # "normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "mix_one_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # FROM BASE Stella, AmbigNQ
+    # "normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+    # "mix_one_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
+
+    # "single"
+    "multi"
+
+    # Qwen3-4b, AmbigNQ, additional
+    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
+
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm3"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm3"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
+    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
 )   
 
 
