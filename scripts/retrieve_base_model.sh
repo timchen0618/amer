@@ -137,39 +137,66 @@ rootdir="/scratch/hc3337"
 #      --model_name_or_path infly/inf-retriever-v1-1.5b \
 #      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
 #      --passages_embeddings "${data_dir}/inf/qampari_embeddings/*" \
-#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl"  \
+#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl"  \
 #      --output_dir results/base_retrievers/inf/ \
 #      --projection_size 1536 \
 #      --per_gpu_batch_size 4 \
 #      --n_docs 500 \
 #      --use_gpu \
 #      --num_shards 16 \
-#      --output_file "dev_data_gt_qampari_corpus.jsonl" 
+#      --output_file "dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl" 
 
 
 # python retrieval_base.py \
 #      --model_name_or_path NovaSearch/stella_en_400M_v5 \
 #      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
 #      --passages_embeddings "${data_dir}/stella_en_400M_v5/qampari_embeddings/*" \
-#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl"  \
+#      --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl"  \
 #      --output_dir results/base_retrievers/stella/ \
 #      --projection_size 1024 \
 #      --per_gpu_batch_size 4 \
 #      --n_docs 500 \
 #      --use_gpu \
 #      --num_shards 6 \
-#      --output_file "dev_data_gt_qampari_corpus.jsonl" 
+#      --output_file "dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl" 
+
+
+# python retrieval_base.py \
+#      --model_name_or_path NovaSearch/stella_en_400M_v5 \
+#      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+#      --passages_embeddings "${data_dir}/stella_en_400M_v5/qampari_embeddings/*" \
+#      --data "${rootdir}/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"  \
+#      --output_dir results/base_retrievers/stella/ \
+#      --projection_size 1024 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --use_gpu \
+#      --num_shards 6 \
+#      --output_file "ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"
+
 
 
 python retrieval_base.py \
-     --model_name_or_path NovaSearch/stella_en_400M_v5 \
+     --model_name_or_path nvidia/NV-Embed-v2 \
      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
-     --passages_embeddings "${data_dir}/stella_en_400M_v5/qampari_embeddings/*" \
-     --data "${rootdir}/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"  \
-     --output_dir results/base_retrievers/stella/ \
-     --projection_size 1024 \
+     --passages_embeddings "${data_dir}/NV-Embed/qampari_embeddings/*" \
+     --data "/scratch/hc3337/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl"  \
+     --output_dir results/base_retrievers/nv-embed/ \
+     --projection_size 4096 \
      --per_gpu_batch_size 4 \
      --n_docs 500 \
-     --use_gpu \
-     --num_shards 6 \
+     --num_shards 2 \
+     --output_file "dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl" 
+
+
+python retrieval_base.py \
+     --model_name_or_path nvidia/NV-Embed-v2 \
+     --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+     --passages_embeddings "${data_dir}/NV-Embed/qampari_embeddings/*" \
+     --data "${rootdir}/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"  \
+     --output_dir results/base_retrievers/nv-embed/ \
+     --projection_size 4096 \
+     --per_gpu_batch_size 4 \
+     --n_docs 500 \
+     --num_shards 2 \
      --output_file "ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.json"
