@@ -4,16 +4,6 @@ from pathlib import Path
 import csv
 from tqdm import tqdm
 
-# def pred_gpt4(client, prompt):
-#     messages = [{"role": "user", "content": prompt}]
-        
-#     response = client.chat.completions.create(
-#     model="gpt-4o-2024-08-06",
-#     messages=messages
-#     )
-#     response = response.choices[0].message.content.strip()
-#     return response
-
 
 def pred_gpt4(client, question):
     response = client.responses.create(
@@ -57,17 +47,19 @@ def write_tsv(filename, data):
 
 instruction = open('instruction_keywords.txt', 'r').read()
 
+project_dir = '/path/to/project'
+
 # base
-# rootdir = '/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/'
+# rootdir = f'{project_dir}/results/base_retrievers/inf/'
 # data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
 
 # # stage 1 qampari
-# rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
+# rootdir = f'{project_dir}/results/llama-1b/qampari_inf/toy_qemb_from_nq/'
 # data_types = ['retrieval_out_dev_qampari_single.jsonl']
 
 
 # stage 2 nq
-rootdir = '/scratch/hc3337/projects/autoregressive/results/llama-1b/nq_inf/toy_contrastive/'
+rootdir = f'{project_dir}/results/llama-1b/nq_inf/toy_contrastive/'
 data_types = ['retrieval_out_dev_ambiguous_qe_single.jsonl']
 
 for data_type in data_types:
@@ -81,16 +73,11 @@ for data_type in data_types:
     client = OpenAI()
 
     for inst in tqdm(data):
-        # try:
         question = inst['question'] if 'question' in inst else inst['question_text']
         response = pred_gpt4(client, question)
-        # except:
-        #     print('skipped question', inst['question'])
-        #     continue
         out_data.append(inst)
         out_data[-1]['question'] = f'Question: {question} \nRelevant Keywords: {response}'
         
         print('writing to', out_file)
         write_jsonl_line(out_file, inst)
 
-# write_jsonl(out_file, data)

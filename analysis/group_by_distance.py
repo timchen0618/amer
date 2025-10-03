@@ -99,8 +99,6 @@ def get_embeddings_from_data(inst, model, model_name):
     else:
         raise NotImplementedError
     
-    # contexts = [ctx['title'] + ' ' + ctx['text'] if 'title' in ctx else ctx['text'] for ctx in contexts]
-
     embeddings = embed_passages(contexts, model, model_name) # (batch*len, dim)
     return embeddings
 
@@ -113,7 +111,7 @@ def load_input_data(loss_function, question_only, batch_size_training, get_split
     else:
         collator = partial(mse_eval_collator, question_only=question_only)
     full_dataset = load_embeddings_dataset(dataset_path=input_data_path)
-    data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev')
+    data_handler = DataHandler(full_dataset, collator, batch_size_training, 'train' if 'train' in get_split else 'dev', 2)
     
     # load the corresponding split
     if get_split == 'train-held-out':
@@ -132,12 +130,11 @@ def write_list_to_file(file_path, list_of_indices):
         for index in list_of_indices:
             f.write(f"{index}\n")
 
-# load_input_data(loss_function, question_only, batch_size_training, get_split, input_data_path):
-data_name = 'qampari'
+data_name = 'ambiguous_qe'
 retriever = 'inf'
 dataset_name = f"{data_name}_{retriever}"
 
-project_dir = '/scratch/hc3337/projects'
+project_dir = '.'
 
 
 def average_pairwise_distances(embeddings):
@@ -155,7 +152,9 @@ small_distance_indices = []
 if data_name in ['ambiguous', 'ambiguous_qe', 'qampari_5_to_8']:
     if data_name == 'qampari_5_to_8':
         data_name = 'qampari'
-    dataset_path = f'training_datasets/llama-1b/{data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_contrastive_2_to_5_ctxs'
+        dataset_path = f'training_datasets/llama-1b/{data_name}/{retriever}/autoregressive_qampari_{retriever}_dev_dataset_1b_contrastive_5_to_8_ctxs'
+    else:
+        dataset_path = f'training_datasets/llama-1b/{data_name}/{retriever}/autoregressive_{dataset_name}_dev_dataset_1b_contrastive_2_to_5_ctxs'
     dataloader = load_input_data('Hungarian_Contrastive', False, 1, 'dev', dataset_path)
 
     for i, batch in enumerate(dataloader):
@@ -201,8 +200,11 @@ elif data_name in ['qampari']:
     print(len(large_distance_indices))
     print(len(small_distance_indices))
 
-# write_list_to_file(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/large_distance_indices_{retriever}.txt', large_distance_indices)
-# write_list_to_file(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/small_distance_indices_{retriever}.txt', small_distance_indices)
+large_distance_avg_distance = np.mean(np.array(avg_distances)[large_distance_indices])
+print('large_distance_avg_distance', large_distance_avg_distance)
 
-write_list_to_file(f'{project_dir}/autoregressive/data/qampari/large_distance_indices_quarter_{retriever}.txt', large_distance_indices)
-write_list_to_file(f'{project_dir}/autoregressive/data/qampari/small_distance_indices_quarter_{retriever}.txt', small_distance_indices)
+write_list_to_file(f'{project_dir}/data/ambiguous/qampari_embeddings_data/large_distance_indices_{retriever}.txt', large_distance_indices)
+write_list_to_file(f'{project_dir}/data/ambiguous/qampari_embeddings_data/small_distance_indices_{retriever}.txt', small_distance_indices)
+
+write_list_to_file(f'{project_dir}/data/qampari/large_distance_indices_quarter_{retriever}.txt', large_distance_indices)
+write_list_to_file(f'{project_dir}/data/qampari/small_distance_indices_quarter_{retriever}.txt', small_distance_indices)

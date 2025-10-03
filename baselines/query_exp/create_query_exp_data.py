@@ -17,9 +17,10 @@ def write_json(filename, data):
     with open(filename, 'w') as fout:
         fout.write(json.dumps(data, indent=4))
 
-rootdir = '/scratch/cluster/hungting/projects/Multi_Answer/Data/generated_data'
-nq_rootdir = '/scratch/cluster/hungting/projects/Multi_Answer/Data/nqformat_data'
-pers_rootdir = '/scratch/cluster/hungting/projects/Multi_Answer/Gen_Perspectives'
+project_dir = '/path/to/project'
+rootdir = f'{project_dir}/data/generated_data'
+nq_rootdir = f'{project_dir}/data/nqformat_data'
+pers_rootdir = f'{project_dir}/data/gen_perspectives'
 suffix = '_perspectives_wostance.jsonl'
 
 # for data_type in ['arguana_generated', 'kialo', 'opinionqa']:
@@ -63,9 +64,6 @@ for data_type in ['arguana_generated', 'kialo', 'opinionqa']:
         if len(data[i]['perspectives']) > 2:
             continue
         for p in data[i]['perspectives']:
-            # print(p['name'], p['text'])
-            # if type(p['text']) == dict:
-            #     p['text'] = list(p['text'].values())[0]
             new_data.append({
                 'org_id': data[i]['id'],
                 'id': _id,

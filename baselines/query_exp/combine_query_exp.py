@@ -16,8 +16,7 @@ qe_results, _ = collect_retrieval_results(corpus, retriever, data_types, query_e
 
 assert len(raw_results) == len(qe_results), (len(raw_results), len(qe_results))
 assert len(raw_results) == len(data_types), (len(raw_results), len(data_types))
-# for i in range(len(raw_results)):
-#     assert len(raw_results[i]) == len(qe_results[i])
+
     
 for data_type, data, qe_data in zip(data_types, raw_results, qe_results):
     logger.info(f'Processing {data_type}')

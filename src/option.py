@@ -25,12 +25,7 @@ def get_training_args():
     parser.add_argument("--save_best_model", action="store_true", default=False, help="Save best model")
     parser.add_argument("--embedding_model_dim", type=int, default=1536, help="Embedding model dimension")
     parser.add_argument("--adapter_path", type=none_or_str, default="results/nq_inf/toy_contrastive/checkpoint_70000", help="Path to adapter checkpoint")
-    parser.add_argument("--linear_checkpoint_path", type=none_or_str, default="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt", help="Path to linear checkpoint")
-    # adapter_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000
-    # linear_checkpoint_path: results/qampari_inf/toy_qemb_from_nq/checkpoint_30000_linear.pt
-    # adapter_path: 
-    # linear_checkpoint_path: 
-    
+    parser.add_argument("--linear_checkpoint_path", type=none_or_str, default="results/nq_inf/toy_contrastive/checkpoint_70000_linear.pt", help="Path to linear checkpoint")    
     
     # Training configuration
     parser.add_argument("--batch_size_training", type=int, default=16, help="Training batch size")

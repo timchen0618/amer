@@ -17,7 +17,6 @@ def compute_recall_at_k(rankings: np.ndarray, test_pairs: List[Dict[str, Any]], 
     Returns:
         Macro-averaged Recall@k score
     """
-    # test_pairs = pairs_data['test']
     query_recalls = []
     
     for i, pair in enumerate(test_pairs):
@@ -48,7 +47,6 @@ def compute_mrecall_at_k(rankings: np.ndarray, test_pairs: List[Dict[str, Any]],
     Returns:
         MRecall@k score
     """
-    # test_pairs = pairs_data['test']
     successful_queries = 0
     
     for i, pair in enumerate(test_pairs):
@@ -108,15 +106,12 @@ def compute_similarities_and_rankings(predictions: np.ndarray, corpus: np.ndarra
             sorted_similarity_batch = similarity_batch[np.arange(similarity_batch.shape[0])[:, None], sorted_indices]
             rankings_batch.append(sorted_indices+i)
             top_k_similarities_batch.append(sorted_similarity_batch)
-        # print(i, len(top_k_similarities_batch), len(rankings_batch),top_k_similarities_batch[0].shape, rankings_batch[0].shape)
         similarities = np.concatenate(top_k_similarities_batch, axis=1)
         rankings = np.concatenate(rankings_batch, axis=1)
-        # print('similarities', similarities.shape, 'rankings', rankings.shape)
         
         sorted_indices = np.argsort(similarities, axis=1)[:, ::-1]
         sorted_rankings = rankings[np.arange(rankings.shape[0])[:, None], sorted_indices]
         sorted_similarities = similarities[np.arange(similarities.shape[0])[:, None], sorted_indices]
-        # print('sorted_indices', sorted_indices.shape, 'sorted_rankings', sorted_rankings.shape, 'sorted_similarities', sorted_similarities.shape)
         if _print:
             print(sorted_similarities[:, :10])
             print(sorted_rankings[:, :10])

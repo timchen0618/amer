@@ -34,11 +34,13 @@ def normalize_np(x, p=2, dim=1, eps=1e-12):
 
 @torch.no_grad()
 def embed_queries(args, queries, model):
+    def add_eos(input_examples, eos_token):
+        input_examples = [input_example + eos_token for input_example in input_examples]
+        return input_examples
+
     task_name_to_instruct = {"example": "Given a question, retrieve passages that answer the question",
                              "example_input": "Given a question and some relevant passages, retrieve passages that answer the question but are not in the input set.",}
     query_prefix = "Instruct: "+task_name_to_instruct["example"]+"\nQuery: "
-
-    max_length = 32768
     model.eval()
     embeddings, batch_question = [], []
 
@@ -48,7 +50,8 @@ def embed_queries(args, queries, model):
         if args.normalize_text:
             q = src.normalize_text.normalize(q)
         batch_question.append(q)
-    embeddings = model._do_encode(batch_question, batch_size=args.per_gpu_batch_size, instruction=query_prefix, max_length=max_length, num_workers=32, return_numpy=True)
+    embeddings = model.encode(add_eos(queries, model.tokenizer.eos_token), batch_size=args.per_gpu_batch_size, prompt=query_prefix, normalize_embeddings=True)
+
     embeddings = normalize_np(embeddings, p=2, dim=1)
     print("Questions embeddings shape:", embeddings.shape)
     return embeddings
@@ -91,10 +94,6 @@ def embed_queries_llm2vec(args, queries, model):
     embeddings, batch_question = [], []
 
     for k, q in enumerate(queries):
-        if args.lowercase:
-            q = q.lower()
-        if args.normalize_text:
-            q = src.normalize_text.normalize(q)
         batch_question.append([instruction, q])
 
         if len(batch_question) == args.per_gpu_batch_size:
@@ -311,14 +310,7 @@ def retrieve(question_embeddings, num_shards, passages_embeddings, passage_id_ma
     top_ids_and_scores = aggregate_sharded_results(all_sharded_ids_and_scores, num_shards)
     logger.info(f"aggregated top_ids_and_scores for {num_shards} shards")
     return top_ids_and_scores
-    # add_passages(data, passage_id_map, top_ids_and_scores)
 
-    # os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    # with open(output_path, "w") as fout:
-    #     for ex in data:
-    #         json.dump(ex, fout, ensure_ascii=False)
-    #         fout.write("\n")
-    # logger.info(f"Saved results to {output_path}")
     
     
 
@@ -332,9 +324,11 @@ def main(args):
     
     print(f"Loading model from: {args.model_name_or_path}")
     
-    if ('stella' in args.model_name_or_path) or ('inf-retriever' in args.model_name_or_path):
+    if ('stella' in args.model_name_or_path) or ('inf-retriever' in args.model_name_or_path) or ('NV-Embed' in args.model_name_or_path):
         model = SentenceTransformer(args.model_name_or_path, trust_remote_code=True)
         if 'inf-retriever' in args.model_name_or_path:
+            model.max_seq_length = 8192
+        elif 'NV-Embed' in args.model_name_or_path:
             model.max_seq_length = 8192
     elif ('LLM2Vec' in args.model_name_or_path) or ('llm2vec' in args.model_name_or_path):
         print('loading LLM2Vec Model')
@@ -346,24 +340,6 @@ def main(args):
     if not args.no_fp16:
         model = model.half()
 
-    # print("Loading index", args.projection_size, args.n_subquantizers, args.n_bits, args.use_gpu)
-    # index = Indexer(args.projection_size, args.n_subquantizers, args.n_bits, use_gpu=args.use_gpu)
-
-    # # index all passages
-    # input_paths = glob.glob(args.passages_embeddings)
-    # print('input_paths', input_paths)
-    # input_paths = sorted(input_paths)
-    # embeddings_dir = os.path.dirname(input_paths[0])
-    # index_path = os.path.join(embeddings_dir, "index.faiss")
-    # if args.save_or_load_index and os.path.exists(index_path):
-    #     index.deserialize_from(embeddings_dir)
-    # else:
-    #     print(f"Indexing passages from files {input_paths}")
-    #     start_time_indexing = time.time()
-    #     index_encoded_data(index, input_paths, args.indexing_batch_size, args.shard_id, args.num_shards)
-    #     print(f"Indexing time: {time.time()-start_time_indexing:.1f} s.")
-    #     if args.save_or_load_index:
-    #         index.serialize(embeddings_dir)
 
     # load passages
     passages = load_passages(args.passages)
@@ -383,17 +359,16 @@ def main(args):
         elif ('LLM2Vec' in args.model_name_or_path) or ('llm2vec' in args.model_name_or_path):
             print('embed llm2vec')
             questions_embedding = embed_queries_llm2vec(args, queries, model)
-        else:
+        elif 'NV-Embed' in args.model_name_or_path:
             questions_embedding = embed_queries(args, queries, model)
+        else:
+            raise ValueError(f"Unsupported model: {args.model_name_or_path}")
         print('finished embedding queries')
         
         if args.save_embeddings:
             np.save(os.path.join(args.output_dir, f'questions_embeddings_{Path(path).stem}.npy'), questions_embedding)
             exit(0)
-        # # get top k results
-        # start_time_retrieval = time.time()
-        # top_ids_and_scores = index.search_knn(questions_embedding, args.n_docs)
-        # print(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
+
         top_ids_and_scores = retrieve(questions_embedding, args.num_shards, args.passages_embeddings, passage_id_map, 
               embedding_size = args.projection_size, top_k_per_query = args.n_docs, top_k = args.n_docs, 
               save_or_load_index = args.save_or_load_index, use_gpu = args.use_gpu,

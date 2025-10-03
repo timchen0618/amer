@@ -252,6 +252,106 @@ def random_baseline(pairs_data, corpus, topk):
         rankings.append(np.random.randint(0, len(corpus), size=topk))
     return np.array(rankings)
     
+    
+######## For Similarity Analysis ########
+import random
+import prettytable
+
+""" 
+    The script is used to check the distance between target vector embeddings.
+    And also used to check the distance between predicted question embeddings. 
+"""
+
+def normalize_np(x, p=2, dim=1, eps=1e-12):
+    """
+    NumPy implementation of torch.nn.functional.normalize
+    """
+    norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    norm = np.maximum(norm, eps)  # Avoid division by zero
+    return x / norm
+
+
+def compute_l2_distance(query_1, query_2):
+    return np.linalg.norm(query_1 - query_2)
+
+def compute_cosine_similarity(query_1, query_2):
+    return np.dot(query_1, query_2) / (np.linalg.norm(query_1) * np.linalg.norm(query_2))
+
+    
+def compute_averge_target_distance_same_example(target_vectors_list):
+    l2_distance_list = []
+    cosine_similarity_list = []
+    for i in range(len(target_vectors_list)):
+        all_target_vectors = target_vectors_list[i]
+        for j in range(len(all_target_vectors)):
+            for k in range(j+1, len(all_target_vectors)):
+                l2_distance_list.append(compute_l2_distance(all_target_vectors[j], all_target_vectors[k]))
+                cosine_similarity_list.append(compute_cosine_similarity(all_target_vectors[j], all_target_vectors[k]))
+    print('max', 'l2', np.max(l2_distance_list), 'cosine', np.max(cosine_similarity_list))
+    print('min', 'l2', np.min(l2_distance_list), 'cosine', np.min(cosine_similarity_list))
+    # compute the percentage of cosine similarity greater than 0.9
+    print('percentage of cosine similarity greater than 0.93', np.sum(np.array(cosine_similarity_list) > 0.93) / len(cosine_similarity_list))
+    return np.mean(l2_distance_list), np.mean(cosine_similarity_list)
+
+def compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=0, _print=False):
+    
+    l2_distance_list = []
+    cosine_similarity_list = []
+    random_numbers = []
+    for i in range(10000):
+        two_random_nums = random.sample(range(len(target_vectors_list)), 2)
+        random_numbers.append(two_random_nums)
+        targets_1 = target_vectors_list[two_random_nums[0]]
+        targets_2 = target_vectors_list[two_random_nums[1]]
+        if in_example_idx != -1:
+            query_1 = targets_1[in_example_idx]
+            query_2 = targets_2[in_example_idx]
+        else:
+            if min(len(targets_1), len(targets_2)) == 0:
+                continue
+            else:
+                query_1 = random.choice(targets_1)
+                query_2 = random.choice(targets_2)
+            # elif min(len(targets_1), len(targets_2)) == 1:
+            #     print('one target')
+            #     query_1 = targets_1[0]
+            #     query_2 = targets_2[0]
+            # else:
+            #     two_random_in_example_nums = random.sample(range(min(len(targets_1), len(targets_2))), 2)
+            #     query_1 = targets_1[two_random_in_example_nums[0]]
+            #     query_2 = targets_2[two_random_in_example_nums[1]]
+        l2_distance_list.append(compute_l2_distance(query_1, query_2))
+        cosine_similarity_list.append(compute_cosine_similarity(query_1, query_2))
+    if _print:
+        print(random_numbers[:100])
+        print(l2_distance_list[:100])
+    return np.mean(l2_distance_list), np.mean(cosine_similarity_list)
+
+def similarity_analysis(target_vectors_list):
+    import sys
+    from pathlib import Path
+    
+    all_l2_distances = []
+    all_cosine_similarities = []
+    table = prettytable.PrettyTable()
+    table.field_names = ["distance_type", "betw ts (same)", "betw ts (diff), -1"]
+
+    # compute the average distance between target vectors (of same example)
+    l2_distance, cosine_similarity = compute_averge_target_distance_same_example(target_vectors_list)
+    all_l2_distances.append(l2_distance.round(3))
+    all_cosine_similarities.append(cosine_similarity.round(3))
+    
+    # compute the average distance between target vectors (of different examples)
+    l2_distance, cosine_similarity = compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=-1)
+    all_l2_distances.append(l2_distance.round(3))
+    all_cosine_similarities.append(cosine_similarity.round(3))
+
+    
+    table.add_row(["L2"]+all_l2_distances)
+    table.add_row(["Cosine"]+all_cosine_similarities)
+    print(table)
+    
+    
 def main(args):
     # load data
     pairs_data = json.load(open(os.path.join(args.data_dir, 'query_ground_truth_pairs.json'), 'r'))
@@ -380,6 +480,14 @@ def main(args):
                         all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
                         print('all outputs', all_outputs.shape)
                         all_outputs = all_outputs
+                        
+                    # target_vectors_list = []
+                    # for i in range(0, len(all_outputs), max_new_tokens):
+                    #     target_vectors_list.append(normalize_np(all_outputs[i:i+max_new_tokens]))
+                    # print('target_vectors_list', len(target_vectors_list))
+                    # print('doing similarity analysis...')
+                    # similarity_analysis(target_vectors_list)
+                    # exit(0)
 
                     # Evaluate Results
                     rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)

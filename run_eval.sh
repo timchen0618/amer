@@ -2,285 +2,140 @@
 # Hyperparameter Search Script
 # This script generates SBATCH files for different hyperparameter combinations
 # and submits them as separate jobs
-use_sbatch=true
-data_type="ambignq" # qampari, qampari+ambiguous_qe, ambignq, berds
+use_sbatch=false
+data_type="qampari" # qampari, qampari+ambiguous_qe, ambignq, berds
 save_embeddings_str="" # "--save_embeddings"
 save_before_aggregation_str="" # "--save_before_aggregation"
-suffix_list=(
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
 
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
+data_name="ambiguous_qe"
+training_data_name="ambiguous_qe"
+suffix="[suffix]"
 
-    # "normalized_qampari_4gpu_full_finetuning_Fixed_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_Fixed_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_Fixed_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep60_warmup0.05_srm10"
+retriever="inf"
+use_best_model=true
+compute_loss=false
+full_finetuning=false
+base_model="llama-1b"  # llama-1b, qwen3-4b, llama-3b, llama-8b
+checkpoint_num="70000"
 
-    
-    # fixed model - QAMPARI  -> LoRA
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # Fixed Model - QAMPARI  -> LoRA (SRM 10)
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-
-    # fixed model - AmbigNQ  -> LoRA (SRM 1)
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # fixed model - AmbigNQ  -> LoRA (SRM 10)
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-
-    # fixed model - AmbigNQ  -> LoRA (SRM 3)
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm3"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm3"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm3"
-
-    # fixed full finetuning - AmbigNQ
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # Fixed full finetuning - QAMPARI
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-
-    # Pred Length
-    # combined
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch16_ep120_warmup0.05_srm1"
-    # qampari
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # ambiguous_qe
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPadPredLength_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # STELLA, QAMPARI
-    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-
-    # STELLA, AmbigNQ
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # Qwen3-4b, AmbigNQ
-    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # qwen3-4b, qampari
-    # "qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    
-    # # llama-3b, AmbigNQ
-    # "llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # # llama-3b, qampari
-    # "llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-
-    # # llama-8b, AmbigNQ
-    # "llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"=
-    # # llama-8b, qampari
-    # "llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-
-    
-    # qwen3-4b/ambiguous_qe_stella/
-    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # qwen3-4b/qampari_stella/
-    # "qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_qwen3-4b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    
-    # llama-3b/ambiguous_qe_stella/
-    # "llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_llama-3b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # llama-3b/qampari_stella/
-    # "llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_llama-3b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    
-    # llama-8b/ambiguous_qe_stella/
-    # "llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_llama-8b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # llama-8b/qampari_stella/
-    # "llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-    # "mix_one_llama-8b_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm10"
-
-
-    # # FROM BASE Inf, QAMPARI
-    # "normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # # FROM BASE Stella, QAMPARI
-    # "normalized_qampari_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-    # "mix_one_normalized_qampari_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10"
-
-    # FROM BASE Inf, AmbigNQ
-    # "normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # FROM BASE Stella, AmbigNQ
-    # "normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-    # "mix_one_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1"
-
-    # "single"
-    "multi"
-
-    # Qwen3-4b, AmbigNQ, additional
-    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_contrastive_one_label_shuffled_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
-
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm3"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm3"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-5_temp0.05_batch8_ep120_warmup0.05_srm3"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr1e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-    # "mix_one_qwen3-4b_normalized_ambiguous_qe_4gpu_SSVariableLeftPad_hungarian_contrastive_lr5e-5_temp0.05_batch8_ep120_warmup0.05_srm1"
-)   
+# inference_modes="all first second"
+inference_modes="all"
+round_robin_percentage=1.0
+max_new_tokens=2
+num_shards="16"
+use_gpu=true
 
 
 
-# Function to create SBATCH file
-create_sbatch_file() {
-    local sbatch_file="${SBATCH_DIR}/run_${exp_name}.SBATCH"
-    local output_file="${JOB_OUTPUT_DIR}/run_${exp_name}.out"
-    
-    # Create SBATCH file based on configuration
-    cat > "$sbatch_file" << EOF
-#!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=${CPUS_PER_TASK}
-#SBATCH --time=${TIME_LIMIT}
-#SBATCH --mem=${MEMORY}
-#SBATCH --job-name=retrieve_${exp_name}
-#SBATCH --mail-type=END
-#SBATCH --mail-user=${EMAIL}
-#SBATCH --output=${output_file}
-#SBATCH --gres=gpu:${GPU_STRING}
-${SLURM_EXTRA_ARGS}
+# Set dev_data_path based on data_name
+split="dev"  # Define split variable (assuming 'dev' as default)
 
-SINGULARITY_IMAGE=${SINGULARITY_IMAGE}
-OVERLAY_FILE=${OVERLAY_FILE}
+if [[ "$data_name" == "ambiguous" || "$data_name" == "ambiguous_qe" ]]; then
+    dev_data_path="data/questions/${data_name}_${split}_question_only_2_to_5_ctxs.jsonl"
+elif [[ "$data_name" == "ambiguous_qe_query_exp" ]]; then
+    dev_data_path="data/questions/ambiguous_qe_query_exp_2_to_5_ctxs.jsonl"
+elif [[ "$data_name" == "qampari_5_to_8" ]]; then
+    dev_data_path="data/questions/qampari_${split}_question_only_5_to_8_ctxs.jsonl"
+elif [[ "$data_name" == "qampari_query_exp_5_to_8" ]]; then
+    dev_data_path="data/questions/qampari_query_exp_5_to_8_ctxs.jsonl"
+elif [[ "$data_name" == "qampari" ]]; then
+    dev_data_path="data/questions/qampari_${split}_question_only.jsonl"
+elif [[ "$data_name" == "qampari_query_exp" ]]; then
+    dev_data_path="data/questions/qampari_query_exp.jsonl"
+elif [[ "$data_name" == "nq" || "$data_name" == "msmarco"]]; then
+    dev_data_path="data/questions/${data_name}_${split}_question_only.jsonl"
+else
+    dev_data_path="data/questions/${data_name}_question_only.jsonl"
+fi
 
-# Hyperparameter configuration
-ARGS="--data_name $data_name \\
-    --training_data_name $training_data_name \\
-    --split $split \\
-    --retriever $retriever \\
-    --dev_data_path $dev_data_path \\
-    $gpu_str --num_shards $num_shards \\
-    --base_model_id $base_model_id \\
-    --adapter_path $adapter_path \\
-    --linear_checkpoint_path $linear_checkpoint_path \\
-    --base_model_type $base_model \\
-    $max_new_tokens_str $compute_loss_str $pred_length_str --round_robin_percentage $round_robin_percentage \\
-    --top_k_per_query 500 \\
-    --top_k 500 \\
-    --inference_modes $inference_modes \\
-    --output_path $output_path \\
-    $google_api $save_embeddings_str $save_before_aggregation_str"
+# set up model paths
+if [ "$base_model" = "llama-1b" ]; then
+    base_model_id="meta-llama/Llama-3.2-1B-Instruct"
+elif [ "$base_model" = "inf" ]; then
+    base_model_id="infly/inf-retriever-v1-1.5b"
+elif [ "$base_model" = "qwen3-4b" ]; then
+    base_model_id="Qwen/Qwen3-4B-Instruct-2507"
+elif [ "$base_model" = "llama-3b" ]; then
+    base_model_id="meta-llama/Llama-3.2-3B-Instruct"
+elif [ "$base_model" = "llama-8b" ]; then
+    base_model_id="meta-llama/Llama-3.1-8B-Instruct"
+else
+    echo "Invalid base model"
+    exit 1
+fi
 
-singularity exec --nv --overlay \${OVERLAY_FILE}:ro \$SINGULARITY_IMAGE /bin/bash -c "source /ext3/env.sh; cd ${WORK_DIR}; (trap 'kill 0' SIGINT; HF_TOKEN=${HF_TOKEN} python gen_ret_and_eval.py \$ARGS & wait)"
-EOF
-    
-    echo "$sbatch_file"
-}
-
-for suffix in "${suffix_list[@]}"
-do
-    if [ "$data_type" == "berds" ]; then
-        data_name_list=("arguana_generated" "kialo" "opinionqa")
+if [ "$use_best_model" = true ]; then
+    if [ "$full_finetuning" = true ]; then
+        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model"
+        adapter_path=None
     else
-        data_name_list=($data_type)
+        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model"
     fi
+    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/best_model_linear.pt"
+else
+    if [ "$full_finetuning" = true ]; then
+        base_model_id="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}"
+        adapter_path=None
+    else
+        adapter_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}"
+    fi
+    linear_checkpoint_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/checkpoint_${checkpoint_num}_linear.pt"
+fi
+exp_name="${base_model}_${training_data_name}_${retriever}_${suffix}"
 
-    for data_name in "${data_name_list[@]}"
-    do
-        # write retrieve script
-        echo "Writing retrieve script for $suffix"
-        if [ "$data_type" == "berds" ]; then
-            python write_retrieve.py $suffix  $data_type $data_name
-        else
-            python write_retrieve.py $suffix  $data_type
-        fi
-        sleep 1
+# set up output path
+if [ "$round_robin_percentage" != 1.0 ]; then
+    output_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/retrieval_out_${split}_${data_name}_rr_${round_robin_percentage}.jsonl"
+else
+    output_path="results/${base_model}/${training_data_name}_${retriever}/${suffix}/retrieval_out_${split}_${data_name}.jsonl"
+fi
+echo "output_path", $output_path
 
-        # Load configuration
-        CONFIG_FILE="sbatch_configs/eval/retrieve_${data_type}.sh"
-        if [[ -f "$CONFIG_FILE" ]]; then
-            source "$CONFIG_FILE"
-            echo "Loaded configuration from $CONFIG_FILE"
-        else
-            echo "Error: Configuration file $CONFIG_FILE not found!"
-            echo "Please create $CONFIG_FILE or copy from gaussian_config.sh"
-            exit 1
-        fi
-        source sbatch_configs/eval/eval_utils.sh
-        echo "Loading utils from sbatch_configs/eval/eval_utils.sh"
+#
+###############################
+### Define strings for args ###
+###############################
 
-        # Create directories if they don't exist
-        mkdir -p "$JOB_OUTPUT_DIR"
-        mkdir -p "$SBATCH_DIR"
+if [ "$use_gpu" = true ]; then
+    gpu_str="--use_gpu"
+else
+    gpu_str=""
+fi
 
-        if [ "$use_sbatch" = true ]; then
-            # Create SBATCH file
-            sbatch_file=$(create_sbatch_file)
-            # Submit job 
-            job_id=$(sbatch "$sbatch_file" | awk '{print $4}')
-            echo "Submitted job with ID: $job_id"
-            echo "Job output will be in: $JOB_OUTPUT_DIR/run_${exp_name}.out"
+if [ "$max_new_tokens" = 0 ]; then
+    max_new_tokens_str=""
+else
+    max_new_tokens_str="--max_new_tokens $max_new_tokens"
+fi
+echo "max_new_tokens", $max_new_tokens_str
 
-            echo ""
-            echo "Evaluation setup complete!"
-            echo "SBATCH files stored in: $SBATCH_DIR"
-            echo "Job outputs will be in: $JOB_OUTPUT_DIR"
-        else
-            echo "Running evaluation without sbatch"
-            python gen_ret_and_eval.py --data_name $data_name \
+if [ "$use_best_model" = true ]; then
+    use_best_model_str="--use_best_model"
+else
+    use_best_model_str=""
+fi
+
+if [ "$compute_loss" = true ]; then
+    compute_loss_str="--compute_loss"
+else
+    compute_loss_str=""
+fi
+
+if [ "$full_finetuning" = true ]; then
+    full_finetuning_str="--full_finetuning"
+else
+    full_finetuning_str=""
+fi
+
+if [ "$pred_length" = true ]; then
+    pred_length_str="--pred_length"
+else
+    pred_length_str=""
+fi
+
+
+
+python gen_ret_and_eval.py --data_name $data_name \
             --training_data_name $training_data_name \
             --split $split \
             --retriever $retriever \
@@ -295,7 +150,4 @@ do
             --top_k 500 \
             --inference_modes $inference_modes \
             --output_path $output_path \
-            $google_api $save_embeddings_str $save_before_aggregation_str
-        fi
-    done
-done
+            $save_embeddings_str $save_before_aggregation_str

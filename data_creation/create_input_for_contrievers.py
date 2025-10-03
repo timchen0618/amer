@@ -1,6 +1,5 @@
 import json
-from operator import ge
-from transformers import Trainer, TrainingArguments, AutoModel, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset, Dataset, concatenate_datasets
 from torch.utils.data import DataLoader
 import torch
@@ -37,12 +36,10 @@ class SimpleTokenizer(object):
             tokens = [m.group() for m in matches]
         return tokens
 
-# logger = logging.getLogger(__name__)
 
 def _normalize(text):
     return unicodedata.normalize('NFD', text)
 
-#Normalization and score functions from SQuAD evaluation script https://worksheets.codalab.org/rest/bundles/0x6b567e1cf2e041ec80d7098f031c5c9e/contents/blob/
 def normalize_answer(s):
     def remove_articles(text):
         return regex.sub(r'\b(a|an|the)\b', ' ', text)
@@ -150,7 +147,6 @@ def data_collator(features):
     return batch
 
 def shift_to_right(t, padding=-100):
-    # size = (bsz, len, dim)
     shifted = torch.cat([t[:,1:,:], t[:,0:1,:]], dim=1)
     shifted[:,-1,:] = padding
     return shifted
@@ -159,7 +155,7 @@ def shift_to_right(t, padding=-100):
 
 @torch.no_grad()
 def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Instruct", 
-                                      input_data_path='/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data.jsonl', 
+                                      input_data_path='', 
                                       batch_size=32, 
                                       len_outputs_path='', outputs_path='', 
                                       out_dataset_path='',
@@ -193,7 +189,6 @@ def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Inst
     dataset = load_dataset("json", data_files=str(input_data_path))
 
     # # Define model and tokenizer
-    # model = LlamaModel.from_pretrained(model_name)
     model = AutoModel.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -226,11 +221,6 @@ def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Inst
         for k, v in batch.items():
             batch[k] = v.to(device)
             
-        # output = model(**batch, output_hidden_states=True, return_dict=True)
-        # hidden_states = output['hidden_states'][0][0]  # (bsz, lengths, hidden_dim)
-
-        # input_start_for_output = batch['attention_mask'].sum()
-        
         # get the output length from numpy file
         output_len = output_lens[i]
         # get the output embeddings from numpy file
@@ -247,11 +237,6 @@ def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Inst
             continue
         assert ((labels.shape[0] == max_length) or (max_length == -1)), (labels.shape[0], max_length)
         
-        # if max_length == -1:
-        #     dataset_dicts.append({"hidden_states": hidden_states.cpu().numpy(), "labels": labels, "attention_mask": batch['attention_mask'][0].cpu().numpy(), "output_len": output_len.item()})
-        # else:
-        #     dataset_dicts.append({"hidden_states": hidden_states.cpu().numpy(), "labels": labels, "attention_mask": batch['attention_mask'][0].cpu().numpy(), "output_len": max_length})
-
         if max_length == -1:
             dataset_dicts.append({"input_ids": batch['input_ids'][0].cpu().numpy(), "labels": labels, "attention_mask": batch['attention_mask'][0].cpu().numpy(), "output_len": output_len.item()})
         else:
@@ -263,11 +248,6 @@ def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Inst
         actual_data_size += 1
         actual_data_indices.append(i)
         i += 1
-
-    # assert output_start == outputs.shape[0], (output_start, outputs.shape[0], i)
-
-    # dataset = Dataset.from_list(dataset_dicts)
-    # dataset.save_to_disk(out_dataset_path)
     
     safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
 
@@ -278,7 +258,7 @@ def create_input_embeddings_for_query(model_name = "meta-llama/Llama-3.2-1B-Inst
 
 @torch.no_grad()
 def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1B-Instruct", 
-                                      input_data_path='/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data.jsonl', 
+                                      input_data_path='', 
                                       batch_size=32, 
                                       positive_embeddings_path='', 
                                       negative_embeddings_path='', 
@@ -326,8 +306,6 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
     dataset = load_dataset("json", data_files=str(input_data_path))
 
     # # Define model and tokenizer
-    # model = LlamaModel.from_pretrained(model_name)
-    # model = AutoModel.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     seperator = tokenizer(response_template)[1:]
@@ -336,8 +314,6 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    # model = model.to(device)
-    # model.eval()
     # output size (# data, 128, hidden_size)
     dataloader = DataLoader(tokenized_datasets['train'], batch_size=batch_size, shuffle=False, collate_fn=data_collator)
     
@@ -365,9 +341,7 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
         # positive embeddings 
         positive = positive_embeddings[i]  # (bsz, k, d)
         # negative embeddings
-        # negative = negative_embeddings[i].reshape(1, -1)  # (bsz, k, d)
         negative = negative_embeddings[i]  # (bsz, k, d)
-        # print('positive.shape, negative.shape', positive.shape, negative.shape)
         
         dataset_dicts.append({"input_ids": batch['input_ids'][0].cpu().numpy(), 
                               "attention_mask": batch['attention_mask'][0].cpu().numpy(), 
@@ -376,17 +350,9 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
         
         if pred_length_labels:
             length_label = positive.shape[0]
-            # print('length_label', length_label)
             length_labels = tokenizer(str(length_label) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
-            # print('input_ids', dataset_dicts[-1]['input_ids'].shape)
-            # print('attention_mask', dataset_dicts[-1]['attention_mask'].shape)
             dataset_dicts[-1]['length_labels_input_ids'] = length_labels['input_ids'][:, 1:5].squeeze(0).cpu().numpy()
-            dataset_dicts[-1]['length_labels_attention_mask'] = length_labels['attention_mask'][:, 1:5].squeeze(0).cpu().numpy()
-            # print('length_labels_input_ids', dataset_dicts[-1]['length_labels_input_ids'].shape)
-            # print('length_labels_attention_mask', dataset_dicts[-1]['length_labels_attention_mask'].shape)
-            
-            # exit(0)
-                        
+            dataset_dicts[-1]['length_labels_attention_mask'] = length_labels['attention_mask'][:, 1:5].squeeze(0).cpu().numpy()                        
                         
         
         actual_data_size += 1
@@ -401,7 +367,6 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
     print('actual data size: ', actual_data_size)
     return actual_data_indices
     
-
 
 def chunk_text(text, chunk_size=100):
     tokens = word_tokenize(text)
@@ -440,50 +405,17 @@ def check_evidences(new_data):
 
     
 if __name__ == '__main__':
-    # rootdir = Path(__file__).parent.parent
-    # meta-llama/Llama-3.1-8B-Instruct
-    # meta-llama/Llama-3.2-1B-Instruct
-    
     rootdir = Path(__file__).parent
     print(rootdir)
     
     generate_split = 'contrastive'
     if generate_split in ['qampari_train', 'qampari_dev']:
         tag='qampari_org'
-    elif generate_split in ['wsd_train', 'wsd_dev']:
-        tag='wsd_distinct'
-    elif generate_split in ['qampari_q_sm_500_train']:
-        tag='qampari_q_sm_500'
     elif generate_split in ['question_only', 'corpus', 'contrastive', 'contrastive_sequence', 'contrastive_sequence_check_answer', 'gaussian_synthetic']:
         tag=''
     else:
         raise ValueError(f'Invalid generate_split: {generate_split}')
-   
-    if generate_split == 'wsd_train':
-        create_input_embeddings_for_query(batch_size=1, 
-                                        model_name="meta-llama/Llama-3.2-1B-Instruct",
-                                        input_data_path=rootdir / f'../data/wsd/{tag}/train_large.jsonl', 
-                                        len_outputs_path=rootdir / f'raw_data/{tag}/wsd_len_train_large_documents.npy', 
-                                        outputs_path=rootdir / f'raw_data/{tag}/wsd_train_large_doc_embeds_inf.npy',
-                                        out_dataset_path='autoregressive_wsd_train_dataset_1b')
-    
-    if generate_split == 'wsd_dev':
-        create_input_embeddings_for_query(batch_size=1, 
-                                        model_name="meta-llama/Llama-3.2-1B-Instruct",
-                                        input_data_path=rootdir / f'raw_data/{tag}/wsd_dev_only_question.jsonl', 
-                                        len_outputs_path=rootdir / f'raw_data/{tag}/wsd_len_dev_documents.npy', 
-                                        outputs_path=rootdir / f'raw_data/{tag}/wsd_dev_doc_embeds_inf.npy',
-                                        out_dataset_path='autoregressive_wsd_dev_dataset_1b',
-                                        max_length=3)
-    
-    if generate_split == 'qampari_q_sm_500_train':
-        create_input_embeddings_for_query(batch_size=1, 
-                                        model_name="meta-llama/Llama-3.2-1B-Instruct",
-                                        input_data_path=rootdir / f'/scratch/cluster/hungting/projects/Multi_Answer/mteb_retriever/outputs/inf/all_train_questions_q_sm.json', 
-                                        len_outputs_path=rootdir / f'raw_data/{tag}/out_lens_qampari_q_sm_500.npy', 
-                                        outputs_path=rootdir / f'raw_data/{tag}/out_centroids_qampari_q_sm_500.npy',
-                                        out_dataset_path='autoregressive_qampari_q_sm_500_train_dataset_1b')
-    
+       
     if generate_split == 'qampari_train':
         data_indices = create_input_embeddings_for_query(batch_size=1, 
                                         model_name="meta-llama/Llama-3.2-1B-Instruct",
@@ -493,10 +425,6 @@ if __name__ == '__main__':
                                         out_dataset_path='autoregressive_qampari_org_max5_train_dataset_1b_qemb',
                                         max_length=1)
         print(len(data_indices))
-        # train_data = read_jsonl('/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl')
-        # train_data = [train_data[i] for i in data_indices]
-        # write_jsonl(train_data, f'raw_data/{tag}/train_data_gt_qampari_corpus_org_max5.jsonl')
-        
         ## for the input_data, only the question is used. So no need to worry about other fields.
     
     if generate_split == 'qampari_dev':
@@ -508,13 +436,11 @@ if __name__ == '__main__':
                                         out_dataset_path='autoregressive_qampari_org_max5_dev_dataset_1b',
                                         max_length=5) 
         
-        dev_data = read_jsonl('/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl')
+        dev_data = read_jsonl('../../../projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl')
         dev_data = [dev_data[i] for i in data_indices]
         write_jsonl(dev_data, f'raw_data/{tag}/dev_data_gt_qampari_corpus_org_max5.jsonl')
 
     if generate_split == 'question_only':
-        import sys
-        # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
         split='train'
         for model_name in ['inf', 'stella', 'cont']:
             for data_name in ['ambiguous_qe']:
@@ -528,73 +454,10 @@ if __name__ == '__main__':
                                                 out_dataset_path=f'autoregressive_{data_name}_{model_name}_{split}_dataset_1b_qemb',
                                                 max_length=1)
                 print(len(data_indices))    
-    
-    if generate_split == 'corpus':
-        # # id	text	title
-        # nq_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/nq/corpus.jsonl')
-        # msmarco_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/msmarco/corpus.jsonl')
-        # nq_tsv_data = [[d['_id'], d['text'], d['title']] for d in (nq_data)]
-        # msmarco_tsv_data = [[d['_id'], d['text'], d['title']] for d in (msmarco_data)]
-        # write_tsv(nq_tsv_data, '/scratch/cluster/hungting/projects/autoregressive/data/nq/corpus.tsv')
-        # write_tsv(msmarco_tsv_data, '/scratch/cluster/hungting/projects/autoregressive/data/msmarco/corpus.tsv')
-        from beir.datasets.data_loader import GenericDataLoader
-        from beir import util, LoggingHandler
-        import logging
-        import pathlib, os
-        data_name = 'nq'
-
-        #### Just some code to print debug information to stdout
-        logging.basicConfig(format='%(asctime)s - %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S',
-                            level=logging.INFO,
-                            handlers=[LoggingHandler()])
-        #### /print debug information to stdout
-
-        #### Download scifact.zip dataset and unzip the dataset
-        # url = f"https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{data_name}.zip"
-        # out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "datasets")
-        # data_path = util.download_and_unzip(url, out_dir)
-        data_path = f'/scratch/cluster/hungting/projects/autoregressive/data/{data_name}'
-        split = 'train'
-        #### Provide the data_path where scifact has been downloaded and unzipped
-        actual_split = 'test' if split == 'dev' else split
-        if data_name == 'nq' and actual_split == 'train':
-            data_path = f'/scratch/cluster/hungting/projects/autoregressive/data/nq/nq-train'
-        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split=actual_split) 
-        print(len(corpus), len(queries), len(qrels))
-        output_data = []
-        for k, v in queries.items():
-            output_data.append({'question': v, 'id': k, 'input': v, 'answers': [''], 'ctxs': []})
-                 
-        write_jsonl(output_data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only.jsonl')
-        if split == 'dev':
-            write_json(output_data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only.json')
-        # nq_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_dev_question_only.jsonl')
-        # msmarco_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_dev_question_only.jsonl')
-        # new_nq_data = []
-        # new_msmarco_data = []
-        # for i, d in enumerate(nq_data):
-        #     new_nq_data.append({'question': d['question'], 'id': str(i), 'input': d['question'], 'answers': [''], 'ctxs': []})
-        # for i, d in enumerate(msmarco_data):
-        #     new_msmarco_data.append({'question': d['question'], 'id': str(i), 'input': d['question'], 'answers': [''], 'ctxs': []})
-        # write_json(new_nq_data, '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_dev_question_only_new.json')
-        # write_json(new_msmarco_data, '/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_dev_question_only_new.json')
-        
-        # /scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/nq_dev_question_only.jsonl 
-        # /scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/msmarco_dev_question_only.jsonl 
+                
     if generate_split == 'contrastive':
-
-        
-
-        import sys
-        # model_name = sys.argv[1]  # 'inf', 'stella', 'cont'
         split='dev'
-        length = 5  # [5,6,7,8] for qampari, 1 for the other ones.
-        # base_model_name = 'meta-llama/Llama-3.2-1B-Instruct'
-        # base_model_name = "Qwen/Qwen3-4B-Instruct-2507"
-        # base_model_name = 'meta-llama/Llama-3.2-3B-Instruct'
-        base_model_name = 'meta-llama/Llama-3.1-8B-Instruct'
-        # base_model_name = 'infly/inf-retriever-v1-1.5b'
+        base_model_name = 'meta-llama/Llama-3.2-1B-Instruct' # "Qwen/Qwen3-4B-Instruct-2507", "meta-llama/Llama-3.2-3B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"
         
         pred_length_labels = False
         pred_length_labels_str = '_pred_length' if pred_length_labels else ''
@@ -603,8 +466,7 @@ if __name__ == '__main__':
         for split in ['train', 'dev']:
             for length in [5,6,7,8]:
             # for length in [2,3,4,5]:
-                # for model_name in ['inf']:
-                for model_name in ['stella', 'inf']:
+                for model_name in ['inf']:
                     # for data_name in ['nq', 'msmarco']:
                     for data_name in ['qampari']:
                     # for data_name in ['ambiguous_qe']:
@@ -655,14 +517,11 @@ if __name__ == '__main__':
                 'config': config,
                 'corpus': corpus,
                 'queries': queries,
-                # # 'transformation_matrices': transformation_matrices,
                 'pairs_data': pairs_data
             }
             
         @torch.no_grad()
         def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH, hard_negatives=None, pred_length_labels=False, length_label=5, model_name='meta-llama/Llama-3.2-1B-Instruct'):
-            instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
-            response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
             if pred_length_labels:
                 batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': [], 'length_labels_input_ids': [], 'length_labels_attention_mask': []}
             else:
@@ -688,19 +547,6 @@ if __name__ == '__main__':
 
                 if pred_length_labels:
                     length_labels = tokenizer(str(length_label) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
-                    # print('length_labels', length_labels)
-                    # length_labels = {k: v.cuda() for k, v in length_labels.items()}
-                    # outputs = model(**length_labels, output_hidden_states=True)
-                    # hidden_states = outputs.hidden_states[0].clone().detach()
-                    # print('hidden_states', hidden_states.shape)
-                    # input_embeds = hidden_states[:, 1:5, :]
-                    # print('input_embeds', input_embeds.shape) # (1, 4, 2048)
-                    # print('query_vector', query_vector.shape) # (1024, )
-                    # length_labels['length_labels_input_ids'] = length_labels['input_ids']
-                    # length_labels['length_labels_attention_mask'] = length_labels['attention_mask']
-                    # outputs = model(**length_labels)
-                    # print('outputs', outputs)
-                    # print('outputs.logits', outputs.logits.shape)
                     # 5 -> 20,     27,  12529,     29,
                     # 2 -> 17,     27,  12529,     29,
                     # len(input_ids) = 4
@@ -729,8 +575,6 @@ if __name__ == '__main__':
             for i in range(len(pairs)):
                 positive = batch['positive_embeddings'][i]  # (k, d)
                 negative = batch['negative_embeddings'][i]  # (k, d)
-                # print('positive.shape, negative.shape', positive.shape, negative.shape)
-                # print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
 
                 dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][i].cpu().numpy(), 
                                     "attention_mask": batch['attention_mask'][i].cpu().numpy(), 
@@ -752,24 +596,17 @@ if __name__ == '__main__':
                 mse_data = mse_data[10000:]
             for i in range(len(mse_data)):
                 query_vector = mse_data[i]
-                # print('query_vector.shape', query_vector)
                 ground_truth_embeddings = query_vector
                 batch['inputs_embeds'].append(query_vector)
                 batch['attention_mask'].append(np.zeros(LENGTH))
                 batch['labels'].append(ground_truth_embeddings)
-            # print('inputs_embeds', torch.tensor(batch['inputs_embeds'])[0])
             batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).float().unsqueeze(1).expand(-1, LENGTH, -1)  # (bsz, LENGTH, d)
-            # print('inputs_embeds', batch['inputs_embeds'][0])
             batch['attention_mask'] = torch.tensor(batch['attention_mask']).long()             # (bsz, LENGTH). Only the first token is 1, the rest are 0.
             batch['attention_mask'][:, 0] = 1
-            # print('attention_mask', batch['attention_mask'][0])
             batch['labels'] = torch.tensor(batch['labels']).float()  # (bsz, k, d), LENGTH > k
-            # print('labels', batch['labels'][0])
             dataset_dicts = []
             for i in range(len(mse_data)):
                 label = batch['labels'][i]  # (k, d)
-                # print('label.shape', label.unsqueeze(0).shape, 'inputembed', batch['inputs_embeds'][i])
-                # print(batch['inputs_embeds'][0].cpu().numpy().shape, batch['attention_mask'][0].cpu().numpy().shape)
 
                 dataset_dicts.append({"inputs_embeds": batch['inputs_embeds'][i].cpu().numpy(), 
                                     "attention_mask": batch['attention_mask'][i].cpu().numpy(), 
@@ -780,225 +617,24 @@ if __name__ == '__main__':
             print('actual data size: ', len(dataset_dicts))
         
         split='test'  # ['train', 'test']
-        
         LENGTH = 8
         normalize = False
         pred_length_labels = True
         length_label = 2
-        # hard_negatives = np.load('gaussian/data/opposing_pairs_data/contrastive_all_labels_ordered_hard_negatives.npy')
         hard_negatives = None
             
         for split in ['train', 'test']:
-            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_large_2_unshifted/', normalize=normalize)
+            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_large/', normalize=normalize)
             pairs = data['pairs_data'][split]
             
             pred_length_labels_str = '_pred_length' if pred_length_labels else ''
             normalized_str = '_normalized' if normalize else ''
             hard_negatives_str = '' if hard_negatives is None else '_hn'
-            out_data_path = f'gaussian_new_mlps_rotation_2_unshifted_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
-            
+            out_data_path = f'gaussian_new_mlps_rotation_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
             model_name = 'meta-llama/Llama-3.2-1B-Instruct'
-            
             
             create_synthetic_dataset(out_dataset_path=out_data_path, 
                                     pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH, 
                                     hard_negatives=hard_negatives, pred_length_labels=pred_length_labels, length_label=length_label, model_name=model_name)
             
-            # mse_data = np.load('gaussian/data/opposing_pairs_data/mse_labels.npy')
-            # create_mse_dataset(out_dataset_path=f'gaussian_synthetic_{split}_dataset_1b_mse', 
-            #                    mse_data=mse_data, LENGTH=LENGTH, split=split)
-            
-    if generate_split == 'contrastive_sequence':
         
-        
-        # rootdir = Path('../../autoregressive/data/ambiguous/nqopen')
-        # # for split in ['train', 'dev', 'test']:
-        # for split in ['dev', 'test']:
-        #     data = read_json(rootdir / f'nqopen-{split}.json')
-        #     new_data = []
-        #     for inst in data:
-        #         if len(inst['answer']) > 1:
-        #             new_data.append(inst)
-        #             new_data[-1]['answers'] = inst['answer']
-        #             new_data[-1]['ctxs'] = []
-        #             new_data[-1]['input'] = inst['question']
-        #     write_json(new_data, rootdir / f'nqopen-{split}_multi_answer.json')
-        #     print(len(new_data), len(data))
-            
-        
-        rootdir = Path('../../autoregressive/data/ambiguous/ambignq')
-        for split in ['dev', 'train']:
-            data = read_json(rootdir / f'{split}_with_evidence_articles.json')
-            new_data = []
-            for inst in tqdm(data):
-                multi_answer = False
-                current_answers = []
-                for ans in inst['annotations']:
-                    if ans['type'] != 'singleAnswer':
-                        multi_answer = True
-                        qa_pairs = ans['qaPairs']
-                        for pair in qa_pairs:
-                            current_answers.append(pair['answer'])
-                        break
-                if not multi_answer:
-                    continue
-                
-                raw_corpus = '\n'.join(inst['articles_plain_text'])
-                documents = chunk_text(raw_corpus, chunk_size=100)
-                documents = [{'title': '', 'text': doc} for doc in documents]
-                
-                new_data.append({
-                    'question': inst['question'],
-                    'id': inst['id'],
-                    'answers': current_answers,
-                    'ctxs': documents,
-                    'input': inst['question']
-                })
-            
-            # dict_keys(['question', 'id', 'annotations', 'articles_plain_text', 'articles_html_text'])
-            for inst in tqdm(new_data):
-                check_answer(inst)
-                
-            no_evidence_cnt, evidence_cnt, evidence_data, no_evidence_data = check_evidences(new_data)
-            print(f'no evidence cnt: {no_evidence_cnt}')
-            print(f'evidence cnt: {evidence_cnt}')
-            write_json(evidence_data, rootdir / f'ambignq-{split}_multi_answer_evidence.json')
-            write_json(no_evidence_data, rootdir / f'ambignq-{split}_multi_answer_no_evidence.json')
-        
-    if generate_split == 'contrastive_sequence_check_answer':
-        rootdir = Path('/datastor1/hungting/retrieval_outputs/mteb_retriever/')
-        for split in ['dev']:
-            inf_data = read_jsonl(rootdir / f'inf/ambignq+nqopen_multi_answer_all_no_evidence.json')
-            stella_data = read_jsonl(rootdir / f'stella-400M/ambignq+nqopen_multi_answer_all_no_evidence.json')
-            contriever_data = read_jsonl('/scratch/cluster/hungting/projects/Multi_Answer/contriever/outputs/contriever_msmarco_nq/ambignq+nqopen-all_multi_answer_evidence_dev.json')
-            raw_data = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen_multi_answer_all_no_evidence.json')
-            data = raw_data
-            assert len(data) == len(stella_data)
-            assert len(data) == len(inf_data)
-            assert len(data) == len(contriever_data)
-            
-            
-            for inst in data:
-                assert len(inst['answers']) > 0, inst['question']
-            
-            print('combining stella and inf')
-            for i in range(len(data)):
-                if data[i]['question'] != stella_data[i]['question']:
-                    print(data[i]['question'], stella_data[i]['question'])
-                    break
-                if data[i]['question'] != inf_data[i]['question']:
-                    print(data[i]['question'], inf_data[i]['question'])
-                    break
-                if data[i]['question'] != contriever_data[i]['question']:
-                    print(data[i]['question'], contriever_data[i]['question'])
-                    break
-                
-                data[i]['ctxs'] = []
-                data[i]['ctxs'] += stella_data[i]['ctxs']
-                data[i]['ctxs'] += inf_data[i]['ctxs']
-                data[i]['ctxs'] += contriever_data[i]['ctxs']
-                assert len(data[i]['answers']) > 0, data[i]['question']
-            
-            print('finished combining stella and inf, checking answer')
-            for inst in tqdm(data):
-                assert len(inst['answers']) > 0, inst['question']
-                if isinstance(inst['answers'][0], str):
-                    inst['answers'] = [[l] for l in inst['answers']]
-                assert len(inst['answers']) > 0, inst['question']
-            for inst in tqdm(data):
-                check_answer(inst)
-    
-            no_evidence_cnt, evidence_cnt, evidence_data, no_evidence_data = check_evidences(data)
-            print(f'no evidence cnt: {no_evidence_cnt}')
-            print(f'evidence cnt: {evidence_cnt}')
-            savedir = Path('../../autoregressive/data/ambiguous/nqopen')
-            write_json(evidence_data, savedir / f'ambignq+nqopen_multi_answer_all_no_evidence_evidence.json')
-            write_json(no_evidence_data, savedir / f'ambignq+nqopen_multi_answer_all_no_evidence_no_evidence.json')
-            
-        # rootdir = Path('/datastor1/hungting/retrieval_outputs/mteb_retriever/')
-        # for split in ['dev', 'train']:
-        #     inf_data = read_jsonl(rootdir / f'inf/ambignq-{split}_multi_answer_no_evidence.json')
-        #     stella_data = read_jsonl(rootdir / f'stella-400M/ambignq-{split}_multi_answer_no_evidence.json')
-        #     data = inf_data
-        #     assert len(data) == len(stella_data)
-            
-        #     print('combining stella and inf')
-        #     for i in range(len(data)):
-        #         if data[i]['question'] != stella_data[i]['question']:
-        #             print(data[i]['question'], stella_data[i]['question'])
-        #             break
-        #         data[i]['ctxs'] += stella_data[i]['ctxs']
-            
-        #     print('finished combining stella and inf, checking answer')
-        #     # for inst in tqdm(data):
-        #     #     inst['answers'] = [[l] for l in inst['answers']]
-        #     for inst in tqdm(data):
-        #         check_answer(inst)
-    
-        #     no_evidence_cnt, evidence_cnt, evidence_data, no_evidence_data = check_evidences(data)
-        #     print(f'no evidence cnt: {no_evidence_cnt}')
-        #     print(f'evidence cnt: {evidence_cnt}')
-        #     savedir = Path('../../autoregressive/data/ambiguous/ambignq')
-        #     write_json(evidence_data, savedir / f'ambignq-{split}_multi_answer_no_evidence_evidence.json')
-        #     write_json(no_evidence_data, savedir / f'ambignq-{split}_multi_answer_no_evidence_no_evidence.json')
-  
-        
-        # collect all the data for contrastive sequence 
-        # nqopen-dev / test (_evidence)
-        # ambignq-dev / train (_evidence)
-        # ambignq-dev / train (_no_evidence_evidence)
-        
-        
-        # all_data = []
-        # rootdir = Path('../../autoregressive/data/ambiguous/nqopen')
-        # for split in ['dev', 'test']:
-        #     data = read_json(rootdir / f'nqopen-{split}_multi_answer_evidence.json')
-        #     no_evidence_cnt, evidence_cnt, _, _ = check_evidences(data)
-        #     assert no_evidence_cnt == 0
-        #     all_data.extend(data)
-            
-        # rootdir = Path('../../autoregressive/data/ambiguous/ambignq')
-        # for split in ['dev', 'train']:
-        #     data = read_json(rootdir / f'ambignq-{split}_multi_answer_evidence.json')
-        #     no_evidence_cnt, evidence_cnt, _, _ = check_evidences(data)
-        #     assert no_evidence_cnt == 0
-        #     all_data.extend(data)
-        
-        # rootdir = Path('../../autoregressive/data/ambiguous/ambignq')
-        # for split in ['dev', 'train']:
-        #     data = read_json(rootdir / f'ambignq-{split}_multi_answer_no_evidence_evidence.json')
-        #     no_evidence_cnt, evidence_cnt, _, _ = check_evidences(data)
-        #     assert no_evidence_cnt == 0
-        #     all_data.extend(data)
-            
-        # for inst in all_data:
-        #     del inst['ctxs']
-        
-        # rootdir = Path('../../autoregressive/data/ambiguous')
-        # write_jsonl(all_data, rootdir / f'ambignq+nqopen-all_multi_answer_evidence.jsonl')
-        # write_json(all_data, rootdir / f'ambignq+nqopen-all_multi_answer_evidence.json')
-        
-        # all_data_2 = [l for l in all_data if len(l['positive_ctxs']) == 2]
-        
-        # data_name = 'ambiguous'
-        # split = 'train'
-        # for inst in all_data:
-        #     keys = list(inst.keys())
-        #     for k in keys:
-        #         if k != 'question' and k != 'question_text':
-        #             del inst[k]
-                    
-        # for inst in all_data_2:
-        #     keys = list(inst.keys())
-        #     for k in keys:
-        #         if k != 'question' and k != 'question_text':
-        #             del inst[k]
-        
-        
-        # write_jsonl(all_data, rootdir / f'{data_name}_{split}_question_only.jsonl')
-        # write_jsonl(all_data_2, rootdir / f'{data_name}_{split}_question_only_2_ctxs.jsonl')
-                    
-    
-        
-            
-

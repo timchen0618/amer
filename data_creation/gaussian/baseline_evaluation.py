@@ -395,11 +395,11 @@ def main():
     print(f"  Query Baseline: {query_score:.4f}")
     
     if query_score > avg_score:
-        print(f"  🚨 WARNING: Query baseline outperforms averaging! Dataset might be too easy.")
+        print(f"WARNING: Query baseline outperforms averaging! Dataset might be too easy.")
     elif avg_score > 0.8:
-        print(f"  ⚠️  CAUTION: Both baselines score very high. Dataset might be too easy.")
+        print(f"CAUTION: Both baselines score very high. Dataset might be too easy.")
     else:
-        print(f"  ✅ Good: Both baselines have reasonable difficulty.")
+        print(f"Good: Both baselines have reasonable difficulty.")
 
     print('-'*100)
     print('Computing any three ground truth predictions...')

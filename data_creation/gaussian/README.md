@@ -20,7 +20,6 @@ The synthetic data generation follows this process:
 
 #### Loading / Testing / Verification
 - `baseline_evaluation.py` - Test the orcale single retriever baseline. 
-- `loading_instructions.py` - Example of how to load and evaluate with the generated data
 - `test_anti_averaging.py` - Small-scale test to verify the generation works
 - `validate_data.py` - validate if the data is as what we thought. 
 - `test.py` - for testing the model trained using the main training script (`autoregressive/`)

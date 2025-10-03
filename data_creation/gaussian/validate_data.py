@@ -53,10 +53,10 @@ def load_synthetic_data(data_dir: str) -> Dict:
         }
         
     except FileNotFoundError as e:
-        print(f"❌ Error: Missing file - {e}")
+        print(f"Error: Missing file - {e}")
         raise
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
+        print(f"Error loading data: {e}")
         raise
 
 
@@ -90,61 +90,46 @@ def validate_data_integrity(data: Dict, use_mlp_transformations: bool = False) -
     expected_rotations_shape = (config['n_transformations'], config['dimensions'], config['dimensions'])
     
     if corpus.shape != expected_corpus_shape:
-        print(f"❌ Corpus shape mismatch: expected {expected_corpus_shape}, got {corpus.shape}")
+        print(f"Corpus shape mismatch: expected {expected_corpus_shape}, got {corpus.shape}")
         validation_passed = False
     else:
-        print(f"✓ Corpus shape: {corpus.shape}")
+        print(f"Corpus shape: {corpus.shape}")
     
     if queries.shape != expected_queries_shape:
-        print(f"❌ Queries shape mismatch: expected {expected_queries_shape}, got {queries.shape}")
+        print(f"Queries shape mismatch: expected {expected_queries_shape}, got {queries.shape}")
         validation_passed = False
     else:
-        print(f"✓ Queries shape: {queries.shape}")
+        print(f"Queries shape: {queries.shape}")
     
     if use_mlp_transformations:
         pass
     else:
         if transformation_matrices.shape != expected_rotations_shape:
-            print(f"❌ Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {transformation_matrices.shape}")
+            print(f"Rotation matrices shape mismatch: expected {expected_rotations_shape}, got {transformation_matrices.shape}")
             validation_passed = False
         else:
-            print(f"✓ Rotation matrices shape: {transformation_matrices.shape}")
+            print(f"Rotation matrices shape: {transformation_matrices.shape}")
     
-    # # Check ground truth indices
-    # if len(ground_truth_indices) != config['corpus_size']:
-    #     print(f"❌ Ground truth indices length mismatch: expected {config['corpus_size']}, got {len(ground_truth_indices)}")
-    #     validation_passed = False
-    # else:
-    #     print(f"✓ Ground truth indices length: {len(ground_truth_indices)}")
-    
-    # # Check number of ground truth vectors
-    # expected_gt_count = (config['n_train_queries'] + config['n_test_queries']) * config['n_transformations']
-    # actual_gt_count = np.sum(ground_truth_indices)
-    # if actual_gt_count != expected_gt_count:
-    #     print(f"❌ Ground truth count mismatch: expected {expected_gt_count}, got {actual_gt_count}")
-    #     validation_passed = False
-    # else:
-    #     print(f"✓ Ground truth vectors count: {actual_gt_count}")
     
     # Check train/test split
     if len(pairs_data['train']) != config['n_train_queries']:
-        print(f"❌ Training pairs count mismatch: expected {config['n_train_queries']}, got {len(pairs_data['train'])}")
+        print(f"Training pairs count mismatch: expected {config['n_train_queries']}, got {len(pairs_data['train'])}")
         validation_passed = False
     else:
-        print(f"✓ Training pairs count: {len(pairs_data['train'])}")
+        print(f"Training pairs count: {len(pairs_data['train'])}")
     
     if len(pairs_data['test']) != config['n_test_queries']:
-        print(f"❌ Test pairs count mismatch: expected {config['n_test_queries']}, got {len(pairs_data['test'])}")
+        print(f"Test pairs count mismatch: expected {config['n_test_queries']}, got {len(pairs_data['test'])}")
         validation_passed = False
     else:
-        print(f"✓ Test pairs count: {len(pairs_data['test'])}")
+        print(f"Test pairs count: {len(pairs_data['test'])}")
     
     # Check that each query has the expected number of ground truth vectors
     expected_gt_per_query = config['n_transformations']
     for split_name, pairs in [('train', pairs_data['train']), ('test', pairs_data['test'])]:
         for pair in pairs:
             if len(pair['ground_truth_indices']) != expected_gt_per_query:
-                print(f"❌ Query {pair['query_idx']} in {split_name} has {len(pair['ground_truth_indices'])} ground truth vectors, expected {expected_gt_per_query}")
+                print(f"Query {pair['query_idx']} in {split_name} has {len(pair['ground_truth_indices'])} ground truth vectors, expected {expected_gt_per_query}")
                 print(pair['ground_truth_indices'])
                 validation_passed = False
                 break
@@ -152,7 +137,7 @@ def validate_data_integrity(data: Dict, use_mlp_transformations: bool = False) -
             continue
         break
     else:
-        print(f"✓ Each query has {expected_gt_per_query} ground truth vectors")
+        print(f"Each query has {expected_gt_per_query} ground truth vectors")
     
     if use_mlp_transformations:
         pass
@@ -162,23 +147,23 @@ def validate_data_integrity(data: Dict, use_mlp_transformations: bool = False) -
             # Check if matrix is orthogonal: R @ R^T = I
             identity_check = rot_matrix @ rot_matrix.T
             if not np.allclose(identity_check, np.eye(config['dimensions']), atol=1e-10):
-                print(f"❌ Rotation matrix {i} is not orthogonal")
+                print(f"Rotation matrix {i} is not orthogonal")
                 validation_passed = False
                 break
             
             # Check determinant is 1 (proper rotation, not reflection)
             det = np.linalg.det(rot_matrix)
             if not np.isclose(det, 1.0, atol=1e-10):
-                print(f"❌ Rotation matrix {i} determinant is {det}, expected 1.0")
+                print(f"Rotation matrix {i} determinant is {det}, expected 1.0")
                 validation_passed = False
                 break
         else:
-            print(f"✓ All rotation matrices are proper orthogonal matrices")
+            print(f"All rotation matrices are proper orthogonal matrices")
     
     if validation_passed:
-        print("\n✅ All data integrity checks passed!")
+        print("\nAll data integrity checks passed!")
     else:
-        print("\n❌ Some data integrity checks failed!")
+        print("\nSome data integrity checks failed!")
     
     return validation_passed
 
@@ -385,7 +370,7 @@ def main():
     
     # Check if data directory exists
     if not os.path.exists(args.data_dir):
-        print(f"❌ Error: Data directory '{args.data_dir}' not found!")
+        print(f"Error: Data directory '{args.data_dir}' not found!")
         print("Please run 'python generate_data.py' first to generate the data.")
         return
     
@@ -397,7 +382,7 @@ def main():
         if not args.skip_integrity:
             integrity_passed = validate_data_integrity(data, use_mlp_transformations=args.use_mlp_transformations)
             if not integrity_passed:
-                print("❌ Data integrity validation failed. Please check the data generation.")
+                print("Data integrity validation failed. Please check the data generation.")
                 return
         
         # Set random seed for reproducible statistics
@@ -411,7 +396,7 @@ def main():
         # Print summary
         print_summary_statistics(stats_euclidean, stats_cosine)
         
-        print(f"\n✅ Data validation completed successfully!")
+        print(f"\nData validation completed successfully!")
         print(f"Dataset contains:")
         print(f"  - {data['config']['n_train_queries']} training queries")
         print(f"  - {data['config']['n_test_queries']} test queries") 
@@ -420,7 +405,7 @@ def main():
         print(f"  - {data['config']['n_transformations']} rotation matrices")
         
     except Exception as e:
-        print(f"❌ Validation failed: {e}")
+        print(f"Validation failed: {e}")
         import traceback
         traceback.print_exc()
 

@@ -1,11 +1,8 @@
 import argparse
 import csv
 import pandas as pd
-from src.eval_utils import read_jsonl, eval_retrieve_docs, eval_retrieve_docs_for_repeats, evaluate, mrr
+from src.eval_utils import read_jsonl, eval_retrieve_docs, evaluate, mrr
 import numpy as np
-
-# root = '/scratch/cluster/hungting/projects/Multi_Answer/contriever/outputs/contriever_msmarco_nq/'
-# root = '/scratch/cluster/hungting/projects/Multi_Answer/mteb_retriever/outputs/'
 
 def get_data_mapping(project_root):
     """Returns the data mapping configuration."""
@@ -49,13 +46,13 @@ def parse_arguments():
     
     # Main configuration
     parser.add_argument('--root', type=str, 
-                       default='/scratch/hc3337/projects/autoregressive/results/nq_inf/',
+                       default='results/nq_inf/',
                        help='Root directory for results')
     parser.add_argument('--project-root', type=str, 
-                       default='/scratch/hc3337/projects/',
+                       default='.',
                        help='Project root directory')
     parser.add_argument('--reranking-root', type=str,
-                       default='/scratch/cluster/hungting/projects/diverse_response/retrieval_outputs/qampari_2nd_stage/',
+                       default='../projects/diverse_response/retrieval_outputs/qampari_2nd_stage/',
                        help='Reranking root directory')
     
     # Data configuration
@@ -187,16 +184,7 @@ def main():
                 runs = scores[-3]
                 main_scores = scores[:-4]
                 
-                # Second stage evaluation if enabled
-                if args.second_stage:
-                    repeat_scores = eval_retrieve_docs_for_repeats(
-                        input_file,
-                        data_path,
-                        topk=topk
-                    )
-                    all_eval_scores = list(main_scores) + list(repeat_scores)
-                else:
-                    all_eval_scores = list(main_scores)
+                all_eval_scores = list(main_scores)
                 
                 scores_per_file.extend(all_eval_scores)
                 print(f"Number of scores: {len(all_eval_scores)}")
@@ -230,10 +218,6 @@ def main():
     # Write CSV using csv writer
     with open(args.output_csv, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        
-        # # Write header row with file_name as first column
-        # header = ['file_name'] + actual_columns
-        # writer.writerow(header)
         
         # Write data rows
         for _, scores in zip(file_list, all_scores):

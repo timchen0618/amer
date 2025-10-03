@@ -33,8 +33,6 @@ class WarmupLinearScheduler(torch.optim.lr_scheduler.LambdaLR):
         super(WarmupLinearScheduler, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
-        # if step < self.warmup:
-        #     return (1 - self.ratio) * step / float(max(1, self.warmup))
         if step < self.warmup:
             return float(step) / self.warmup
         return max(

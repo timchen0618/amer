@@ -1,6 +1,4 @@
 import torch
-import torch.distributed
-import torch.optim as optim
 import copy
 import numpy as np
 import argparse
@@ -9,26 +7,16 @@ from src.model import load_model
 from tqdm import tqdm
 import os
 import json
-from functools import partial
 import glob
 import time
-from torch.utils.data import DataLoader
 from tqdm import tqdm
-from functools import partial
-from prettytable import PrettyTable
 
 from src.dataset import (
-    load_embeddings_dataset,
-    contrastive_eval_collator,
-    mse_eval_collator,
     DataHandler
 )
-from src.utils import Config, set_seed, set_optim
-import yaml
-from pathlib import Path
 
+from pathlib import Path
 from src.retrieval_utils import Indexer, add_passages, load_passages, index_encoded_data, add_passages_single_instance
-import sys
 from datasets import load_dataset
 
 import structlog
@@ -47,7 +35,6 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
     all_losses = []
     all_labels = []
     all_lengths = []
-    all_length_labels = []
     adaptive_max_new_tokens = (max_new_tokens is None and not pred_length)  # if doing pred length, we don't need to do adaptive max new tokens
     print('whether doing adaptive_max_new_tokens', adaptive_max_new_tokens)
     for batch in tqdm(dataloader):
@@ -65,22 +52,18 @@ def evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use
             **batch
         )
         instance_length = output.size(1)
-        print('instance_length', instance_length)
         all_outputs.append(output.view(-1, output.size(-1)))
         
 
         if compute_loss:
             if 'labels' in batch:
                 # compute the loss
-                # print(output.size(), batch['labels'].size())
                 assert output.size() == batch['labels'].size(), (output.size(), batch['labels'].size())
                 loss = model.loss_fct(output.float(), batch['labels'].float())
-                # print('loss', loss.item())
                 all_lengths.append(batch['labels'].size(1))
                 all_losses.append(loss.item())
                 all_labels.append(batch['labels'].view(-1, batch['labels'].size(-1)))
             elif 'positive_embeddings' in batch:
-                # print(output.size(), batch['positive_embeddings'].size(), batch['negative_embeddings'].size())
                 loss = model.loss_fct(output.float(), batch['positive_embeddings'].float(), batch['negative_embeddings'].float())
                 all_lengths.append(batch['positive_embeddings'].size(1))
                 all_labels.append(batch['positive_embeddings'].view(-1, batch['positive_embeddings'].size(-1)))
@@ -126,12 +109,16 @@ def generate_input_data(input_data_path, tokenizer, base_model_type, batch_size_
     if base_model_type == 'inf':
         instruction_template = "Instruct: "
         response_template = ""
-    elif base_model_type == 'llama-1b':
+    elif base_model_type == 'llama-1b' or base_model_type == 'llama-3b' or base_model_type == 'llama-8b':
         instruction_template = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
         response_template = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>"
+    elif base_model_type == 'qwen3-4b':
+        instruction_template = "<|im_start|>user\n"
+        response_template = "<|im_end|>\n<|im_start|>assistant\n"
     else:
         raise ValueError(f"Invalid base model type: {base_model_type}")
     instruction = (f'{instruction_template}Retrieve a diverse set of documents that covers multiple aspect of the query.\nQuery: [QUERY]\n{response_template}').strip('\n')
+    
     
     # Load dataset
     dataset = load_dataset("json", data_files=str(input_data_path))
@@ -168,11 +155,23 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
         assert base_model_type == 'inf'
     elif base_model_id == 'meta-llama/Llama-3.2-1B-Instruct':
         assert base_model_type == 'llama-1b'
+    elif base_model_id == 'meta-llama/Llama-3.2-3B-Instruct':
+        assert base_model_type == 'llama-3b'
+    elif base_model_id == 'meta-llama/Llama-3.1-8B-Instruct':
+        assert base_model_type == 'llama-8b'
+    elif base_model_id == 'Qwen/Qwen3-4B-Instruct-2507':
+        assert base_model_type == 'qwen3-4b'
     elif base_model_id.split('/')[0] == 'results':
         if base_model_id.split('/')[1] == 'inf':
            assert base_model_type == 'inf'
-        elif base_model_id.split('/')[1].split('-')[0] == 'llama':
+        elif base_model_id.split('/')[1] == 'llama-1b':
             assert base_model_type == 'llama-1b'
+        elif base_model_id.split('/')[1] == 'llama-3b':
+            assert base_model_type == 'llama-3b'
+        elif base_model_id.split('/')[1] == 'llama-8b':
+            assert base_model_type == 'llama-8b'
+        elif base_model_id.split('/')[1] == 'qwen3-4b':
+            assert base_model_type == 'qwen3-4b'
         else:
             raise ValueError(f"Invalid base model id: {base_model_id}")
     else:
@@ -184,7 +183,7 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
                                   adapter_path=adapter_path, 
                                   linear_checkpoint_path=linear_checkpoint_path,
                                   embedding_model_dim=embedding_model_dim, 
-                                  model_type='EmbeddingModelSSVariableLeftPadPredLength' if pred_length else 'EmbeddingModel', 
+                                  model_type='EmbeddingModel', 
                                   loss_function=loss_function)
     
     logger.info(f"Generating input data from {input_data_path}, using the raw text")
@@ -196,9 +195,12 @@ def eval_with_generation(input_data_path = 'autoregressive_wsd_train_dataset_1b'
         model = model.to(device)
         model.eval()
         
-        outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=use_gt_q_embed, use_eos=use_eos, compute_loss=compute_loss, pred_length=pred_length)
-        print('len all lengths', len(all_lengths))
-        print('all_lengths', all_lengths)
+        outputs, loss, all_labels, all_lengths = evaluate_loop(dataloader, model, device, 
+                                                               max_new_tokens=max_new_tokens, 
+                                                               use_gt_q_embed=use_gt_q_embed, 
+                                                               use_eos=use_eos, 
+                                                               compute_loss=compute_loss, 
+                                                               pred_length=pred_length)
         return outputs, loss, all_labels, all_lengths
     
 
@@ -296,92 +298,15 @@ def load_index(embedding_size, passages_embeddings, save_or_load_index=False, us
             index.serialize(embeddings_dir)
     return index
     
-    
-    
-def main_test_google(passages_embeddings, passages_path, output_path, 
-              raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
-              question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
-              start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None, 
-              round_robin_percentage=1.0, save_before_aggregation=False):
-    
-    # loading question embeddings
-    logger.info('question embeddings shape: %s', question_embeddings.shape)
-    
-    # loading data
-    logger.info('loading data from %s', raw_data_path)
-    if end_idx is None:
-        data = load_data(raw_data_path)[start_idx:]
-    else:
-        data = load_data(raw_data_path)[start_idx:end_idx]
-    logger.info('length of the data to be retrieved: %s', len(data))
-
-    # loading lengths; making sure the data and question embeddings are aligned
-    if MAX_LATENTS is None:
-        assert len(data) == len(lengths), (len(data), len(lengths))
-        assert question_embeddings.shape[0] == sum(lengths), (question_embeddings.shape[0], sum(lengths))
-    else:
-        lengths = None
-    
-    logger.info('google_api')
-    if MAX_LATENTS is not None:
-        assert lengths is None, (lengths, MAX_LATENTS)
-        lengths = [MAX_LATENTS] * len(data)
-
-    data_before_aggregation = []
-    for j, l in enumerate(lengths):
-        for _ in range(l):
-            data_before_aggregation.append(copy.deepcopy(data[j]))
-        
-    start = 0
-    for i in range(len(data)):
-        # load index and passages for each query
-        index = load_index(embedding_size, (passages_embeddings) + '/' + str(i) + '/*')
-
-        # load passages
-        logger.info(f"Loading passages from {passages_path}/psgs_{i}.tsv")
-        passages = load_passages(passages_path + f"/psgs_{i}.tsv")
-        passage_id_map = {x["id"]: x for x in passages}
-        
-        start_time_retrieval = time.time()
-        top_ids_and_scores_inst = index.search_knn(question_embeddings[start:start+lengths[i]].reshape(-1, embedding_size), top_k_per_query)
-        logger.info(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
-        for j in range(lengths[i]):
-            add_passages_single_instance(data_before_aggregation[start+j], passage_id_map, top_ids_and_scores_inst[j])
-        
-        top_ids_and_scores_inst = aggregate_different_queries_by_length(top_ids_and_scores_inst, [lengths[i]], None, top_k, aggregate_start_idx, aggregate_end_idx, round_robin_percentage)
-        assert len(top_ids_and_scores_inst) == 1, (len(top_ids_and_scores_inst))
-        logger.info("top_ids_and_scores_inst[0][0]", lens=len(top_ids_and_scores_inst[0][0]))
-        add_passages_single_instance(data[i], passage_id_map, top_ids_and_scores_inst[0])
-        
-        start += lengths[i]
-        
-    
-    assert start == len(question_embeddings), (start, len(question_embeddings))
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "w") as fout:
-        for ex in data:
-            json.dump(ex, fout, ensure_ascii=False)
-            fout.write("\n")
-    logger.info(f"Saved results to {output_path}")
-    
-    if save_before_aggregation:
-        with open(output_path.replace('.jsonl', '_before_agg.jsonl'), "w") as fout:
-            for ex in data_before_aggregation:
-                json.dump(ex, fout, ensure_ascii=False)
-                fout.write("\n")
-        logger.info(f"Saved results to {output_path.replace('.jsonl', '_before_agg.jsonl')}")
-    
+     
       
 def retrieve(num_shards, retriever, passage_embeddings_map, passage_id_map, output_path, 
-              raw_data_path = '/scratch/hc3337/projects/autoregressive/data/wsd/distinct/train.jsonl', 
+              raw_data_path = '', 
               question_embeddings = None, lengths = None, embedding_size = 4096, top_k_per_query = 100, top_k = 100,
               start_idx = 0, end_idx = None, MAX_LATENTS = None, aggregate_start_idx = 0, aggregate_end_idx = None, 
               round_robin_percentage=1.0, save_before_aggregation=False):
     
     # loading question embeddings
-    # logger.info('loading question embeddings and attempt to retrieve from %s', data_path)
-    # question_embeddings = np.load(data_path)
     logger.info('question embeddings shape: %s', question_embeddings.shape)
     
     # loading data
@@ -523,9 +448,6 @@ def parse_args():
                        help='Whether to compute loss during evaluation')
     parser.add_argument('--pred_length', action='store_true', default=False,
                        help='Whether to predict length')
-    # Google API configuration
-    parser.add_argument('--google_api', action='store_true', default=False,
-                       help='Whether to use Google API')
     
     # Config parameters (previously from config file)
     parser.add_argument('--loss_function', type=str, default='Hungarian_Contrastive',
@@ -538,9 +460,9 @@ def parse_args():
                        help='Whether to use end of sequence token')
     
     # Paths and directories
-    parser.add_argument('--embeddings_root', type=str, default='/scratch/hc3337/embeddings/',
+    parser.add_argument('--embeddings_root', type=str, default='/path/to/embeddings/',
                        help='Root directory for embeddings')
-    parser.add_argument('--root', type=str, default='/scratch/hc3337',
+    parser.add_argument('--root', type=str, default='/path/to/data',
                        help='Root directory for data')
     
     # Retrieval configuration
@@ -552,10 +474,6 @@ def parse_args():
                        help='Starting index for data processing')
     parser.add_argument('--end_idx', type=int, default=None,
                        help='Ending index for data processing')
-    # parser.add_argument('--aggregate_start_idx', type=int, default=0,
-    #                    help='Starting index for aggregation')
-    # parser.add_argument('--aggregate_end_idx', type=int, default=None,
-    #                    help='Ending index for aggregation')   
     parser.add_argument('--inference_modes', type=str, nargs='+', default='all',
                        choices=['first', 'second', 'all', 'average'],
                        help='Inference mode')
@@ -572,45 +490,25 @@ if __name__ == "__main__":
     args = parse_args()
     print('using base model type: ', args.base_model_type)
     
-    # Validate Google API usage
-    if args.data_name in ['arguana_generated', 'kialo', 'opinionqa']:
-        assert args.google_api, "Google API is required for these datasets"
-    else:
-        assert not args.google_api, "Google API is not allowed for these datasets"
-    
     # Determine embeddings directory
     embeddings_dir = 'qampari_embeddings' if args.data_name in ['qampari', 'qampari_query_exp', 'ambiguous_qe', 'ambiguous_qe_query_exp', 'qampari_5_to_8', 'qampari_query_exp_5_to_8'] else args.data_name
     if args.data_name == 'ambiguous':
         embeddings_dir = 'nq'
     
     # Set up passage embeddings map
-    if not args.google_api:
-        passage_embeddings_map = {
-            'stella': {"embedding_path": f"{args.embeddings_root}/stella_en_400M_v5/{embeddings_dir}/*", "embedding_dim": 1024},
-            'inf': {"embedding_path": f"{args.embeddings_root}/inf/{embeddings_dir}/*", "embedding_dim": 1536},
-            'cont': {"embedding_path": f"{args.embeddings_root}/Contriever/{embeddings_dir}/*", "embedding_dim": 768}
-        }
-    else:
-        passage_embeddings_map = {
-            'stella': {"embedding_path": f"{args.embeddings_root}/google_api/stella_embeddings/{args.data_name}", "embedding_dim": 1024},
-            'inf': {"embedding_path": f"{args.embeddings_root}/google_api/inf_embeddings/{args.data_name}", "embedding_dim": 1536},
-            'cont': {"embedding_path": f"{args.embeddings_root}/google_api/contriever_embeddings/{args.data_name}", "embedding_dim": 768}
-        }
+    passage_embeddings_map = {
+        'stella': {"embedding_path": f"{args.embeddings_root}/stella_en_400M_v5/{embeddings_dir}/*", "embedding_dim": 1024},
+        'inf': {"embedding_path": f"{args.embeddings_root}/inf/{embeddings_dir}/*", "embedding_dim": 1536},
+        'cont': {"embedding_path": f"{args.embeddings_root}/Contriever/{embeddings_dir}/*", "embedding_dim": 768}
+    }
     
     # Set up passages path
-    if not args.google_api:
-        if args.data_name in ['qampari', 'qampari_query_exp', 'ambiguous_qe', 'ambiguous_qe_query_exp', 'qampari_5_to_8', 'qampari_query_exp_5_to_8']:
-            passages_path = f'{args.root}/wikipedia_chunks/chunks_v5.tsv'
-        elif args.data_name == 'ambiguous':
-            passages_path = f'data/nq/corpus.tsv'
-        elif args.data_name == 'wsd_distinct':
-            passages_path = f'data/wsd/distinct/corpus.tsv'
-        elif args.data_name == 'limit' or args.data_name == 'limit-small':
-            passages_path = f'data/limit/data/{args.data_name}/corpus.tsv'
-        else:
-            passages_path = f'data/{args.data_name}/corpus.tsv'
+    if args.data_name in ['qampari', 'qampari_query_exp', 'ambiguous_qe', 'ambiguous_qe_query_exp', 'qampari_5_to_8', 'qampari_query_exp_5_to_8']:
+        passages_path = f'{args.root}/wikipedia_chunks/chunks_v5.tsv'
+    elif args.data_name == 'ambiguous':
+        passages_path = f'data/nq/corpus.tsv'
     else:
-        passages_path = f'{args.root}/serpapi/contriever_psgs/{args.data_name}'
+        passages_path = f'data/{args.data_name}/corpus.tsv'
                      
             
     print('adapter_path', args.adapter_path)
@@ -678,51 +576,29 @@ if __name__ == "__main__":
                 raise ValueError(f"Invalid inference mode: {inference_mode}")
             
             # start retrieval
-            if not args.google_api:
-                # Load passages
-                logger.info(f"Loading passages from {passages_path}")
-                passages = load_passages(passages_path)
-                passage_id_map = {x["id"]: x for x in passages}
-                # Retrieve and evaluate
-                retrieve(
-                    num_shards=args.num_shards, 
-                    retriever=args.retriever, 
-                    passage_embeddings_map=passage_embeddings_map, 
-                    passage_id_map=passage_id_map,
-                    raw_data_path=args.dev_data_path,
-                    embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
-                    lengths=lengths,
-                    question_embeddings=outputs,
-                    output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
-                    MAX_LATENTS=args.max_new_tokens,
-                    top_k_per_query=args.top_k_per_query,
-                    top_k=args.top_k,
-                    start_idx=args.start_idx,
-                    end_idx=args.end_idx,
-                    aggregate_start_idx=aggregate_start_idx,
-                    aggregate_end_idx=aggregate_end_idx,
-                    round_robin_percentage=args.round_robin_percentage,
-                    save_before_aggregation=args.save_before_aggregation
-                )
-            else:
-                # Google API path
-                main_test_google(
-                    passages_embeddings=passage_embeddings_map[args.retriever]["embedding_path"], 
-                    passages_path=passages_path, 
-                    raw_data_path=args.dev_data_path,
-                    embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
-                    lengths=lengths,
-                    question_embeddings=outputs,
-                    output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
-                    MAX_LATENTS=args.max_new_tokens,
-                    top_k_per_query=args.top_k_per_query,
-                    top_k=args.top_k,
-                    start_idx=args.start_idx,
-                    end_idx=args.end_idx,
-                    aggregate_start_idx=aggregate_start_idx,
-                    aggregate_end_idx=aggregate_end_idx,
-                    round_robin_percentage=args.round_robin_percentage,
-                    save_before_aggregation=args.save_before_aggregation
-                )
+            # Load passages
+            logger.info(f"Loading passages from {passages_path}")
+            passages = load_passages(passages_path)
+            passage_id_map = {x["id"]: x for x in passages}
+            # Retrieve and evaluate
+            retrieve(
+                num_shards=args.num_shards, 
+                retriever=args.retriever, 
+                passage_embeddings_map=passage_embeddings_map, 
+                passage_id_map=passage_id_map,
+                raw_data_path=args.dev_data_path,
+                embedding_size=passage_embeddings_map[args.retriever]["embedding_dim"], 
+                lengths=lengths,
+                question_embeddings=outputs,
+                output_path=Path(args.output_path).parent / Path(args.output_path).name.replace('.jsonl', f'{inference_string}.jsonl'),
+                MAX_LATENTS=args.max_new_tokens,
+                top_k_per_query=args.top_k_per_query,
+                top_k=args.top_k,
+                start_idx=args.start_idx,
+                end_idx=args.end_idx,
+                aggregate_start_idx=aggregate_start_idx,
+                aggregate_end_idx=aggregate_end_idx,
+                round_robin_percentage=args.round_robin_percentage,
+                save_before_aggregation=args.save_before_aggregation
+            )
             
-

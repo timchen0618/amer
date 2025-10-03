@@ -38,9 +38,6 @@ def read_tsv(file_path):
     return data
 
 
-
-
-
 @torch.no_grad()
 def embed_queries_stella(queries, model, model_name_or_path):
     if 'inf-retriever' in model_name_or_path:
@@ -254,9 +251,6 @@ def get_embeddings_from_data(data, model, model_name, tokenizer=None, device=Non
             assert np.unique(all_lens).size == 1, f"all_lens: {all_lens}"
             all_embeddings = all_embeddings.reshape(len(all_lens), all_lens[0], -1)
         
-        # all_embeddings = np.concatenate(all_embeddings, axis = 0)
-        print(all_embeddings.shape)
-        print(all_lens[:100])
         return all_embeddings, np.array(all_lens)
 
 
@@ -267,17 +261,11 @@ def check_context_same(positive_ctxs, ctx2):
     if ctx2 == '':
         return True
     for ctx in positive_ctxs:
-        # print(ctx)
         if (ctx['title'] == ctx2['title'] and ctx['title'] != '') or ctx['text'] == ctx2['text']:
-            print('=========')
-            print(ctx['title'], ctx2['title'])
-            print(ctx['text'], ctx2['text'])
             return True
     return False
 
 def get_random_embeddings(data, model, model_name, corpus, length=5, tokenizer=None, device=None):
-    
-    # return size (batch, 1, dim)
     all_embeddings = []
     documents = []
     for inst in tqdm(data):
@@ -301,9 +289,10 @@ def get_random_embeddings(data, model, model_name, corpus, length=5, tokenizer=N
     return all_embeddings, data
 
 def load_msmarco_data(split='train', top_k=None, return_corpus=False):
-    queries = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/msmarco/queries.jsonl')
-    qrels = read_tsv(f'/scratch/cluster/hungting/projects/autoregressive/data/msmarco/qrels/{split}.tsv')[1:]
-    corpus = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/msmarco/corpus.jsonl')
+    project_dir = '/path/to/project'
+    queries = read_jsonl(f'{project_dir}/data/msmarco/queries.jsonl')
+    qrels = read_tsv(f'{project_dir}/data/msmarco/qrels/{split}.tsv')[1:]
+    corpus = read_jsonl(f'{project_dir}/data/msmarco/corpus.jsonl')
     
     id2query = {q['_id']: q['text'] for q in queries}
     cid2corpus = {c['_id']: {"title": c['title'], "text": c['text']} for c in corpus}
@@ -326,14 +315,15 @@ def load_msmarco_data(split='train', top_k=None, return_corpus=False):
         return list(data.values())
 
 def load_nq_data(split='train', top_k=None, return_corpus=False):
+    project_dir = '/path/to/project'
     if split == 'train':
-        qrels = read_tsv(f'/scratch/cluster/hungting/projects/autoregressive/data/nq/nq-train/qrels/train.tsv')[1:]
-        queries = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/nq/nq-train/queries.jsonl')
-        corpus = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/nq/nq-train/corpus.jsonl')
+        qrels = read_tsv(f'{project_dir}/data/nq/nq-train/qrels/train.tsv')[1:]
+        queries = read_jsonl(f'{project_dir}/data/nq/nq-train/queries.jsonl')
+        corpus = read_jsonl(f'{project_dir}/data/nq/nq-train/corpus.jsonl')
     elif split == 'dev':
-        qrels = read_tsv(f'/scratch/cluster/hungting/projects/autoregressive/data/nq/qrels/test.tsv')[1:]
-        queries = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/nq/queries.jsonl')
-        corpus = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/nq/corpus.jsonl')
+        qrels = read_tsv(f'{project_dir}/data/nq/qrels/test.tsv')[1:]
+        queries = read_jsonl(f'{project_dir}/data/nq/queries.jsonl')
+        corpus = read_jsonl(f'{project_dir}/data/nq/corpus.jsonl')
     else:
         raise NotImplementedError
     id2query = {q['_id']: q['text'] for q in queries}
@@ -378,7 +368,8 @@ command = 'gen_contrastive'
 
 from pathlib import Path
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-project_dir = '/scratch/cluster/hungting/projects' if machine == 'orca' else '/scratch/hc3337/projects'
+project_dir = str(Path(__file__).parent.parent)
+
 data_mapping = {
     'qampari': {'train': f'{project_dir}/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl',
                 'dev': f'{project_dir}/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl'},
@@ -402,22 +393,17 @@ if command == 'gen_distill':
     ########################################################
     ## generate data for single question embedding training (distillation)
     ########################################################
-    # for model_name in ['inf', 'stella', 'cont']:
-    # for model_name in ['cont']:
-    import sys
-    # model_name = sys.argv[1]
     length_maps = {
         'ambiguous': [2,3,4,5],
         'ambiguous_qe':[2,3,4,5],
+        'qampari': [5,6,7,8],
     }
     for split in ['dev', 'train']:
         for model_name in ['inf', 'stella', 'cont']:
             model, tokenizer = load_model(model_mapping[model_name])
             model = model.to(device)
-            # for data_name in ['qampari', 'msmarco', 'nq']:
-            
-            # for data_name in ['msmarco', 'nq']:   
-            for data_name in ['ambiguous_qe']:
+
+            for data_name in ['ambiguous_qe', 'qampari']:
                 # locate and create the directory for the data
                 rootdir = Path('../../autoregressive/data_creation/raw_data/') / f'{data_name}_{model_name}'
                 rootdir.mkdir(parents=True, exist_ok=True)
@@ -437,44 +423,14 @@ if command == 'gen_distill':
                 all_embeddings, all_lens = get_embeddings_from_data(data, model, model_mapping[model_name], tokenizer=tokenizer, device=device, unsqueeze_0=True, question_only=True)
                 np.save(output_numpy_file, all_embeddings)
                 np.save(output_lens_file, all_lens)
-
-if command == 'write_question_only':
-    ########################################################
-    ## Write to question only jsonl files
-    ########################################################
-    # for data_name in ['qampari', 'nq', 'msmarco']:
-    # for data_name in ['nq', 'msmarco']:
-    for data_name in ['ambiguous']:
-        rootdir = Path('../../autoregressive/data_creation/raw_data/')
-        rootdir.mkdir(parents=True, exist_ok=True)
-        for split in ['train', 'dev']:
-            if data_name == 'msmarco':
-                data = load_msmarco_data(split=split)
-            elif data_name == 'nq':
-                data = load_nq_data(split=split)
-            else:
-                data_file = data_mapping[data_name][split]
-                data = read_jsonl(data_file)
-            print('loaded data for {} with {} instances'.format(data_name, len(data)))
-            keys = list(data[0].keys())
-            for inst in data:
-                for k in keys:
-                    if k not in ['question', 'question_text'] and k in inst:
-                        inst.pop(k)
-            out_jsonl_file = rootdir / f'{data_name}_{split}_question_only.jsonl'
-            write_jsonl(data, out_jsonl_file)
-            out_json_file = rootdir / f'{data_name}_{split}_question_only.json'
-            for inst in data:
-                inst['ctxs'] = []
-                inst['answers'] = ['']
-            write_json(data, out_json_file)
-
+                
 
 if command == 'gen_contrastive':
     ########################################################
     #nerate data for contrastive training
     ########################################################
-    
+    corpus_file = '/path/to/corpus.tsv'
+    corpus = read_tsv(corpus_file)
     # for data_name in ['nq']:
     for data_name in ['qampari']:
     # for data_name in ['qampari', 'ambiguous_qe']:
@@ -523,9 +479,7 @@ if command == 'gen_contrastive':
                             write_data = [{"question": l['question']} for l in data]
                         print(len(write_data))
                         write_jsonl(write_data, f'{project_dir}/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{length}_ctxs.jsonl')
-                        tsv_file = '/scratch/cluster/hungting/chunks_v5.tsv' if machine == 'orca' else'/scratch/hc3337/wikipedia_chunks/chunks_v5.tsv'
-                        corpus = read_tsv(tsv_file)
-                        # corpus = read_tsv('/datastor1/hungting/MassiveDS-140B/massive_ds_140b.tsv')
+                        
                         cid2corpus = {c[0]: {"title": c[2], "text": c[1]} for c in corpus}
                     print('loaded data for {} with {} instances'.format(data_name, len(data)))
                 
@@ -540,13 +494,7 @@ if command == 'gen_contrastive':
                                                                         unsqueeze_0=True, 
                                                                         question_only=False,
                                                                         no_question=True)
-                    np.save(output_numpy_file, all_embeddings)
-
-                    # if data_name == 'ambiguous':
-                    #     for inst in data:
-                    #         # flatten the positive_ctxs
-                    #         inst['positive_ctxs'] = [l for x in inst['positive_ctxs'] for l in x]
-                        
+                    np.save(output_numpy_file, all_embeddings)                        
                     random_embeddings, data = get_random_embeddings(data, model, model_mapping[model_name], list(cid2corpus.values()), length=length, tokenizer=tokenizer, device=device)
                     np.save(output_random_embeddings_file, random_embeddings)
 
@@ -555,7 +503,7 @@ if command == 'gen_contrastive_hard_negatives':
     ########################################################
     #nerate data for contrastive training
     ########################################################
-    corpus = read_tsv('/scratch/cluster/hungting/chunks_v5.tsv')
+    corpus = read_tsv('/path/to/corpus.tsv')
     for data_name in ['qampari']:
         rootdir = Path('../../autoregressive/data_creation/raw_data/')
         rootdir.mkdir(parents=True, exist_ok=True)
@@ -577,9 +525,9 @@ if command == 'gen_contrastive_hard_negatives':
                 for split in ['train', 'dev']:
                     # load the hard negative data.
                     if data_name == 'ambiguous':
-                        hard_negative_data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen-all_multi_answer_evidence_{split}_hard_negative_{model_name}.jsonl')
+                        hard_negative_data = read_jsonl(f'/path/to/hard_negative_data.jsonl')
                     elif data_name == 'qampari':
-                        hard_negative_data = read_jsonl(f'/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/{split}_data_gt_qampari_corpus_hard_negative_{model_name}.jsonl')
+                        hard_negative_data = read_jsonl(f'/path/to/hard_negative_data.jsonl')
                     else:
                         raise NotImplementedError
 
@@ -605,7 +553,6 @@ if command == 'gen_contrastive_hard_negatives':
                                 raise NotImplementedError
                         data = [data[i] for i in indices]
                         
-                        
                         # for ambiguous and qampari, we need to select appropriate hard negative data.
                         # for msmarco and nq, we can directly use the hard negative data.
                         hard_negative_data = [hard_negative_data[i] for i in indices]
@@ -613,7 +560,6 @@ if command == 'gen_contrastive_hard_negatives':
                     assert len(data) == len(hard_negative_data), (len(data), len(hard_negative_data))
                     for inst in hard_negative_data:
                         assert 'ctxs' in inst and not ('positive_ctxs' in inst or 'ground_truths' in inst), inst.keys()
-                        # assert len(inst['ctxs']) == length, (f'{len(inst["ctxs"])} != {length}; the length of the hard negative data is not correct.')
                         if len(inst['ctxs']) != length:
                             print('length is not correct, falling back to random selection.')
                             lens_to_meet = length - len(inst['ctxs'])
@@ -645,57 +591,3 @@ if command == 'gen_contrastive_hard_negatives':
                                                                         no_question=True)
                     np.save(output_numpy_file, all_embeddings)
                     
-                    
-if command == "oracle":
-        
-    for model_name in ['inf', 'cont', 'stella']:
-        model, tokenizer = load_model(model_mapping[model_name])
-        model = model.to(device)
-        data_name = "ambiguous"
-        output_numpy_file = f"/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/{data_name}_dev_oracle_embeddings_{model_name}.npy"
-        output_lens_file = f"/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/{data_name}_dev_oracle_embeddings_{model_name}_lengths.npy"
-        data_mapping = {"qampari": "/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl",
-                        "ambiguous": "/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs.jsonl",}
-        
-        if data_name == 'msmarco':
-            data, cid2corpus = load_msmarco_data(split=split, return_corpus=True)
-        elif data_name == 'nq':
-            data, cid2corpus = load_nq_data(split=split, return_corpus=True)
-        else:
-            data_file = data_mapping[data_name]
-            data = read_jsonl(data_file)
-            
-        all_embeddings, all_lens = get_embeddings_from_data(data, model, model_mapping[model_name], tokenizer=tokenizer, device=device, 
-                                                            unsqueeze_0=False, 
-                                                            question_only=False,
-                                                            no_question=True)
-        np.save(output_numpy_file, all_embeddings)
-        np.save(output_lens_file, all_lens)
-        print(all_lens)
-            
-            
-        
-if command == 'gen_doc_embeddings_for_clustering':
-    ########################################################
-    #nerate data for contrastive training
-    ########################################################
-    
-    # for data_name in ['nq']:
-    # for data_name in ['squad', 'quora_duplicates', 'nq', 'trivia_qa', 't2ranking', 'eli5_question_answer', 'dureader', 'hotpot_qa', 'msmarco_document', 'msmarco_passage', 'fever', 'miracl', 'mrtydi', 'allnli']:
-    for data_name in ['trivia_qa_10']:
-        rootdir = Path('/var/local/timchen0618/retrieval_outputs/echo_data/mteb_retriever/stella-400M')
-        data = read_jsonl(rootdir / f'{data_name}.json')
-        
-        for model_name in ['stella']:
-            model, tokenizer = load_model(model_mapping[model_name])
-            model = model.to(device)        
-
-            output_numpy_file = rootdir / f'{data_name}_doc_embeddings.npy'
-            output_lens_file = rootdir / f'{data_name}_doc_embeddings_lengths.npy'
-            
-            all_embeddings, all_lens = get_embeddings_from_data(data, model, model_mapping[model_name], tokenizer=tokenizer, device=device, 
-                                                                unsqueeze_0=True, 
-                                                                question_only=False,
-                                                                no_question=True)
-            np.save(output_numpy_file, all_embeddings)
-            np.save(output_lens_file, all_lens)

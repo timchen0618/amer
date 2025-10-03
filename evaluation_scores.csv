@@ -1,4 +1,0 @@
-file_name,MRecall@100,Recall@100,Precision@100,MRecall@10,Recall@10,Precision@10
-retrieval_out_dev_ambiguous_qe_single.jsonl,7.26,14.96,1.19,1.45,4.14,1.22
-retrieval_out_dev_ambiguous_qe.jsonl,7.01,15.20,1.31,1.57,4.88,1.46
-retrieval_out_dev_ambiguous_qe_from_2nd_to_3rd.jsonl,6.53,15.23,1.29,1.45,4.77,1.43
