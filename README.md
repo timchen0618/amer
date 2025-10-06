@@ -1,37 +1,68 @@
-# Training an Autoregressive Retriever
+# Beyond Single Embeddings: Capturing Diverse Targets with Multi-Query Retrieval
 
 
 ## Data Creation
+### Prerequisite
+You need to download data from [here](https://drive.google.com/file/d/1nIVLicTyZhcEoPVsvbpuIpVOTcbK2zhN/view?usp=sharing). 
+Please place the data in this directory, and run
+```
+    tar -zxvf data.tar.gz
+```
+The data will be saved to `amer_data/`. 
+
+
+You should also download the data from [QAMPARI Website](https://samsam3232.github.io/qampari/).  
+or simply run `wget https://aggreg-qa.s3.amazonaws.com/chunked_wikipedia.tar.gz`.  
+After downloading the data, move it to your desired directory.  
+`cd` to that directory, and then run `tar -zxvf chunked_wikipedia.tar.gz`. (Decompress the chunked corpus)  
+
 ### Generation Procedure
-#### Retrieve Documents for Questions 
-For NQ, MSMARCO, QAMPARI, and AmbigNQ, you should first retrieve documents for the questions, and then find the positive / negative documents. To find the positive documents, either match the documents to the answers or see if it is in the gold documents set (match using document indices). 
-#### Generate Embeddings for the Documents 
-For NQ, MSMARCO, QAMPARI, and AmbigNQ, after you have retrieved the documents and identified the positive / negative documents, you could generate embeddings for the documents. You should first generate document embeddings for a specific number of positive documents, and later combine them.  
-For example, for QAMPARI, you would generate embeddings for number of positive documets = [5,6,7,8], and later combine them into a single set (N=30k). 
-#### Generate Document Indices and Attention Mask
-Use `data_creation/create_input_for_contriever.py` to create the document indices and attention mask, and put the positive / negative documents embeddings to the right place. For the first two steps, use `gen_embed_for_auto_training.py` in `Multi_Answer/mteb_retriever/`. 
+First of all, change [path/to/chunks] to the directory where you saved the chunked corpus `chunked_wikipedia.tar.gz`.  
+Then run `bash create_data.sh` to generate the data.  
+
+The script `bash create_data.sh` performs three steps: 
+1. Corpus Creation: It runs `process_chunks.py` to combine the `*.jsonl` files into a single `.tsv` file. 
+2. Generate Embeddings: It runs `generate_embeddings.py` to save the raw embeddings to `raw_data/`. 
+3. Create Datasets: It creates actual datasets to be read by the script using `create_input_data.py`. 
+
+The generated data will be saved in `training_datasets/[base_model_name]/[data_name]/[document_encoder_name]/`. The scripts will iterate over two datasets (`qampari` and `ambigqa`), and four models (`Llama-1B`, `Llama-3B`, `Qwen3-4B`, and `Llama-8B`). 
+Currently the script only supports generating document embeddings with [infly/inf-retriever-v1-1.5b](https://huggingface.co/infly/inf-retriever-v1-1.5b).  
+
+#### Custom Models
+You could add new document encoder models by modifying `generate_embeddings.py`, and add how you load the models in `load_model()` and how you processing documents in `embed_passages()`.  
+
+To add a new LM for query encoder, you should modify the `create_input_embeddings_for_contrastive()` function in `create_input_dataset.py`. You should specify the model name, and how the response templates are formatted, following the existing format. For example, for the `Qwen-3` models, it looks like this: 
+```
+    elif model_name == "Qwen/Qwen3-4B-Instruct-2507":
+        instruction_template = "<|im_start|>user\n"
+        response_template = "<|im_end|>\n<|im_start|>assistant\n"
+```
+
+
 
 ### Data Format
 #### Data Format for Training 
 {
-    `"input_ids"`: the input indices (of the query) tokenized by the Llama tokenizer, 
+    `"input_ids"`: the input indices (of the query) tokenized by the LM (query encoder) tokenizer, 
     `"attention_mask"`: mask indicating which tokens are used, 
     `"positive_embeddings"`: (optional) only exist when using Contrastive Loss. The embeddings of positive documents. Size: (length, dim), 
     `"negative_embeddings"`: (optional) only exist when using Contrastive Loss. The embeddings of negative documents. Size: (length, dim), 
-    `"labels"`: (optional) only exist when using MSE Loss. The embeddings of the ground truth vectors. Size: (length, dim). 
 }
+
 #### Data Format for Generation
-Could use `input_ids`, or use the raw text to do the generation. 
+Use `input_ids`. 
 
 
 ### Path to Data 
-- `data/`: contains the original data structure of different datasets. 
+- `amer_data/`: contains the original data structure of different datasets. 
 - `training_datasets/`: training sets 
     - structure: [base_model]/[dataset]/[retriever]/[actual_dataset]
 - `data_creation/raw_data/`: 
-    - `[dataset]_[split]_question_only.jsonl`: the JSONL files that contain only the questions. For generating the data. 
-    - `[dataset]_[retriever]/`: the `.npy` file for embeddings of the positive / random negative / hard negative documents. 
+    - `[dataset]_[split]_question_only.jsonl`: the JSONL files that contain only the questions. For generating the data. Generated by `generate_embeddings.py`, and used by `create_input_dataset.py`. 
+    - `[dataset]_[retriever]/`: the `.npy` file for embeddings of the positive / random negative documents. 
 - `data_creation/gaussian/`: contains the code needed for generating gaussian data. 
+
+
 
 ## Training 
 The training is done using LoRA using a Llama-1B base model. We train the model using either a single GPU or multiple GPUs in order to use a larger batch size. The script is written using `pytorch / huggingface / accelerate` packages.
