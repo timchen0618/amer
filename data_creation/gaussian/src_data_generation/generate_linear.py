@@ -722,9 +722,4 @@ if __name__ == '__main__':
         - 2 Linear transformations (A, B) 
         - 2 Negative transformations (-A, -B)
 
-        This creates an anti-averaging effect that makes single-vector retrieval more challenging.
     """
-    # python generate_data_opposing_pairs.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./linear
-
-    # PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --multiple-query-distributions  -o data/linear_multi_query
-    # PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --multiple-query-distributions --ood-distribution  -o data/linear_ood

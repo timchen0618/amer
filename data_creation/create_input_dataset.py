@@ -135,7 +135,7 @@ def create_input_embeddings_for_contrastive(model_name = "meta-llama/Llama-3.2-1
             break
 
     # make dataset directory
-    os.makedirs(out_dataset_path, exist_ok=True, parents=True)
+    Path(out_dataset_path).mkdir(parents=True, exist_ok=True)
 
     safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
 
@@ -153,7 +153,13 @@ if __name__ == '__main__':
 
                 
     if generate_split == 'contrastive': 
-        for base_model_name in ['meta-llama/Llama-3.2-1B-Instruct', 'Qwen/Qwen3-4B-Instruct-2507', 'meta-llama/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.1-8B-Instruct']:
+        base_model_map = {
+            'llama-1b': 'meta-llama/Llama-3.2-1B-Instruct',
+            'llama-3b': 'meta-llama/Llama-3.2-3B-Instruct',
+            'llama-8b': 'meta-llama/Llama-3.1-8B-Instruct',
+            'qwen3-4b': 'Qwen/Qwen3-4B-Instruct-2507',
+        }
+        for base_model_name in base_model_map.keys():
             print(f'Generating contrastive dataset for {base_model_name}')
             length_maps = {
                 'qampari': [5,6,7,8],
@@ -167,11 +173,11 @@ if __name__ == '__main__':
                             rootdir = Path('raw_data/')
                             
                             data_indices = create_input_embeddings_for_contrastive(batch_size=1, 
-                                                            model_name=base_model_name,
+                                                            model_name=base_model_map[base_model_name],
                                                             input_data_path=rootdir / f'{data_name}_{split}_question_only_{length}_ctxs.jsonl', 
                                                             positive_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_positive_embeddings_{length}.npy', 
                                                             negative_embeddings_path=rootdir / f'{data_name}_{model_name}' / f'{data_name}_{split}_random_embeddings_{length}.npy',
-                                                            out_dataset_path=f'training_datasets/{base_model_name}/{data_name}/{model_name}/autoregressive_{data_name}_{model_name}_{split}_dataset_1b_contrastive_{length}_ctxs')
+                                                            out_dataset_path=f'../training_datasets/{base_model_name}/{data_name}/{model_name}/autoregressive_{data_name}_{model_name}_{split}_dataset_{length}_ctxs')
                             print(f'data size: {len(data_indices)} | model: {base_model_name} | data_name: {data_name} | length: {length} | split: {split}') 
     
     if generate_split == 'gaussian_synthetic':
@@ -203,49 +209,23 @@ if __name__ == '__main__':
             }
             
         @torch.no_grad()
-        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH, hard_negatives=None, pred_length_labels=False, length_label=5, model_name='meta-llama/Llama-3.2-1B-Instruct'):
-            if pred_length_labels:
-                batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': [], 'length_labels_input_ids': [], 'length_labels_attention_mask': []}
-            else:
-                batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
-            use_hard_negatives = hard_negatives is not None
-            if use_hard_negatives:
-                assert len(hard_negatives) == len(pairs)
-                assert len(hard_negatives[0]) == len(pairs[0]['ground_truth_indices'])
-            if pred_length_labels:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                tokenizer.pad_token = tokenizer.eos_token
-                model = AutoModelForCausalLM.from_pretrained(model_name)
-                model.eval()
-                model = model.cuda()
+        def create_synthetic_dataset(out_dataset_path, pairs, queries, corpus, LENGTH):
+            batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
+            
             for i in range(len(pairs)):
                 query_vector = queries[pairs[i]['query_idx']]
                 ground_truth_indices = pairs[i]['ground_truth_indices']
-                if not use_hard_negatives:
-                    # create random negative indices that are not in ground_truth_indices
-                    random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
-                    while np.any(np.isin(random_indices, ground_truth_indices)):
-                        random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
 
-                if pred_length_labels:
-                    length_labels = tokenizer(str(length_label) + "<embed>", padding='max_length', truncation=True, max_length=257, return_tensors='pt')
-                    # 5 -> 20,     27,  12529,     29,
-                    # 2 -> 17,     27,  12529,     29,
-                    # len(input_ids) = 4
-                    batch['length_labels_input_ids'].append(length_labels['input_ids'][:, 1:5])
-                    batch['length_labels_attention_mask'].append(length_labels['attention_mask'][:, 1:5])
+                # create random negative indices that are not in ground_truth_indices
+                random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
+                while np.any(np.isin(random_indices, ground_truth_indices)):
+                    random_indices = np.random.choice(len(corpus), size=len(ground_truth_indices), replace=False)
 
                 batch['inputs_embeds'].append(query_vector)
                 batch['attention_mask'].append(np.zeros(LENGTH))
                 batch['positive_embeddings'].append(corpus[ground_truth_indices])
-                if use_hard_negatives:
-                    batch['negative_embeddings'].append(corpus[hard_negatives[i]])
-                else:
-                    batch['negative_embeddings'].append(corpus[random_indices])
+                batch['negative_embeddings'].append(corpus[random_indices])
             
-            if pred_length_labels:
-                batch['length_labels_input_ids'] = torch.cat(batch['length_labels_input_ids'], dim=0).long()
-                batch['length_labels_attention_mask'] = torch.cat(batch['length_labels_attention_mask'], dim=0)
             
             batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).float().unsqueeze(1).expand(-1, LENGTH, -1)  # (bsz, LENGTH, d)
             batch['attention_mask'] = torch.tensor(batch['attention_mask']).long()             # (bsz, LENGTH). Only the first token is 1, the rest are 0.
@@ -262,32 +242,19 @@ if __name__ == '__main__':
                                     "attention_mask": batch['attention_mask'][i].cpu().numpy(), 
                                     "positive_embeddings": positive, 
                                     "negative_embeddings": negative})
-                if pred_length_labels:
-                    dataset_dicts[-1]['length_labels_input_ids'] = batch['length_labels_input_ids'][i].cpu().numpy()
-                    dataset_dicts[-1]['length_labels_attention_mask'] = batch['length_labels_attention_mask'][i].cpu().numpy()
             safe_from_list_and_save(dataset_dicts, out_dataset_path, batch_size=2000)
 
             print('actual data size: ', len(dataset_dicts))
 
-        split='test'  # ['train', 'test']
         LENGTH = 8
-        normalize = False
-        pred_length_labels = True
-        length_label = 2
-        hard_negatives = None
-            
+        normalize = False            
         for split in ['train', 'test']:
-            data = load_synthetic_dataset(data_dir='./gaussian/data/new_mlps_rotation_large/', normalize=normalize)
-            pairs = data['pairs_data'][split]
-            
-            pred_length_labels_str = '_pred_length' if pred_length_labels else ''
-            normalized_str = '_normalized' if normalize else ''
-            hard_negatives_str = '' if hard_negatives is None else '_hn'
-            out_data_path = f'gaussian_new_mlps_rotation_{split}_dataset_1b_contrastive{normalized_str}{hard_negatives_str}{pred_length_labels_str}' 
-            model_name = 'meta-llama/Llama-3.2-1B-Instruct'
-            
-            create_synthetic_dataset(out_dataset_path=out_data_path, 
-                                    pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH, 
-                                    hard_negatives=hard_negatives, pred_length_labels=pred_length_labels, length_label=length_label, model_name=model_name)
+            for data_type in ['linear', 'linear_multi_query', 'linear_ood', 'mlps', 'mlps_multi_query', 'mlps_ood']:
+                data = load_synthetic_dataset(data_dir='gaussian/data/linear/', normalize=normalize)
+                pairs = data['pairs_data'][split]
+                out_data_path = f'synthetic_datasets/synthetic_{data_type}_{split}' 
+                
+                create_synthetic_dataset(out_dataset_path=out_data_path, 
+                                        pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)
             
         

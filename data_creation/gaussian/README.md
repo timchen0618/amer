@@ -1,6 +1,5 @@
 # Synthetic Gaussian Data Generation for Information Retrieval
-
-This directory contains tools for generating synthetic datasets to evaluate information retrieval models. The generated datasets consist of d-dimensional vectors with known ground truth relationships.
+This directory contains procedure for generating synthetic datasets to evaluate retrieval models. The generated datasets consist of d-dimensional vectors with known ground truth relationships.
 
 ## Overview
 
@@ -11,18 +10,21 @@ The synthetic data generation follows this process:
 3. **Ground Truth Generation**: Transform queries using transformation matrices: y_i = A_i × x
 4. **Corpus Construction**: Combine ground truth vectors with random vectors to form a searchable corpus.
 
+### Transformation Type
+There are two transformation types, "linear" and "MLP". "Linear" data is implemented using rotation matrices, and "MLP" data is implemented using two-layer MLPs (multi-layer perceptron). The source for the actual implementation can be found in `src_data_generation/`.
+
+### Query Distribution Type
+There are three query distribution types, including `single-in-distribution`, `multi-in-distribution`, and `ood` (Out-of-distribution). `single-in-distribution` is implemented with a single Gaussian distribution. For `multi-in-distribution`, we implement five different query distributions, and the model is trained on tested on the same distributions. For `ood`, we use the same five distribution as in `multi-in-distribution`, except we train on the first four and evaluate on the last distribution. More details can be found in the paper. The source for the actual implementation can be found in `src_data_generation/`.
+
 ## Files
 
 #### Data Generation Scripts
-- `generate_data.py` - Main data generation script, without being difficult to a single retriever model. 
-- `generate_data_opposing_pairs.py` - Main data generation script for hard data (for single retriever). Implement the transformation matrices idea in [Overview](#overview).
-- `hard_dataset_ideas.py` - some ideas for generating hard data. 
+- `src_data_generation/generate_linear.py` - Main data generation script for hard "linear" data (for single retriever). 
+- `src_data_generation/generate_mlps.py`   - Main data generation script for hard "MLP" data. 
 
 #### Loading / Testing / Verification
 - `baseline_evaluation.py` - Test the orcale single retriever baseline. 
-- `test_anti_averaging.py` - Small-scale test to verify the generation works
-- `validate_data.py` - validate if the data is as what we thought. 
-- `test.py` - for testing the model trained using the main training script (`autoregressive/`)
+- `test.py` - for testing the model trained using the main training script. (In main folder)
 
 
 ## Usage
@@ -32,21 +34,9 @@ The synthetic data generation follows this process:
 Generate data with default parameters (1024-dimensional vectors, 2000 training + 200 test queries):
 
 ```bash
-PYTHONPATH=. python src_data_generation/generate_data_opposing_pairs.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./data/opposing_pairs_data
+PYTHONPATH=. python src_data_generation/generate_linear.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./data/linear
 ```
 
-### Custom Parameters
-
-Generate data with custom parameters:
-
-```bash
-python generate_data.py \
-    --dimensions 1024 \
-    --train-queries 20000 \
-    --test-queries 1000 \
-    --corpus-size 250000 \
-    --output-dir ./data/opposing_pairs_data_large
-```
 
 ### Command Line Options
 
@@ -91,5 +81,5 @@ The script generates the following files:
 }
 ```
 
-Each query has K ground truth vectors in the corpus (one for each transformation matrix).
+Each query has K ground truth vectors in the corpus (one for each transformation).
 

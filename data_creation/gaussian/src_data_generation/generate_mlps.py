@@ -831,7 +831,7 @@ def main():
                        help='Sample a random subset of transformations for each query')
     parser.add_argument('--n-transformations', type=int, default=5,
                        help='Number of transformations to sample for each query (default: 5)')
-    parser.add_argument('--hard-type', type=str, default='opposite',
+    parser.add_argument('--hard-type', type=str, default='rotation',
                        help='Type of hard transformation (default: opposite)', choices=['opposite', 'rotation', 'normal'])
     
     args = parser.parse_args()
@@ -870,4 +870,4 @@ def main():
 
 if __name__ == '__main__':
     main() 
-    # python generate_data_opposing_mlps.py --dimensions 1024 --train-queries 2000 --test-queries 200 --corpus-size 100000 --seed 42 --output-dir ./highly_diverse_mlps_data 
+    
