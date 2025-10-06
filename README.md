@@ -97,12 +97,20 @@ Important options to be modified:
 - `BASE_PROJECT`: project name to be used in tracking package. 
 - `BASE_SAVE_PATH`: the directory for saving this run.
 - `BASE_TRAIN_PATH`: the directory to the training data. The location should be the output of [This Section](#data-generation-procedure-for-real-data). 
-- `MODEL_ID`: Model ID to be finetuned. 
+- `MODEL_ID`: Model ID to be finetuned (e.g. "meta-llama/Llama-3.2-1B-Instruct").
 - `full_finetuning`: whether to do full fine-tuning or LoRA.
 - `multiple_gpus`: whether to use multiple GPUs. If true, we use the accelerate package.
 - `MODE`: whether it's single-query or multi-query. Multi-query can be paired with scheduled sampling or always sampling (from previously predicted output). 
+- `MODEL_TYPE`: Use "EmbeddingModelSSVariableLeftPad" for real data (AmbigQA / QAMPARI), and "EmbeddingModel" for synthetic data.
 
 The full configurations and their descriptions can be found in `src/options.py`. 
+
+After you have modified the script according to your liking, simply run 
+```
+bash scripts/single_run.sh 
+```
+to run an experiment. 
+
 #### Single-GPU
 Run command `python train.py`. Please refer to `train.py` for implementation details.  
 #### Multi-GPU
