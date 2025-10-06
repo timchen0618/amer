@@ -85,13 +85,29 @@ Use `input_ids`.
 
 
 ## Training 
-The training is done using LoRA using a Llama-1B base model. We train the model using either a single GPU or multiple GPUs in order to use a larger batch size. The script is written using `pytorch / huggingface / accelerate` packages.
+The training is done using LoRA. We train the model using either a single GPU or multiple GPUs in order to use a larger batch size. The script is written using `pytorch / huggingface / accelerate` packages.
+
 ### Run Training 
 We support either single-GPU or multi-GPU training.  
+
+An example script can be found in `scripts/single_run.sh`.   
+Important options to be modified: 
+- `EXP_NAME`: the experiment identifier for whatever tracking package you use.
+- `LOG_WITH`: whether to log with `wandb` or `trackio`, default to be `wandb`. 
+- `BASE_PROJECT`: project name to be used in tracking package. 
+- `BASE_SAVE_PATH`: the directory for saving this run.
+- `BASE_TRAIN_PATH`: the directory to the training data. The location should be the output of [This Section](#data-generation-procedure-for-real-data). 
+- `MODEL_ID`: Model ID to be finetuned. 
+- `full_finetuning`: whether to do full fine-tuning or LoRA.
+- `multiple_gpus`: whether to use multiple GPUs. If true, we use the accelerate package.
+- `MODE`: whether it's single-query or multi-query. Multi-query can be paired with scheduled sampling or always sampling (from previously predicted output). 
+
+The full configurations and their descriptions can be found in `src/options.py`. 
 #### Single-GPU
-Run command `python train.py`. The configurations are read from `configs/` folder. Use the config files correspondingly. 
+Run command `python train.py`. Please refer to `train.py` for implementation details.  
 #### Multi-GPU
-With multiple-GPU training, the script is written using the `accelerate` package. 
+With multiple-GPU training, the script is written using the `accelerate` package. Please refer to `train_distributed.py` for implementation details.  
+
 
 ### Custom Dataset
 Modify `dataset.py` to include new data collators that could process different types of data.  
@@ -99,7 +115,7 @@ Modify `dataset.py` to include new data collators that could process different t
 
 ### Models 
 `model.py` contains the definition of the embedding model, and the loading logic of the model.  
-It also contains different loss functions, including `MSELoss`, `HungarianMSELoss`, `ContrastiveLoss`, and `HungarianContrastiveLoss`.  
+It also contains different loss functions, including `ContrastiveLoss`, and `HungarianContrastiveLoss`.  
 The `EmbeddingModel` class includes three submodules: `base_causallm` (the base casaul langauge model), `input_projection` (the projection matrix that maps the embeddings to base LMs' embeddings space), and `output_projection` (the projection matrix that maps the LMs' prediction into retrievers' embedding space).  
 Call the `.forward()` function to do training, and call the `.generate()` function for prediction.  
 

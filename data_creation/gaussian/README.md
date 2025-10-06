@@ -28,6 +28,11 @@ There are three query distribution types, including `single-in-distribution`, `m
 
 
 ## Usage
+To generate all the synthetic data, simply run the following command to generate the synthetic data: 
+```
+bash create_syn_data.sh
+```
+
 
 ### Basic Data Generation
 
