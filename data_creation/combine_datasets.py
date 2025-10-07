@@ -1,4 +1,5 @@
 from datasets import concatenate_datasets, load_from_disk
+import shutil
 
 for retriever in ['inf']:
     for data_name in ['qampari', 'ambiguous_qe']:
@@ -12,4 +13,7 @@ for retriever in ['inf']:
 
                 combined_dataset = concatenate_datasets(dataset_paths)
                 combined_dataset.save_to_disk(f'../training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
-            
+
+                # remove the datasets of individual length (directories), even if they are not empty
+                for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1]):
+                    shutil.rmtree(f'../training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_{i}_ctxs')

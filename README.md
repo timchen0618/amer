@@ -88,22 +88,26 @@ Use `input_ids`.
 The training is done using LoRA. We train the model using either a single GPU or multiple GPUs in order to use a larger batch size. The script is written using `pytorch / huggingface / accelerate` packages.
 
 ### Run Training 
-We support either single-GPU or multi-GPU training.  
+We support either single-GPU or multi-GPU training. We adopt a uniform data format, so that the training script is shared by synthetic and real data.  
+You simply specify the correct path to training data you have generated from previous sections to use synthetic or real data.  
 
 An example script can be found in `scripts/single_run.sh`.   
-Important options to be modified: 
+Important options needed to be overwritten: 
 - `EXP_NAME`: the experiment identifier for whatever tracking package you use.
-- `LOG_WITH`: whether to log with `wandb` or `trackio`, default to be `wandb`. 
 - `BASE_PROJECT`: project name to be used in tracking package. 
 - `BASE_SAVE_PATH`: the directory for saving this run.
 - `BASE_TRAIN_PATH`: the directory to the training data. The location should be the output of [This Section](#data-generation-procedure-for-real-data). 
 - `MODEL_ID`: Model ID to be finetuned (e.g. "meta-llama/Llama-3.2-1B-Instruct").
+
+Other important options to be modified: 
+- `LOG_WITH`: whether to log with `wandb` or `trackio`, default to be `wandb`. 
 - `full_finetuning`: whether to do full fine-tuning or LoRA.
 - `multiple_gpus`: whether to use multiple GPUs. If true, we use the accelerate package.
 - `MODE`: whether it's single-query or multi-query. Multi-query can be paired with scheduled sampling or always sampling (from previously predicted output). 
 - `MODEL_TYPE`: Use "EmbeddingModelSSVariableLeftPad" for real data (AmbigQA / QAMPARI), and "EmbeddingModel" for synthetic data.
 
-The full configurations and their descriptions can be found in `src/options.py`. 
+Hyperparameters are listed at the top of `scripts/single_run.sh`. These are the default values we use to train on the QAMPARI data.  
+The full configurations and their descriptions can be found in `src/option.py`. 
 
 After you have modified the script according to your liking, simply run 
 ```
@@ -127,103 +131,55 @@ It also contains different loss functions, including `ContrastiveLoss`, and `Hun
 The `EmbeddingModel` class includes three submodules: `base_causallm` (the base casaul langauge model), `input_projection` (the projection matrix that maps the embeddings to base LMs' embeddings space), and `output_projection` (the projection matrix that maps the LMs' prediction into retrievers' embedding space).  
 Call the `.forward()` function to do training, and call the `.generate()` function for prediction.  
 
+
+
+
+## Evaluation 
+### Evaluation for Real Data
+First run `gen_ret_and_eval.py` to generate the query vectors and retrieve documents using the query vectors.  
+See `scripts/run_retrieval.sh` for an example to run the retrieval.  
+
+Then run `eval.py` to evaluate the performances of the generated document set.  
+See `scripts/eval.sh` for an example to run the evaluation.  
+
+
+
+### Evaluation for Synthetic Data
+Use `test.py`. The script runs both retrieval and evaluation at once.  
+There is an example script in `scripts/eval/test_gaussian.sh`.  
+
+Important options to specify: 
+- `model_paths`: The path where you store the trained checkpoints, containing both the base model weights and linear layer weights. It should the `BASE_SAVE_PATH` you specify in `scripts/single_run.sh`. You could specify multiple folder paths in this argument by simply appending more paths. 
+- `raw_data_dir`: The path where you store the raw generated data. If you follow the above instructions, it should be in `data_creation/gaussian/data/{type}`, where `type`=[`linear`, `linear_multi_query`, `linear_ood`, `mlps`, `mlps_multi_query`, `mlps_ood`].  
+- `embedding_data_dir`: The path where you store the datasets saved as input for training or evaluation. If you follow the above instructions, it should be `synthetic_datasets/synthetic_{type}_test/`, where `type`=[`linear`, `linear_multi_query`, `linear_ood`, `mlps`, `mlps_multi_query`, `mlps_ood`].
+- `checkpoint_name`: The checkpoint name with the best validation score. If you save only the best model, it should be `best_model`. 
+
+
+## Codebase Structure
+### Main Files
+- `train.py`: single-GPU training
+- `train_distributed.py`: multi-GPU training
+- `test.py`: evaluate results on synthetic data.
+- `gen_ret_and_eval.py`: run retrieval using fine-tuned retrievers for real data.
+- `eval.py`: evaluate retrieval outputs against ground truth data for real data.
+
+### Folders
+- `analysis`: analysis source files.
+- `baselines`: implementation of baselines. 
+- `data_creation`: source code for re-creating the data.
+- `scripts`: example scripts. 
+- `src`: source code. 
+- `src_plots`: source code for generating the plots in the paper.
+
 ### Misc. 
 - `dist_utils.py`: contains functions that handle multiple-GPU training. 
 - `eval_utils.py`: contains functions that help the evaluation. 
 - `retrieval_utils.py`: contains classes / functions that helps the retrieval (e.g. Indexer).
 - `utils.py`: learning rate scheduler, optimizer, etc. 
 
-
-## Evaluation 
-First run `gen_ret_and_eval.py` to generate the query vectors and retrieve documents using the query vectors.  
-Then run `eval.py` to evaluate the performances of the generated document set.  
-See `scripts/eval.sh` for an example to run the full pipeline.  
-
-### Usage Examples of `gen_ret_and_eval.py`
-
-#### Basic Usage
-```bash
-python gen_ret_and_eval.py
-```
-
-#### Different Dataset and Retriever
-```bash
-python gen_ret_and_eval.py \
-    --data_name nq \
-    --training_data_name nq \
-    --retriever_list stella inf \
-    --suffix_list "_contrastive_lr2e5_ep20_temp0.05_warmup0.05"
-```
-#### Google API Usage
-```bash
-python gen_ret_and_eval.py \
-    --data_name arguana_generated \
-    --google_api \
-    --retriever_list inf
-```
-
-#### Custom Checkpoint Number
-```bash
-python gen_ret_and_eval.py \
-    --data_name ambiguous_qe \
-    --checkpoint_num 2500 \
-    --use_suffix_mapping false
-```
-
-### Usage example of eval.py
-You should specify the `--data-type`, which tells the script which ground truth data to use.  
-You should also specify the `--root`, which tells the script where to look for the prediction file.  
-`--topk` tells the script which k it sohuld compute metrics @ k.  
-For example:  
-```bash
-python eval.py --data-type qampari \
-    --root /path/to/prediction \
-    --topk 10 100 --has-gold-id
-```
-
-If you were evaluating on NQ or MSMARCO for stage 1, you could use `eval_nq_msmarco.py`.  
-
-### Evaluation for Gaussian Synthetic
-Use `test.py`. There is an example script in `scripts/test_gaussian.sh`. 
-
-
-## How to Submit Jobs
-
-
-**Submitting Jobs to SLURM**  
-If you are using SLURM, use `hyperparameter_search.sh` to submit jobs (to HPC).  
-The configs files are in `sbatch_configs/`. (For AmbigNQ and for QAMPARI)  
-Or you could simply follow `scripts/run.SBATCH` to just run `train.py`.  
-
-
-**Submitting Interactive Jobs**  
-If you are using an interactive machine, use `scripts/single_run.sh` to run a job. 
-
-
-### Example scripts
-
-#### Run Training 
-Use `scripts/run_dist.SBATCH` for distributed training and `scripts/run_single.SBATCH`.  
-
-
-#### Run Eval 
-Use `scripts/submit_eval_jobs.sh` to submit jobs to SLURM for eval.  
-
-
-## Scripts Available
-### Config files
-`sbatch_configs/` contains specific configuration that either SLURM or shell script could take to produce a training run. 
-
-### Scripts for Shell (Interactive)
+### Scripts Available
 They are under the `scripts/` folder.
-`scripts/single_run.sh` and `scripts/single_run_distributed.sh` help runs script in an interactive environment.  
-`scripts/test_gaussian.sh` help runs eval for the Gaussian Synthetic data.  
-`scripts/eval.sh` help runs normal eval.  
-`scripts/submit_eval_jobs.sh` is for submitting jobs instead of running `scripts/eval.sh`.  
-All of the eval on AmbigQA / QAMPARI are run on the `greene` cluster. 
-
-### Scripts for SLURM
-There are some simple examples in `slurm_scripts` for your reference. However, most of them are not used.  
-In order to submit jobs to *SLURM*, use `hyperparameter_search.sh` or `hyperparameter_search_single.sh`.  
-They take the config files in `sbatch_configs/` and produce `.SBATCH` files, and also automatically `sbatch ***.SBATCH` them.  
-
+- `scripts/single_run.sh` help runs script in an interactive environment.  
+- `scripts/run_retrieval.sh` runs retrieval for real data. 
+- `scripts/eval/test_gaussian.sh` help runs eval for the Gaussian Synthetic data.  
+- `scripts/eval/eval_example.sh` help runs normal eval.  

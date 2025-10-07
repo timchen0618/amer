@@ -252,7 +252,7 @@ if __name__ == '__main__':
             for data_type in ['linear', 'linear_multi_query', 'linear_ood', 'mlps', 'mlps_multi_query', 'mlps_ood']:
                 data = load_synthetic_dataset(data_dir='gaussian/data/linear/', normalize=normalize)
                 pairs = data['pairs_data'][split]
-                out_data_path = f'synthetic_datasets/synthetic_{data_type}_{split}' 
+                out_data_path = f'../synthetic_datasets/synthetic_{data_type}_{split}' 
                 
                 create_synthetic_dataset(out_dataset_path=out_data_path, 
                                         pairs=pairs, queries=data['queries'], corpus=data['corpus'], LENGTH=LENGTH)

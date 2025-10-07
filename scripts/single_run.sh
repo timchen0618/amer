@@ -28,7 +28,6 @@ full_finetuning=false            # whether to use full finetuning. If false, we 
 all_data=false                   # whether to train on all data. If false, we reserve the last 10% of the data for validation.
 multiple_gpus=true               # whether to use multiple GPUs. If true, we use the accelerate package.
 
-doc_encoder="inf"
 EMBEDDING_MODEL_DIM=1536         # For inf-retriever, the embedding dimension is 1536. 
 
 MODEL_TYPE="EmbeddingModelSSVariableLeftPad"   # Use "EmbeddingModelSSVariableLeftPad" for real data, "EmbeddingModel" for synthetic data.
