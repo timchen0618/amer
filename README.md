@@ -1,5 +1,11 @@
 # Beyond Single Embeddings: Capturing Diverse Targets with Multi-Query Retrieval
 
+## Outline
+This repository contains the code for the paper "Beyond Single Embeddings: Capturing Diverse Targets with Multi-Query Retrieval".  
+This repo consist of three main portions: 
+1. How to [create data for training](#data-creation)
+2. How to [train the models](#training)
+3. How to [do evaluation](#evaluation)
 
 ## Data Creation
 ### Prerequisite
