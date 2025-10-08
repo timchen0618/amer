@@ -136,11 +136,51 @@ Call the `.forward()` function to do training, and call the `.generate()` functi
 
 ## Evaluation 
 ### Evaluation for Real Data
-First run `gen_ret_and_eval.py` to generate the query vectors and retrieve documents using the query vectors.  
+
+#### Document Embeddings Generation
+First of all, you have to generate embeddings for the corpus. If you have not created the corpus yet, please follow instructions [here](#data-generation-procedure-for-real-data) to do so.  
+Once you have created the corpus, run the following command to generate embeddings for the entire corpus using the document encoder you desire. The script `generate_embeddings.py` is implemented using `sentence_transformers`, so it should compatible with most huggingface models. Please specify the `[passages_path]` to be the corpus path you have created, and `[output_dir]` to be the desired location of the output embedddings. 
+```
+python generate_embeddings.py \
+    --model_name_or_path [document_encoder_id] \
+    --passages [passages_path]  \
+    --output_dir [output_dir] \
+    --per_gpu_batch_size 8 \
+    --shard_id [shard_id] \
+    --shard_size 500000
+``` 
+Since the corpus is quite large, you most likely have to break it down to smaller shards, so when you later load the passages you won't suffer from OOM issues. There are around 25M passages in total, so you could adjust the total number of shards if you use different shard sizes. Also note this script only generate passages for the specified shard (`[shard_id]`). If you are submitting jobs to a SLURM cluster, you could speed it up by running array jobs.  
+
+An example script can also be found in `scripts/generate_embeddings.sh`. 
+
+#### Run Retrieval 
+Run `gen_ret_and_eval.py` to generate the query vectors and retrieve documents using the query vectors.  
 See `scripts/run_retrieval.sh` for an example to run the retrieval.  
 
-Then run `eval.py` to evaluate the performances of the generated document set.  
-See `scripts/eval.sh` for an example to run the evaluation.  
+Important arguments: 
+- `dev_data_path`: The file contains the questions in raw text. You should be able to find the files for QAMPARI and AmbigQA in `amer_data/eval_data/[dataset].jsonl`, if you follow the steps [here](#prerequisite) and download the data. 
+- `output_path`: The output path saving the retrieval results. 
+- `base_model_id`: The base model path. If you do LoRA training, this should be the base model you start with (e.g. `meta-llama/Llama-3.2-1B-Instruct`). If you do full fine-tuning, this should be the path where you save the trained models. 
+- `adapter_path`: If you do LoRA training, this should be the path where you save the trained models. If you do full fine-tuning, this should be `None`. 
+- `linear_checkpoint_path`: This should be the path where you save the linear layers. 
+- `base_model_type`: What type of base model you are using. Currently supporting [`llama-1b`, `llama-3b`, `qwen3-4b`, `llama-8b`]. If you would like to add new base models, please modify the `get_instruction()` function in `gen_ret_and_eval.py` and add the response templates for your selected model. 
+- `num_shards`: If you load the passage indices to a CPU, then it could just be `1`. However, if you're loading the indices to GPU and you don't have a lot of memory, you should consider using a larger number of shards. The script will retrieve from only the passages in each shard and aggregate them later. 
+- `max_new_tokens`: The number of query embeddings to be generated. 
+- `top_k_per_query`: Number of retrieval results for each generated query.
+- `top_k`: Number of retrieval results after we combine results from all the queries. 
+            
+
+#### Evaluate Against Ground Truth
+Then run `eval.py` to evaluate the performances of the generated document set. An example script:  
+```
+python eval.py --data_path [data_path] \
+               --input-file [input_file]  \
+               --topk 100 
+```
+You should specify the ground truth data in `[data_path]` and the retrieval result in `[input_file]`. The `topk` can be specified to be a list, e.g. `--topk 500 100 50 10`. 
+
+
+See `scripts/eval.sh` for an example.  
 
 
 
