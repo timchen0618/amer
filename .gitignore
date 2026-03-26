@@ -11,5 +11,11 @@ t_back.py
 training_datasets/
 results.tsv
 *.csv
+*.out
 
 sync_config.jsonc
+sbatch_outputs*
+sbatch_jobs*
+__pycache__/
+wandb/
+slurm_scripts
