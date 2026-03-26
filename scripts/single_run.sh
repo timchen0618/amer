@@ -196,6 +196,38 @@ ARGS="--project ${BASE_PROJECT} \
       ${RESUME_FROM_CHECKPOINT} \
       ${USE_STATEFUL_DATALOADER} \
       ${PRED_LENGTH} \
+      ${MIX_ONE_LABEL_SHUFFLED} 
+
+echo "Training arguments:"
+echo "$ARGS"
+echo ""
+
+# Set HuggingFace token if provided
+if [[ -n "$HF_TOKEN" ]]; then
+    export HF_TOKEN="$HF_TOKEN"
+fi
+
+# Run training
+echo "Starting training at $(date)"
+echo "Logging output to: $OUTPUT_LOG"
+echo "Python command: $PYTHON_COMMAND"
+
+# Use accelerate launch for distributed training support
+HF_TOKEN="$HF_TOKEN" ${PYTHON_COMMAND} $ARGS 2>&1 | tee "$OUTPUT_LOG"
+
+EXIT_CODE=${PIPESTATUS[0]}
+
+echo ""
+echo "Training completed at $(date)"
+echo "Exit code: $EXIT_CODE"
+
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo "Training completed successfully!"
+    echo "Results saved in: $SAVE_PATH"
+    echo "Output log saved as: $OUTPUT_LOG"
+else
+    echo "Training failed with exit code: $EXIT_CODE"
+    echo "Check the output log for details: $OUTPUT_LOG"
       ${MIX_ONE_LABEL_SHUFFLED}
       "
 

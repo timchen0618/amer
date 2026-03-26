@@ -16,9 +16,9 @@ def write_json(filename, data):
     with open(filename, 'w') as fout:
         json.dump(data, fout, indent=4)
 
-project_dir = '/path/to/project'
-rootdir = f'{project_dir}/baselines/query_exp/'
-outdir = f'{project_dir}/data/qampari_data/nqformat_data/'
+
+rootdir = '/scratch/hc3337/projects/autoregressive/baselines/query_exp/'
+outdir = '/scratch/hc3337/projects/diverse_response/data/qampari_data/nqformat_data/'
 data_types = ['ambignq+nqopen-all_multi_answer_evidence_dev_2_to_5_ctxs', 'dev_data_gt_qampari_corpus_5_to_8_ctxs']
 
 for data_type in data_types:

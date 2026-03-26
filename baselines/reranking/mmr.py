@@ -122,6 +122,69 @@ def main(args):
         # stage 2 nq
         rootdir = f'{project_dir}/results/llama-1b/nq_inf/toy_contrastive/'
         data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
+    # elif args.base_retriever == 'qampari_hungarian_contrastive':
+    #     rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr2e-5_temp0.05_batch32_ep60_warmup0.05_srm10'
+    #     data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    # elif args.base_retriever == 'qampari_contrastive_all_labels_shuffled':
+    #     rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm10'
+    #     data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    # elif args.base_retriever == 'qampari_contrastive_all_labels_ordered':
+    #     rootdir = f'{project_dir}/results/llama-1b/qampari_inf/normalized_qampari_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep60_warmup0.05_srm10'
+    #     data_types = ['retrieval_out_dev_qampari_max_new_tokens_5']
+    # elif args.base_retriever == 'ambiguous_qe_hungarian_contrastive':
+    #     rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_hungarian_contrastive_lr1e-4_temp0.05_batch32_ep120_warmup0.05_srm1'
+    #     data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    # elif args.base_retriever == 'ambiguous_qe_contrastive_all_labels_shuffled':
+    #     rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_shuffled_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1'
+    #     data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    # elif args.base_retriever == 'ambiguous_qe_contrastive_all_labels_ordered':
+    #     rootdir = f'{project_dir}/results/llama-1b/ambiguous_qe_inf/normalized_ambiguous_qe_4gpu_full_finetuning_SSVariableLeftPad_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep120_warmup0.05_srm1'
+    #     data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    elif args.base_retriever in ['llama-1b_qampari_0', 'llama-3b_qampari_0', 'llama-8b_qampari_0', 'qwen3-4b_qampari_0', 
+                                 'llama-1b_qampari_1', 'llama-3b_qampari_1', 'llama-8b_qampari_1', 'qwen3-4b_qampari_1', 
+                                 'llama-1b_qampari_2', 'llama-3b_qampari_2', 'llama-8b_qampari_2', 'qwen3-4b_qampari_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/qampari_inf/{base_model}_single_{_num}'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_1']
+    elif args.base_retriever in ['llama-1b_ambignq_0', 'llama-3b_ambignq_0', 'llama-8b_ambignq_0', 'qwen3-4b_ambignq_0', 
+                                 'llama-1b_ambignq_1', 'llama-3b_ambignq_1', 'llama-8b_ambignq_1', 'qwen3-4b_ambignq_1', 
+                                 'llama-1b_ambignq_2', 'llama-3b_ambignq_2', 'llama-8b_ambignq_2', 'qwen3-4b_ambignq_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/{base_model}_single_{_num}'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
+    # SS (Scheduled Sampling)
+    elif args.base_retriever in ['llama-1b_qampari_multi_SS_0', 'llama-3b_qampari_multi_SS_0', 'llama-8b_qampari_multi_SS_0', 'qwen3-4b_qampari_multi_SS_0', 
+                                 'llama-1b_qampari_multi_SS_1', 'llama-3b_qampari_multi_SS_1', 'llama-8b_qampari_multi_SS_1', 'qwen3-4b_qampari_multi_SS_1', 
+                                 'llama-1b_qampari_multi_SS_2', 'llama-3b_qampari_multi_SS_2', 'llama-8b_qampari_multi_SS_2', 'qwen3-4b_qampari_multi_SS_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/qampari_inf/{base_model}_multi_SS_{_num}'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_5']
+    elif args.base_retriever in ['llama-1b_ambignq_multi_SS_0', 'llama-3b_ambignq_multi_SS_0', 'llama-8b_ambignq_multi_SS_0', 'qwen3-4b_ambignq_multi_SS_0', 
+                                 'llama-1b_ambignq_multi_SS_1', 'llama-3b_ambignq_multi_SS_1', 'llama-8b_ambignq_multi_SS_1', 'qwen3-4b_ambignq_multi_SS_1', 
+                                 'llama-1b_ambignq_multi_SS_2', 'llama-3b_ambignq_multi_SS_2', 'llama-8b_ambignq_multi_SS_2', 'qwen3-4b_ambignq_multi_SS_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/{base_model}_multi_SS_{_num}'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    # Sampling
+    elif args.base_retriever in ['llama-1b_qampari_multi_sampling_0', 'llama-3b_qampari_multi_sampling_0', 'llama-8b_qampari_multi_sampling_0', 'qwen3-4b_qampari_multi_sampling_0', 
+                                 'llama-1b_qampari_multi_sampling_1', 'llama-3b_qampari_multi_sampling_1', 'llama-8b_qampari_multi_sampling_1', 'qwen3-4b_qampari_multi_sampling_1', 
+                                 'llama-1b_qampari_multi_sampling_2', 'llama-3b_qampari_multi_sampling_2', 'llama-8b_qampari_multi_sampling_2', 'qwen3-4b_qampari_multi_sampling_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/qampari_inf/{base_model}_multi_sampling_{_num}'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_5']
+    elif args.base_retriever in ['llama-1b_ambignq_multi_sampling_0', 'llama-3b_ambignq_multi_sampling_0', 'llama-8b_ambignq_multi_sampling_0', 'qwen3-4b_ambignq_multi_sampling_0', 
+                                 'llama-1b_ambignq_multi_sampling_1', 'llama-3b_ambignq_multi_sampling_1', 'llama-8b_ambignq_multi_sampling_1', 'qwen3-4b_ambignq_multi_sampling_1', 
+                                 'llama-1b_ambignq_multi_sampling_2', 'llama-3b_ambignq_multi_sampling_2', 'llama-8b_ambignq_multi_sampling_2', 'qwen3-4b_ambignq_multi_sampling_2']:
+        base_model = args.base_retriever.split('_')[0]
+        _num = args.base_retriever.split('_')[-1]
+        rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/{base_model}_multi_sampling_{_num}'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+         
     elif args.base_retriever in ['llama-1b_qampari', 'llama-3b_qampari', 'llama-8b_qampari', 'qwen3-4b_qampari']:
         base_model = args.base_retriever.split('_')[0]
         rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/single'
@@ -138,6 +201,8 @@ def main(args):
         base_model = args.base_retriever.split('_')[0]
         rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/multi'
         data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    else:
+        raise ValueError(f"Invalid base retriever: {args.base_retriever}")
     logger.info('collecting retrieval results')
     
     for data_type in data_types:

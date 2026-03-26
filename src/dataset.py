@@ -129,6 +129,66 @@ class ContrastiveTrainCollator:
     
 
 
+@dataclass
+class ContrastiveTrainCollatorDocEncTrained:
+    def __call__(self, features, shuffle=False, take_first=False, use_eos=False, left_padding=False):
+        """
+            Data Shape:
+            input_ids: (batch_size, length)
+            attention_mask: (batch_size, length)
+            input_document_ids: (batch_size, num_documents, length)
+            attention_mask_document: (batch_size, num_documents, length)
+        """
+        batch = {}
+        
+        lens_cnt = Counter(len(f['input_document_ids']) for f in features)
+        majority_len = max(lens_cnt, key=lens_cnt.get)
+        # if use_eos:
+        #     eos_token = [0.5 for _ in range(len(features[0]['positive_embeddings'][0]))]
+        
+        # find out which features to keep
+        keep_feature_indices = []
+        for i in range(len(features)):
+            if len(features[i]['input_document_ids']) == majority_len:
+                keep_feature_indices.append(i)
+                assert len(features[i]['input_document_ids']) % 2 == 0, (len(features[i]['input_document_ids']))
+                _half_len = len(features[i]['input_document_ids']) // 2
+                if shuffle:  
+                    # only shuffle the features with the majority length
+                    # shuffle the positive and negative embeddings
+                    # shuffled_indices = torch.randperm(len(features[i]['input_document_ids']))
+                    shuffled_indices = torch.randperm(_half_len)
+                    features[i]['input_document_ids'] = [features[i]['input_document_ids'][j] for j in shuffled_indices] + [features[i]['input_document_ids'][_half_len + j] for j in shuffled_indices]
+                    features[i]['attention_mask_document'] = [features[i]['attention_mask_document'][j] for j in shuffled_indices] + [features[i]['attention_mask_document'][_half_len + j] for j in shuffled_indices]
+                if take_first:
+                    features[i]['input_document_ids'] = features[i]['input_document_ids'][:1] + features[i]['input_document_ids'][_half_len:_half_len+1]
+                    features[i]['attention_mask_document'] = features[i]['attention_mask_document'][:1] + features[i]['attention_mask_document'][_half_len:_half_len+1]
+            
+        print(majority_len, keep_feature_indices)
+        for k in features[0].keys():  # loop through the keys => ['input_ids', 'attention_mask', 'positive_embeddings', 'negative_embeddings', 'length']
+            # len(features[0][k]) -> length
+            # len(features) -> batch size
+            # len(features[0][k][0]) -> embedding dim
+            if k != 'length':
+                # only keep the features with the majority length
+                batch_features = [f[k] for j, f in enumerate(features) if j in keep_feature_indices]
+                batch[k] = torch.tensor(batch_features)
+        
+        if left_padding:
+            max_length = int(batch['attention_mask'].sum(dim=1).max().item())
+            for k in batch.keys():
+                if k in ['input_ids', 'attention_mask', 'inputs_embeds']:
+                    for i in range(len(batch[k])):
+                        current_length = int(batch['attention_mask'][i].sum().item())
+                        batch[k][i] = torch.roll(batch[k][i], shifts=(max_length-current_length), dims=0)
+            
+            position_ids = batch['attention_mask'].cumsum(dim=1) - 1
+            position_ids = position_ids.clamp(min=0)
+            batch['position_ids'] = position_ids
+        
+        return batch    
+    
+
 def contrastive_eval_collator(features):
     """
     """
@@ -154,6 +214,31 @@ def contrastive_eval_collator(features):
             print(k, len(v))
             exit(0)
     return batch
+
+
+def contrastive_eval_collator_doc_enc_trained(features):
+    """
+    """
+    batch = {'input_ids': [], 'attention_mask':[], 'input_document_ids': [], 'attention_mask_document': []}
+    
+    for inst in features:
+        input_len = sum(inst['attention_mask'])
+        for k in inst.keys():
+            if k in ['input_ids', 'attention_mask', 'inputs_embeds']:
+                batch[k].append(torch.tensor(inst[k][:input_len]).unsqueeze(0))
+            elif k in batch: # get the question embeddings
+                batch[k].append(torch.tensor(inst[k]).unsqueeze(0))
+        batch['attention_mask'][-1][:, -1] = 1
+        
+    
+    for k, v in batch.items():
+        try:
+            batch[k] = torch.cat(v, dim=0)
+        except:
+            print(k, len(v))
+            exit(0)
+    return batch
+
     
 def mse_eval_collator(features, first_label_only=False):
     """
@@ -215,6 +300,10 @@ class DataHandler:
             if 'positive_embeddings' in self.dataset[0]:
                 # add length to the dataset
                 lengths = [len(inst['positive_embeddings']) for inst in self.dataset]
+                self.dataset = self.dataset.add_column('length', lengths)
+            elif 'input_document_ids' in self.dataset[0]:
+                # add length to the dataset
+                lengths = [len(inst['input_document_ids']) for inst in self.dataset]
                 self.dataset = self.dataset.add_column('length', lengths)
             full_dataset = self.dataset.train_test_split(test_size=0.1, seed=42)
             self.train_dataset, self.dev_dataset = full_dataset['train'], full_dataset['test']
@@ -352,3 +441,363 @@ def process_single_instance(args):
         del inst['ground_truths']
     return inst
 
+
+if __name__ == "__main__":    
+    def read_jsonl(path):
+        with open(path, 'r') as f:
+            return [json.loads(line) for line in f]
+    
+    def write_jsonl(data, path):
+        with open(path, 'w') as f:
+            for inst in data:
+                f.write(json.dumps(inst) + '\n')
+    
+    def write_json(data, path):
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=4)
+            
+    def read_json(path):
+        with open(path, 'r') as f:
+            return json.load(f)  
+        
+    
+    command = 'combine_datasets'
+    
+    if command == 'stats':
+        train_dataset_path = 'training_datasets/llama-1b/ambiguous_qe/inf/autoregressive_ambiguous_qe_inf_train_dataset_1b_contrastive_2_to_5_ctxs'
+        dataset = load_from_disk(train_dataset_path)
+        avg_length = []
+        for inst in dataset:
+            avg_length.append(len(inst['positive_embeddings']))
+        print(len(dataset))
+        print(sum(avg_length)/len(avg_length))
+        
+        train_dataset_path = 'training_datasets/llama-1b/qampari/inf/autoregressive_qampari_inf_train_dataset_1b_contrastive_5_to_8_ctxs'
+        dataset = load_from_disk(train_dataset_path)
+        print(len(dataset))
+        avg_length = []
+        for inst in dataset:
+            avg_length.append(len(inst['positive_embeddings']))
+        print(sum(avg_length)/len(avg_length))
+        
+    if command == 'combine_datasets':
+        # for retriever in ['cont', 'stella', 'inf']:
+        use_hard_negatives = False
+        for retriever in ['inf']:
+            # data_name = 'ambiguous_qe'
+            for data_name in ['qampari']:
+                base_model_name = 'llama-8b'  # llama-1b, qwen3-4b, llama-3b, llama-8b
+                for split in ['train', 'dev']:
+                    start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
+                    if use_hard_negatives:
+                        dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{i}_ctxs' \
+                        for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
+                    else:
+                        dataset_paths = [f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{i}_ctxs' \
+                        for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
+                    assert len(dataset_paths) == 4
+                    dataset_paths = [load_from_disk(path) for path in dataset_paths]
+                    # dataset_paths = [d.select([i for i in range(30)]) for d in dataset_paths]
+
+                    combined_dataset = concatenate_datasets(dataset_paths)
+                    if use_hard_negatives:
+                        combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_hard_negative_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
+                    else:
+                        combined_dataset.save_to_disk(f'training_datasets/{base_model_name}/{data_name}/{retriever}/autoregressive_{data_name}_{retriever}_{split}_dataset_1b_contrastive_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs')
+                
+        # for split in ['train', 'dev']:
+        #     start_and_end_map = {"qampari": [5, 9], "ambiguous": [2, 6], "ambiguous_qe": [2, 6]}
+        #     data_name = 'ambiguous_qe'
+        #     dataset_paths = [f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{i}_ctxs.jsonl' \
+        #         for i in range(start_and_end_map[data_name][0], start_and_end_map[data_name][1])]
+        #     assert len(dataset_paths) == 4
+        #     datas = [read_jsonl(path) for path in dataset_paths]
+        #     # flatten the list
+        #     combined_data = [inst for data in datas for inst in data]
+        #     write_jsonl(combined_data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{start_and_end_map[data_name][0]}_to_{start_and_end_map[data_name][1]-1}_ctxs.jsonl')
+    if command == 'combine_pred_length':
+        unshifted_str = '_unshifted'
+        for split in ['train', 'test']:
+            for sm_str in ['', '_sm']:
+                trans_5_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_5_{split}_dataset_1b_contrastive_pred_length{sm_str}')
+                trans_2_data = load_from_disk(f'data_creation/gaussian_new_mlps_rotation_2{unshifted_str}_{split}_dataset_1b_contrastive_pred_length{sm_str}')
+                
+                combined_dataset = concatenate_datasets([trans_5_data, trans_2_data])
+                print('len(combined_dataset)', len(combined_dataset))
+                combined_dataset.save_to_disk(f'data_creation/gaussian_new_mlps_rotation{unshifted_str}_{split}_dataset_1b_contrastive_pred_length{sm_str}')
+
+    if command == 'combine_ambiguous_and_qampari_pred_length':
+        # for split in ['train', 'dev']:
+        #     dataset_paths = [
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_3_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_4_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/", 
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_6_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_7_ctxs_pred_length/",
+        #         f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_8_ctxs_pred_length/" 
+        #     ]
+        #     datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
+        #     combined_dataset = concatenate_datasets(datasets_to_concat)
+        #     print('len(combined_dataset)', len(combined_dataset))
+        #     combined_dataset.save_to_disk(f"data_creation/autoregressive_qampari+ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_to_8_ctxs_pred_length")
+        for split in ['train', 'dev']:
+            dataset_paths = [
+                f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_ctxs_pred_length/",
+                f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_3_ctxs_pred_length/",
+                f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_4_ctxs_pred_length/",
+                f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/",
+            ]
+            datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
+            combined_dataset = concatenate_datasets(datasets_to_concat)
+            print('len(combined_dataset)', len(combined_dataset))
+            combined_dataset.save_to_disk(f"data_creation/autoregressive_ambiguous_qe_inf_{split}_dataset_1b_contrastive_2_to_5_ctxs_pred_length")
+            
+            dataset_paths = [
+                f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_ctxs_pred_length/", 
+                f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_6_ctxs_pred_length/",
+                f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_7_ctxs_pred_length/",
+                f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_8_ctxs_pred_length/" 
+            ]
+            datasets_to_concat = [load_from_disk(path) for path in dataset_paths]
+            combined_dataset = concatenate_datasets(datasets_to_concat)
+            print('len(combined_dataset)', len(combined_dataset))
+            combined_dataset.save_to_disk(f"data_creation/autoregressive_qampari_inf_{split}_dataset_1b_contrastive_5_to_8_ctxs_pred_length")
+            
+    if command == 'combine_ambiguous_and_qampari':
+        for retriever in ['cont', 'stella', 'inf']:
+            for split in ['train']:
+                ambiguous_data = load_from_disk(f'training_datasets/autoregressive_ambiguous_{retriever}_{split}_dataset_1b_contrastive_2_to_5_ctxs')
+                qampari_data = load_from_disk(f'training_datasets/autoregressive_qampari_{retriever}_{split}_dataset_1b_contrastive_5_to_8_ctxs')
+                
+                combined_dataset = concatenate_datasets([ambiguous_data, qampari_data])
+                combined_dataset.save_to_disk(f'training_datasets/autoregressive_ambiguous_and_qampari_{retriever}_{split}_dataset_1b_contrastive_2_to_8_ctxs')
+    
+    if command == 'all_no_evidence':
+        data_1 = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nqopen/nqopen-dev_multi_answer.json')
+        data_2 = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nqopen/nqopen-test_multi_answer.json')
+        data_3 = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq/ambignq-train_multi_answer_no_evidence.json')
+        data_4 = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq/ambignq-dev_multi_answer_no_evidence.json')
+        
+        for inst in data_1:
+            assert len(inst['answers']) > 0, (inst['question'], 'data_1')
+        for inst in data_2:
+            assert len(inst['answers']) > 0, (inst['question'], 'data_2')
+        for inst in data_3:
+            assert len(inst['answers']) > 0, (inst['question'], 'data_3')
+        for inst in data_4:
+            assert len(inst['answers']) > 0, (inst['question'], 'data_4')
+            
+        print(len(data_1), len(data_2), len(data_3), len(data_4))
+        print(len(data_1) + len(data_2) + len(data_3) + len(data_4))
+        
+        pre_full_data = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen_multi_answer_all_no_evidence.json')    
+        print(len(pre_full_data))
+        for inst in pre_full_data:
+            assert len(inst['answers']) > 0, (inst['question'], 'pre_full')
+    
+    
+    if command == 'create_evidence_data':
+        full_data = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen_multi_answer_all_no_evidence_evidence.json')    
+        print(len(full_data))
+        for inst in full_data:
+            assert len(inst['answers']) > 0, (inst['question'], 'full')
+        
+        # additional data: AmbigQA
+        ambig_train_data = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq/ambignq-train_multi_answer_evidence.json')
+        ambig_dev_data = read_json('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq/ambignq-dev_multi_answer_evidence.json')
+        
+        import random
+        random.seed(42)
+        random.shuffle(full_data)
+        # # split into train and dev
+        train_data = full_data[:-300]
+        dev_data = full_data[-300:]
+        
+        train_data = train_data + ambig_train_data + ambig_dev_data
+        print(len(train_data), len(dev_data))
+        
+        
+        # additional data: other data from evidence (qampari embeddings) 
+        qs = [inst['question'] for inst in train_data]
+        evidence_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence.jsonl')
+        for inst in evidence_data:
+            if inst['question'] not in qs:
+                train_data.append(inst)
+        
+        print(len(train_data))
+        
+        # save the train and dev data
+        write_jsonl(train_data, '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.jsonl')
+        write_jsonl(dev_data, '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl')
+        write_json(train_data, '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_train.json')
+        write_json(dev_data, '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.json')
+        
+        # train_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen-all_multi_answer_evidence_train.jsonl')
+        # dev_data = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl')
+        
+        for inst in dev_data:
+            assert len(inst['answers']) > 0, inst['question']
+        
+        for inst in train_data:
+            assert len(inst['answers']) > 0, (inst['question'], 'train')
+    
+    
+    
+    if command == 'create_hard_negative_data':
+        # mine the hard negative data
+        for split in ['dev']:
+            for retriever in ['cont', 'inf']:
+                raw_data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}.jsonl')
+                if retriever in ['inf', 'stella-400M']:
+                    retrieved_data = read_jsonl(f'/datastor1/hungting/retrieval_outputs/mteb_retriever/{retriever}/ambignq+nqopen-all_multi_answer_evidence_{split}.json')
+                elif retriever == 'cont':
+                    retrieved_data = read_jsonl(f'/scratch/cluster/hungting/projects/Multi_Answer/contriever/outputs/contriever_msmarco_nq/ambignq+nqopen-all_multi_answer_evidence_{split}.json')
+                    
+                assert len(raw_data) == len(retrieved_data), (len(raw_data), len(retrieved_data))
+                
+                # For each question, find the retrieved documents that do not contain any answers. 
+                # make sure the length of positive and negative are the same  (# has_answer(answers, text, tokenizer) -> bool:)
+                tokenizer = SimpleTokenizer()
+                from tqdm import tqdm
+                for inst, retrieved_inst in tqdm(zip(raw_data, retrieved_data)):
+                    assert len(inst['question']) == len(inst['question'])
+                    num_cluster = len(inst['positive_ctxs'])
+                    hard_negative_docs = []
+                    
+                    for ret_doc in retrieved_inst['ctxs']:
+                        contain_answer = False
+                        for cluster_answers in inst['answers']:
+                            if has_answer(cluster_answers, ret_doc['text'], tokenizer): # -> has answer
+                                contain_answer = True
+                                break
+                        if not contain_answer:
+                            hard_negative_docs.append(ret_doc)
+                            if len(hard_negative_docs) >= num_cluster:
+                                break
+                    
+                    assert len(hard_negative_docs) == num_cluster, (inst['question'], len(hard_negative_docs), num_cluster)
+                    
+                    inst['ctxs'] = hard_negative_docs
+                    if 'positive_ctxs' in inst:
+                        del inst['positive_ctxs']
+                    if 'ground_truths' in inst:
+                        del inst['ground_truths']
+                
+                
+                write_jsonl(raw_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/ambignq+nqopen-all_multi_answer_evidence_{split}_hard_negative_{retriever}.jsonl')
+                
+                
+    if command == 'create_hard_negative_data_qampari':
+        # mine the hard negative data
+        for split in ['train']:
+            for retriever in ['cont', 'stella-400M']:
+                raw_data = read_jsonl(f'/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/{split}_data_gt_qampari_corpus.jsonl')
+                # raw_data = read_jsonl('bbb')
+                if retriever in ['inf', 'stella-400M']:
+                    retrieved_data = read_jsonl(f'/datastor1/hungting/retrieval_outputs/mteb_retriever/{retriever}/{split}_data_gt_qampari_corpus.json')
+                    # retrieved_data = read_jsonl('aaa')
+                elif retriever == 'cont':
+                    retrieved_data = read_jsonl(f'/scratch/cluster/hungting/projects/Multi_Answer/contriever/outputs/contriever_msmarco_qampari/{split}_data_gt_qampari_corpus.json')
+                assert len(raw_data) == len(retrieved_data), (len(raw_data), len(retrieved_data))
+            
+                # For each question, find the retrieved documents that do not contain any answers. 
+                # make sure the length of positive and negative are the same  (# has_answer(answers, text, tokenizer) -> bool:)
+                tokenizer = SimpleTokenizer()
+                from tqdm import tqdm
+                import multiprocessing as mp
+                from functools import partial
+
+                # Prepare arguments for parallel processing
+                process_args = [(inst, retrieved_inst, tokenizer) for inst, retrieved_inst in zip(raw_data, retrieved_data)]
+                
+                # Create a pool of workers
+                num_workers = mp.cpu_count() - 1  # Leave one CPU free
+                print(num_workers)
+                with mp.Pool(processes=num_workers) as pool:
+                    # Process instances in parallel with progress bar
+                    processed_instances = list(tqdm(
+                        pool.imap(process_single_instance, process_args),
+                        total=len(process_args),
+                        desc="Processing instances"
+                    ))
+                
+                # Filter out None results and save
+                processed_instances = [inst for inst in processed_instances if inst is not None]
+                write_jsonl(processed_instances, f'/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/{split}_data_gt_qampari_corpus_hard_negative_{retriever}.jsonl')
+                
+                
+    if command == 'test':
+        # dataset = read_jsonl('/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev.jsonl')
+        # cnt = 0
+        # for i, gold_inst in enumerate(dataset):
+        #     for j in range(len(gold_inst['positive_ctxs'])):
+        #         gold_inst['positive_ctxs'][j] = [doc for doc in gold_inst['positive_ctxs'][j] if 'id' in doc]
+            
+                     
+        # for i, gold_inst in enumerate(dataset):
+        #     for cluster in gold_inst['positive_ctxs']:
+        #         if len(cluster) == 0:
+        #             cnt += 1
+        #             print(i)
+        #     gold_inst['positive_ctxs'] = [cluster for cluster in gold_inst['positive_ctxs'] if len(cluster) > 0]
+        
+        # print(cnt)
+        # write_jsonl(dataset, '/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/nq_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_dev_no_empty_clusters.jsonl')
+        
+        # dev_data = read_jsonl('/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.jsonl')        
+        # train_data = read_jsonl('/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl')
+        
+        # for inst in dev_data:
+        #     inst['question'] = inst['question_text']
+        #     inst['input'] = inst['question']
+        #     inst['answers'] = ['']
+        #     inst['ctxs'] = []
+        
+        # for inst in train_data:
+        #     inst['question'] = inst['question_text']
+        #     inst['input'] = inst['question']
+        #     inst['answers'] = ['']
+        #     inst['ctxs'] = []
+        
+        # write_json(dev_data, '/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/dev_data_gt_qampari_corpus.json')
+        # write_json(train_data, '/scratch/cluster/hungting/projects/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.json')
+        
+        for data_type in ['arguana_generated', 'kialo', 'opinionqa']:
+            print(f'doing /scratch/cluster/hungting/projects/Multi_Answer/Data/nqformat_data/{data_type}_1k.json')
+            data = read_json(f'/scratch/cluster/hungting/projects/Multi_Answer/Data/nqformat_data/{data_type}_1k.json')
+            del_keys = [k for k in data[0].keys() if k not in ['question', 'perspectives']]
+            for inst in data:
+                for k in del_keys:
+                    del inst[k]
+                    
+            write_jsonl(data, f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_type}_question_only.jsonl')
+                
+                
+            
+        
+    if command == 'filter_by_context_length':
+        data_name = 'ambiguous_qe'
+        for split in ['dev']:
+            filtered_question = []
+            for length in [2,3,4,5]:
+                filter_data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data_creation/raw_data/{data_name}_{split}_question_only_{length}_ctxs.jsonl')
+                filtered_question.extend([inst['question'] for inst in filter_data])
+                
+            data = read_jsonl(f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}.jsonl')
+            q2inst = {inst['question']: inst for inst in data}
+            
+            filtered_data = []
+            for question in filtered_question:
+                if question in q2inst:
+                    filtered_data.append(q2inst[question])
+                    
+            write_jsonl(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.jsonl')
+            write_json(filtered_data, f'/scratch/cluster/hungting/projects/autoregressive/data/ambiguous/qampari_embeddings_data/ambignq+nqopen-all_multi_answer_evidence_{split}_2_to_5_ctxs.json')
+            
+            
+            
+        
+
+        

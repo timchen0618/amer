@@ -8,6 +8,7 @@ from src.dataset import (
     load_embeddings_dataset,
     MSETrainCollator,
     ContrastiveTrainCollator,
+    ContrastiveTrainCollatorDocEncTrained,
     DataHandler
 )
 from src.model import load_model, save_model_distributed
@@ -85,6 +86,8 @@ def train(configs):
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
         collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only, left_padding=configs.left_padding)
+    elif configs.train_doc_encoder:
+        collator = functools.partial(ContrastiveTrainCollatorDocEncTrained(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos, left_padding=configs.left_padding)
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, left_padding=configs.left_padding, use_eos=configs.use_eos)
         
@@ -93,7 +96,10 @@ def train(configs):
     data_handler = DataHandler(full_dataset, collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
 
     if configs.mix_one_label_shuffled:
-        one_label_collator = functools.partial(ContrastiveTrainCollator(), shuffle=True, take_first=True, left_padding=configs.left_padding, use_eos=configs.use_eos)
+        if configs.train_doc_encoder:
+            one_label_collator = functools.partial(ContrastiveTrainCollatorDocEncTrained(), shuffle=True, take_first=True, left_padding=configs.left_padding, use_eos=configs.use_eos)
+        else:
+            one_label_collator = functools.partial(ContrastiveTrainCollator(), shuffle=True, take_first=True, left_padding=configs.left_padding, use_eos=configs.use_eos)
         one_label_data_handler = DataHandler(full_dataset, one_label_collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
 
         
@@ -109,7 +115,7 @@ def train(configs):
     # total_length = total_length // accelerator.num_processes
     
     
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength', 'EmbeddingModelSSVariableLeftPadDocEncTrained']), 'Schedule sampling is only supported for EmbeddingModelSS'
     # Instantiate the model (we build the model here so that the seed also control new weights initialization)
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                 base_model_id=configs.model_id, 
@@ -240,12 +246,13 @@ def train(configs):
                 grad_norm = grad_norm**0.5
 
                 # clip the gradient
-                if accelerator.sync_gradients:
+                if accelerator.sync_gradients and not configs.train_doc_encoder:
                     accelerator.clip_grad_norm_(model.parameters(), configs.max_grad_norm)
 
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
+                if not configs.train_doc_encoder:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
                 
                 
                 if configs.mix_one_label_shuffled:
@@ -263,10 +270,14 @@ def train(configs):
                         if accelerator.sync_gradients:
                             accelerator.clip_grad_norm_(model.parameters(), configs.max_grad_norm)
 
-                        optimizer.step()
-                        optimizer.zero_grad()
-                        
-                        
+                        if not configs.train_doc_encoder:   
+                            optimizer.step()
+                            optimizer.zero_grad()
+                if configs.train_doc_encoder:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+
                 if log_with_wandb:
                     losses.append(loss.detach().float().cpu().item())
                     if configs.pred_length:

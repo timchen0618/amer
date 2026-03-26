@@ -14,6 +14,7 @@ from src.dataset import (
     load_embeddings_dataset,
     MSETrainCollator,
     ContrastiveTrainCollator,
+    ContrastiveTrainCollatorDocEncTrained,
     DataHandler
 )
 from src.utils import Config, set_seed, set_optim
@@ -74,6 +75,8 @@ def train(configs):
     # data loading
     if configs.loss_function == 'MSE' or configs.loss_function == 'Hungarian_MSE':
         collator = functools.partial(MSETrainCollator(), shuffle=configs.shuffle_sequence, first_label_only=configs.first_label_only, left_padding=configs.left_padding)
+    elif configs.train_doc_encoder:
+        collator = functools.partial(ContrastiveTrainCollatorDocEncTrained(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos, left_padding=configs.left_padding)
     else:
         collator = functools.partial(ContrastiveTrainCollator(), shuffle=configs.shuffle_sequence, take_first=configs.take_first, use_eos=configs.use_eos, left_padding=configs.left_padding)
     full_dataset = load_embeddings_dataset(dataset_path=configs.train_path)
@@ -88,7 +91,7 @@ def train(configs):
     total_length = len(train_dataloader) // configs.gradient_accumulation_steps
     
     # model loading
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength', 'EmbeddingModelSSVariableLeftPadDocEncTrained']), 'Schedule sampling is only supported for EmbeddingModelSS'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
                                   base_model_id=configs.model_id, 

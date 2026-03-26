@@ -4,6 +4,16 @@ from pathlib import Path
 import csv
 from tqdm import tqdm
 
+# def pred_gpt4(client, prompt):
+#     messages = [{"role": "user", "content": prompt}]
+        
+#     response = client.chat.completions.create(
+#     model="gpt-4o-2024-08-06",
+#     messages=messages
+#     )
+#     response = response.choices[0].message.content.strip()
+#     return response
+
 
 def pred_gpt4(client, question):
     response = client.responses.create(

@@ -60,6 +60,7 @@ def get_training_args():
     parser.add_argument("--use_eos", action="store_true", default=False, help="Use EOS token")
     parser.add_argument("--model_type", type=str, default="EmbeddingModel", help="Model type")
     parser.add_argument("--normalize_embeddings", action="store_true", default=False, help="Normalize embeddings")
+    parser.add_argument("--train_doc_encoder", action="store_true", default=False, help="Use document encoder trained")
     # Data loading
     parser.add_argument("--first_label_only", action="store_true", default=False, help="Use first label (question) only")
     

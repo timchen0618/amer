@@ -1,0 +1,1 @@
+Generate 150 adjectives that describe personality traits that are as diverse as possible. Do not repeat yourself. Just generate the list of personality traits adjectives, split by comma. Do not generate anything else. 

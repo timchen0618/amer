@@ -119,7 +119,6 @@ class Indexer(object):
             if use_gpu:
                 print('using gpu')
                 self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, self.index)
-
         self.index_id_to_db_id = []
 
     def index_data(self, ids, embeddings):

@@ -143,7 +143,6 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
             gold_question = gold_question.strip('\n').strip()
         assert gold_question == docs_question, (f'Questions do not match: {gold_question} vs {docs_question}', len(gold_question), len(docs_question))
             
-
         if has_gold_id:
             qrel[str(qid)] = {}
             if 'positive_ctxs' in gold_inst:
@@ -221,7 +220,6 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
     else:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | MRR: {MRR:.4f}')
         return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR), qrel, run, mrecall_list, recall_list
-
 
 def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, topk=100):
     dataset = read_jsonl(data_path)

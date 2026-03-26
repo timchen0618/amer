@@ -182,7 +182,6 @@ def write_tsv(data: List[List[str]], file_path: str):
         writer = csv.writer(f, delimiter='\t')
         writer.writerows(data)
 
-
 def random_baseline(pairs_data, corpus, topk):
     # set seed
     np.random.seed(42)
@@ -247,7 +246,6 @@ def compute_averge_target_distance_different_examples(target_vectors_list, in_ex
             else:
                 query_1 = random.choice(targets_1)
                 query_2 = random.choice(targets_2)
-
         l2_distance_list.append(compute_l2_distance(query_1, query_2))
         cosine_similarity_list.append(compute_cosine_similarity(query_1, query_2))
     if _print:
