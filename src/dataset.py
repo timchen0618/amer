@@ -108,9 +108,6 @@ class ContrastiveTrainCollator:
                     features[i]['negative_embeddings'] = features[i]['negative_embeddings'][:1]
             
         for k in features[0].keys():  # loop through the keys => ['input_ids', 'attention_mask', 'positive_embeddings', 'negative_embeddings', 'length']
-            # len(features[0][k]) -> length
-            # len(features) -> batch size
-            # len(features[0][k][0]) -> embedding dim
             if k != 'length':
                 # only keep the features with the majority length
                 batch_features = [f[k] for j, f in enumerate(features) if j in keep_feature_indices]
@@ -274,7 +271,6 @@ def mse_eval_collator(features, first_label_only=False):
     
 def load_embeddings_dataset(dataset_path='autoregressive_dev_dataset'):
     dataset = load_from_disk(dataset_path)
-    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     return dataset
 
 
@@ -424,8 +420,6 @@ def process_single_instance(args):
                     continue
                 
                 if has_answer(cluster_answers['aliases'], ret_doc['text'], tokenizer): # -> has answer
-                    # if inst['question_text'] == 'Which fictional character is present in the work Adventures of Superman?':
-                    #     print(cluster_answers['aliases'], ret_doc['text'])
                     contain_answer = True
                     contain_answer_string = cluster_answers['aliases']
                     break

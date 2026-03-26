@@ -1,34 +1,17 @@
-from logging import config
-from operator import index
-from re import A
 import torch
-import torch.distributed
-import torch.optim as optim
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import wandb
-
-import torch.distributed as dist
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from dataclasses import dataclass
-
-from src.model import EmbeddingModel, load_model
+from src.model import load_model
 from src.dataset import (
     load_embeddings_dataset,
     ContrastiveTrainCollator,
     DataHandler,
     contrastive_eval_collator
 )
-from src.utils import Config, set_seed, set_optim
 
 from tqdm import tqdm
-from copy import copy
-import os, sys
+import os
 
-import yaml
 import json
-import gc
 import argparse
-import functools
 import random
 import structlog
 logger = structlog.get_logger()
@@ -72,10 +55,6 @@ def load_synthetic_dataset(data_dir='./synthetic_data', split='test', normalize=
     
     pairs_data = pairs_data[split]
     
-    print('number of queries', len(pairs_data)) # dict_keys(['query_idx', 'query_vector', 'ground_truth_indices'])
-    print('first query idx', pairs_data[0]['query_idx']) 
-    print('first query vector', np.array(pairs_data[0]['query_vector']).shape)
-    print('first ground truth indices', np.array(pairs_data[0]['ground_truth_indices']).shape)
     return pairs_data, queries, corpus
 
 
@@ -121,7 +100,6 @@ def aggregate_rankings(all_rankings, max_new_tokens, max_k):
     # all_rankings is a list of numpy arrays. Size (max_new_tokens * num_samples, topk)
     new_outputs = []
     assert len(all_rankings) % max_new_tokens == 0
-    print(len(all_rankings), len(all_rankings) // max_new_tokens, max_k) # 5000, 1000, 100
     # Take tokens from outputs in a round robin fashion
     for i in range(len(all_rankings) // max_new_tokens):
         all_outputs_chunk = all_rankings[i * max_new_tokens:(i + 1) * max_new_tokens,:max_k // max_new_tokens]
@@ -151,26 +129,12 @@ def evaluate_baseline_with_aggregation(baseline_name: str, predictions: np.ndarr
     
     # Compute similarities and rankings
     similarities, rankings = compute_similarities_and_rankings(predictions, corpus, max(k_values))
-    print(similarities.shape, rankings.shape)
     max_k = max(k_values)
     if max_new_tokens > 1:
         rankings = aggregate_rankings(rankings, max_new_tokens, max_k)
-        print('aggregated rankings', rankings.shape)
     
     return rankings
-    # results = {}
-    # # Evaluate for each k
-    # for k in k_values:
-    #     recall = compute_recall_at_k(rankings, test_pairs, k)
-    #     mrecall = compute_mrecall_at_k(rankings, test_pairs, k)
-        
-    #     results[f'recall@{k}'] = recall
-    #     results[f'mrecall@{k}'] = mrecall
-        
-    #     print(f"  Recall@{k}: {recall:.4f}")
-    #     print(f"  MRecall@{k}: {mrecall:.4f}")
-    
-    # return results, rankings
+
 
 
 def eval_metrics(rankings, test_pairs, k_values, _print=True):
@@ -218,32 +182,6 @@ def write_tsv(data: List[List[str]], file_path: str):
         writer = csv.writer(f, delimiter='\t')
         writer.writerows(data)
 
-# if command == 'simple_train':
-#     test_pairs, queries, corpus = load_synthetic_dataset(data_dir='./data_creation/gaussian/data/opposing_pairs_data_large/')
-#     model, tokenizer, device = load_model_local()
-    
-
-#     batch = {'inputs_embeds': [], 'attention_mask':[], 'positive_embeddings': [], 'negative_embeddings': []}
-
-#     LENGTH = 16
-#     for i in range(len(test_pairs)):
-#         query_vector = queries[test_pairs[i]['query_idx']]
-#         ground_truth_indices = test_pairs[i]['ground_truth_indices']
-#         ground_truth_embeddings = corpus[ground_truth_indices]
-#         batch['inputs_embeds'].append(query_vector)
-#         batch['attention_mask'].append(np.zeros(LENGTH))
-#         batch['positive_embeddings'].append(ground_truth_embeddings)
-#         batch['negative_embeddings'].append(ground_truth_embeddings)
-
-#     batch['inputs_embeds'] = torch.tensor(batch['inputs_embeds']).to(device).float().unsqueeze(1).expand(-1, LENGTH, -1)
-#     batch['attention_mask'] = torch.tensor(batch['attention_mask']).to(device).long()
-#     batch['attention_mask'][:, 0] = 1
-#     batch['positive_embeddings'] = torch.tensor(batch['positive_embeddings']).to(device).float()
-#     batch['negative_embeddings'] = torch.tensor(batch['negative_embeddings']).to(device).float()
-#     print('input embeds', batch['inputs_embeds'].size(), 'attention mask', batch['attention_mask'].size(), 'positive embeddings', batch['positive_embeddings'].size(), 'negative embeddings', batch['negative_embeddings'].size())
-    
-#     outputs = model(**batch)
-#     print('loss', outputs.loss)
 def random_baseline(pairs_data, corpus, topk):
     # set seed
     np.random.seed(42)
@@ -287,10 +225,6 @@ def compute_averge_target_distance_same_example(target_vectors_list):
             for k in range(j+1, len(all_target_vectors)):
                 l2_distance_list.append(compute_l2_distance(all_target_vectors[j], all_target_vectors[k]))
                 cosine_similarity_list.append(compute_cosine_similarity(all_target_vectors[j], all_target_vectors[k]))
-    print('max', 'l2', np.max(l2_distance_list), 'cosine', np.max(cosine_similarity_list))
-    print('min', 'l2', np.min(l2_distance_list), 'cosine', np.min(cosine_similarity_list))
-    # compute the percentage of cosine similarity greater than 0.9
-    print('percentage of cosine similarity greater than 0.93', np.sum(np.array(cosine_similarity_list) > 0.93) / len(cosine_similarity_list))
     return np.mean(l2_distance_list), np.mean(cosine_similarity_list)
 
 def compute_averge_target_distance_different_examples(target_vectors_list, in_example_idx=0, _print=False):
@@ -312,14 +246,6 @@ def compute_averge_target_distance_different_examples(target_vectors_list, in_ex
             else:
                 query_1 = random.choice(targets_1)
                 query_2 = random.choice(targets_2)
-            # elif min(len(targets_1), len(targets_2)) == 1:
-            #     print('one target')
-            #     query_1 = targets_1[0]
-            #     query_2 = targets_2[0]
-            # else:
-            #     two_random_in_example_nums = random.sample(range(min(len(targets_1), len(targets_2))), 2)
-            #     query_1 = targets_1[two_random_in_example_nums[0]]
-            #     query_2 = targets_2[two_random_in_example_nums[1]]
         l2_distance_list.append(compute_l2_distance(query_1, query_2))
         cosine_similarity_list.append(compute_cosine_similarity(query_1, query_2))
     if _print:
@@ -354,10 +280,8 @@ def similarity_analysis(target_vectors_list):
     
 def main(args):
     # load data
-    pairs_data = json.load(open(os.path.join(args.data_dir, 'query_ground_truth_pairs.json'), 'r'))
-    test_pairs, queries, corpus = load_synthetic_dataset(data_dir=args.data_dir, split=args.split, normalize=args.normalize, indexed_corpus=args.indexed_corpus)
-    # evaluate_loop(dataloader, model, device, max_new_tokens, use_gt_q_embed, use_eos, compute_loss = True)
-    pred_length_labels_str = '_pred_length' if args.pred_length else ''
+    pairs_data = json.load(open(os.path.join(args.raw_data_dir, 'query_ground_truth_pairs.json'), 'r'))
+    test_pairs, queries, corpus = load_synthetic_dataset(data_dir=args.raw_data_dir, split=args.split, normalize=args.normalize, indexed_corpus=args.indexed_corpus)
 
     all_results = [['model_name', 'mrecall@100', 'recall@100', 'mrecall@10', 'recall@10']]
     all_scores = []
@@ -397,105 +321,16 @@ def main(args):
             for max_new_tokens in args.max_new_tokens_list:
                 with torch.no_grad():
                     # Create data loader
-                    if args.data_dir == './data_creation/gaussian/data/linear_large/' or args.data_dir == 'data_creation/gaussian/data/linear_large/' or args.data_dir == 'data_creation/gaussian/data/linear_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear/inf/gaussian_linear_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear/' or args.data_dir == 'data_creation/gaussian/data/linear/':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear/inf/gaussian_linear_{args.split}_dataset_1b_contrastive_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_2048/' or args.data_dir == 'data_creation/gaussian/data/linear_2048/':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear/inf/gaussian_linear_{args.split}_dataset_1b_contrastive_sm_2048/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive{pred_length_labels_str}_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_multi_query_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps_multi_query/inf/gaussian_diverse_mlps_multi_query_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_data':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive{pred_length_labels_str}_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps/inf/gaussian_diverse_mlps_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)                    
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive{pred_length_labels_str}_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_sample_transformation_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps_sample_transformation/inf/gaussian_diverse_mlps_sample_transformation_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large/' or args.data_dir == 'data_creation/gaussian/data/diverse_mlps_ood_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_diverse_mlps_ood/inf/gaussian_diverse_mlps_ood_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_multi_query/inf/gaussian_linear_multi_query_{args.split}_dataset_1b_contrastive_sm{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/linear_multi_query_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_multi_query/inf/gaussian_linear_multi_query_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_sample_transformation/inf/gaussian_linear_sample_transformation_{args.split}_dataset_1b_contrastive_sm{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation_large/' or args.data_dir == 'data_creation/gaussian/data/linear_sample_transformation_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_sample_transformation/inf/gaussian_linear_sample_transformation_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_ood/' or args.data_dir == 'data_creation/gaussian/data/linear_ood/' or args.data_dir == 'data_creation/gaussian/data/linear_ood':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_ood/inf/gaussian_linear_ood_{args.split}_dataset_1b_contrastive{pred_length_labels_str}_sm/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/linear_ood_large/' or args.data_dir == 'data_creation/gaussian/data/linear_ood_large/' or args.data_dir == 'data_creation/gaussian/data/linear_ood_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_linear_ood/inf/gaussian_linear_ood_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_data_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps/inf/gaussian_new_mlps_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_harder_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_harder_data_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_harder_data_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_harder/inf/gaussian_new_mlps_harder_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large':
-                        if args.pred_length:
-                            print('reading from data_creation/gaussian_new_mlps_rotation_5_test_dataset_1b_contrastive_pred_length/')
-                            dataloader = load_input_data(f'data_creation/gaussian_new_mlps_rotation_5_test_dataset_1b_contrastive_pred_length/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)    
-                        else:
-                            dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation/inf/gaussian_new_mlps_rotation_{args.split}_dataset_1b_contrastive/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_large_2/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large_2/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_large_2':
-                        dataloader = load_input_data(f'data_creation/gaussian_new_mlps_rotation_2_test_dataset_1b_contrastive_pred_length/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_normal_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_normal_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_normal_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_normal/inf/gaussian_new_mlps_normal_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_opposite_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_opposite/inf/gaussian_new_mlps_opposite_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_multi_query_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation_multi_query/inf/gaussian_new_mlps_rotation_multi_query_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    elif args.data_dir == './data_creation/gaussian/data/new_mlps_rotation_multi_query_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_ood_large/' or args.data_dir == 'data_creation/gaussian/data/new_mlps_rotation_ood_large':
-                        dataloader = load_input_data(f'training_datasets/llama-1b/gaussian_new_mlps_rotation_ood/inf/gaussian_new_mlps_rotation_ood_{args.split}_dataset_1b_contrastive{pred_length_labels_str}/', use_ground_truth_for_eval=args.use_ground_truth_for_eval)
-                    else:
-                        raise ValueError(f'Invalid data directory: {args.data_dir}')
-
-
-                    if args.use_ground_truth_for_eval:
-                        all_losses = []
-                        i = 0
-                        all_outputs = []
-                        for batch in tqdm(dataloader):
-                            for k, v in batch.items():
-                                if i == 0:
-                                    print(k, v.shape)
-                                batch[k] = v.to(device)
-
-                            output = model(**batch)
-                            all_losses.append(output.loss.item())
-                            all_outputs.append(output.last_hidden_states[:, :max_new_tokens].view(-1, output.last_hidden_states.size(-1)))
-                            i += 1
-                        print('all losses', sum(all_losses) / len(all_losses))
-                        all_outputs = torch.cat(all_outputs, dim=0).cpu().numpy()
-                        print('all outputs', all_outputs.shape)
-                    else:
-                        # # Evaluate model
-                        # data_iter = iter(dataloader)
-
-                        # skip first n batches
-                        # for _ in range(1000):
-                        #     next(data_iter, None)
-                        all_outputs, _, _, all_lengths = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
-                        print('all outputs', all_outputs.shape)
-                        all_outputs = all_outputs
-                        
-                    # target_vectors_list = []
-                    # for i in range(0, len(all_outputs), max_new_tokens):
-                    #     target_vectors_list.append(normalize_np(all_outputs[i:i+max_new_tokens]))
-                    # print('target_vectors_list', len(target_vectors_list))
-                    # print('doing similarity analysis...')
-                    # similarity_analysis(target_vectors_list)
-                    # exit(0)
+                    dataloader = load_input_data(args.embedding_data_dir, use_ground_truth_for_eval=False)
+                    
+                    # run retrieval
+                    all_outputs, _, _, _ = evaluate_loop(dataloader, model, device, max_new_tokens=max_new_tokens, use_gt_q_embed=False, use_eos=False, compute_loss=False)
 
                     # Evaluate Results
                     rankings = evaluate_baseline_with_aggregation(model_path+f'_max_new_tokens_{max_new_tokens}', all_outputs, corpus, pairs_data[args.split], args.k_values, max_new_tokens)
                     results = eval_metrics(rankings, pairs_data[args.split], args.k_values)
                     _, scores = eval_on_each_gt(rankings, test_pairs, args.k_values, _print=True, num_gt=args.num_gt)
                     
-                    print('rankings', rankings.shape)
-                    np.save(os.path.join(model_path, f'max_new_tokens_{max_new_tokens}_rankings.npy'), rankings)
                     all_results.append([model_path+f'_max_new_tokens_{max_new_tokens}', results['mrecall@100'], results['recall@100'], results['mrecall@10'], results['recall@10']])
                     
                     scores[0].append('MRecall')
@@ -510,15 +345,15 @@ def main(args):
     import pandas as pd
     ### Record Results     
     score_results = pd.DataFrame(all_scores)
-    score_results.to_csv('results/gaussian_synthetic_inf/recall_per_gt.csv', index=False)
+    score_results.to_csv('recall_per_gt.csv', index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_paths", type=str, nargs='+', default=['results/gaussian_synthetic_inf/gaussian_contrastive_all_labels_ordered_lr5e-5_temp0.05_batch32_ep30_warmup0.05/'])
     parser.add_argument("--split", type=str, default='train')
-    parser.add_argument("--data_dir", "-d", type=str, default='./data_creation/gaussian/data/opposing_pairs_data_large/')
+    parser.add_argument("--raw_data_dir", "-r", type=str, default='./data_creation/gaussian/data/opposing_pairs_data_large/')
     parser.add_argument("--k_values", type=int, nargs='+', default=[1, 5, 10, 20, 50, 100, 500]) # 10, 20, 50, 100, 200, 500
-    parser.add_argument("--checkpoint_name", "-c", type=str, default='checkpoint_2001')
+    parser.add_argument("--checkpoint_name", "-c", type=str, default='best_model')
     parser.add_argument("--max_new_tokens_list", "-n", type=int, nargs='+', default=[5])
     parser.add_argument("--normalize", action='store_true')
     parser.add_argument("--indexed_corpus", type=str, default=None)
@@ -526,8 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_random_baseline", action='store_true')
     parser.add_argument("--full_finetuning", action='store_true')
     parser.add_argument("--embedding_model_dim", type=int, default=1024)
-    parser.add_argument("--use_ground_truth_for_eval", action='store_true')
-    parser.add_argument("--pred_length", action='store_true')
+    parser.add_argument("--embedding_data_dir", type=str, default='./training_datasets/llama-1b/gaussian_linear/inf/gaussian_linear_train_dataset_1b_contrastive/')
     parser.add_argument("--num_gt", type=int, default=5)
     args = parser.parse_args()
     main(args)

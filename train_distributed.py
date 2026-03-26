@@ -258,7 +258,6 @@ def train(configs):
                 if configs.mix_one_label_shuffled:
                     one_label_batch = next(one_label_train_dataloader)
                     with accelerator.accumulate(model):
-
                         if configs.schedule_sampling:
                             one_label_batch['sampling_rate'] = min(configs.sample_rate_multiplier * total_train_steps / float(configs.total_steps), 0.8)
                         if configs.force_sampling:

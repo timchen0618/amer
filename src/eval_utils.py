@@ -1,10 +1,8 @@
 import json
-from sklearn.metrics import precision_score, recall_score, f1_score
 import regex
 import string
 from tqdm import tqdm
 import unicodedata
-from nltk import word_tokenize
 import numpy as np
 
 def score_recall(preds):
@@ -32,8 +30,6 @@ def score_precision(preds, topk):
     precisions = []
     for inst in preds:
         assert len(inst[0]) >= topk, len(inst[0])
-        # if len(inst[0]) < topk:
-        #     topk = len(inst[0])
         num_perspective_containing_docs = 0
         for j in range(topk):
             contain_any_perspective = False
@@ -147,10 +143,6 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
             gold_question = gold_question.strip('\n').strip()
         assert gold_question == docs_question, (f'Questions do not match: {gold_question} vs {docs_question}', len(gold_question), len(docs_question))
             
-        # valid_answers = process_reference(gold_inst)
-        # print(valid_answers)
-        
-        # for ans in valid_answers:
         if has_gold_id:
             qrel[str(qid)] = {}
             if 'positive_ctxs' in gold_inst:
@@ -228,13 +220,6 @@ def eval_retrieve_docs(retrieved_docs_path, data_path, has_gold_id=False, topk=1
     else:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | MRR: {MRR:.4f}')
         return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR), qrel, run, mrecall_list, recall_list
-    # print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | nDCG: {nDCG:.4f} | mAP: {mAP:.4f}')
-    print('Average number of retrieved documents:', sum(len_docs) / len(len_docs)) 
-    
-    
-
-import pytrec_eval
-import json
 
 def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, topk=100):
     dataset = read_jsonl(data_path)
@@ -251,7 +236,6 @@ def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, top
         q2inst[inst['question_text']] = inst
     
     qid = 0
-    # for gold_inst, docs in zip(dataset, retrieved_docs):
     for docs in retrieved_docs:
         gold_inst = q2inst[docs['question']]
         pred_inst = []
@@ -303,7 +287,6 @@ def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, top
             _mrr /= len(mrr_inst)
         mrrs.append(_mrr)
         
-        # precisions.append(sum([any(doc[pred_str]) for doc in docs[:topk]]) / topk)
     if has_gold_id:
         evaluator = pytrec_eval.RelevanceEvaluator(qrel, {'map', 'ndcg'})
         scores_dict = evaluator.evaluate(run)
@@ -325,47 +308,10 @@ def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, top
     else:
         print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | MRR: {MRR:.4f}')
         return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR)
-    # print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f} | nDCG: {nDCG:.4f} | mAP: {mAP:.4f}')
-    print('Average number of retrieved documents:', sum(len_docs) / len(len_docs)) 
     
-    
-### Evaluating whether repeat input documents
-def eval_retrieve_docs_for_repeats(retrieved_docs_path, data_path, topk=100):
-    dataset = read_jsonl(data_path)
-    tok = SimpleTokenizer()
-    retrieved_docs = read_jsonl(retrieved_docs_path)
-    len_docs = []
-    preds = []
-    
-    for gold_inst, docs in zip(dataset, retrieved_docs):
-        pred_inst = []
-        # valid_answers = process_reference(gold_inst)
-        # print(valid_answers)
-        # for ans in valid_answers:
-        gold_indices = [doc['id'] for doc in gold_inst['input_negative_ctxs']]
 
-        for gold_index in gold_indices:
-            pred_inst.append([])
-            len_docs.append(len(docs['ctxs']))
-            for doc in docs['ctxs'][:topk]:
-                # print(gold_index, doc['id'])
-                pred = gold_index == doc['id']
-                pred_inst[-1].append(pred)
-        
-        preds.append(pred_inst)    
-
-    mrecall_score, mrecall_list = score_mrecall(preds)
-    recall_score, recall_list = score_recall(preds)
-    precision_score = score_precision(preds, topk)
-    print(f'MRecall: {100*mrecall_score:.2f} | Recall: {100*recall_score:.2f} | Precision: {100*precision_score:.2f}')
-    print('Average number of retrieved documents:', sum(len_docs) / len(len_docs)) 
-    return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score)
-
-
-
-from beir import util, LoggingHandler
+from beir import LoggingHandler
 import logging
-import pathlib, os
 import pytrec_eval
 from typing import Optional, List, Dict, Tuple
 

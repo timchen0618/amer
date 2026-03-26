@@ -1,5 +1,4 @@
 import json
-from tqdm import trange
 
 def read_jsonl(filename):  
     data = []

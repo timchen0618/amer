@@ -102,71 +102,6 @@ class ContrastiveLoss(nn.Module):
         loss = loss.mean()
         return loss
     
-
-class ContrastiveLossWoSeq(nn.Module):
-    """
-    Computes the contrastive loss between two batches of sets of vectors.
-    Args:
-        input: Tensor of shape (batch_size, k, d)
-        positive_embeddings: Tensor of shape (batch_size, k, d)
-        negative_embeddings: Tensor of shape (batch_size, k, d)
-    Returns:
-        Scalar tensor: average contrastive loss over the batch
-    """
-    def __init__(self, temperature=0.05, normalize_embeddings=True):
-        super().__init__()
-        self.temperature = temperature
-        self.normalize_embeddings = normalize_embeddings
-        self.ce_loss = nn.CrossEntropyLoss(reduce=False)
-
-
-    def forward(self, outputs, positive_embeddings, negative_embeddings):
-        # normalize the embeddings
-        if self.normalize_embeddings:
-            outputs = F.normalize(outputs, dim=-1)
-            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
-            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
-        
-        # input: (batch_size, k, d)
-        # positive_embeddings: (batch_size, k, d)
-        # negative_embeddings: (batch_size, k, d) 
-                   
-        batch_size, k, d = outputs.shape
-        labels = torch.arange(batch_size * k).long().to(outputs.device)
-        outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
-        positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
-        
-        
-        # handle distributed training
-        var_sizes = dist_utils.get_varsize(all_embeddings)
-        start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
-        labels = labels + start_idx
-        gather_fn = dist_utils.varsize_gather
-        gather_kemb = gather_fn(all_embeddings)
-        
-        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
-        
-        # apply mask to eliminate in-sequence negative losses
-        similarity_mask = torch.ones_like(similarity)
-        for i in range(batch_size):
-            start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
-            start_idx_dim_1 += k*i 
-            start_idx_dim_0 = k*i
-            print('start_idx_dim_0', start_idx_dim_0, 'start_idx_dim_1', start_idx_dim_1, 'k', k)
-            similarity_mask[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
-            for j in range(k):
-                similarity_mask[start_idx_dim_0+j, start_idx_dim_1+j] = 1
-        
-        print('similarity_mask', similarity_mask.shape, similarity_mask[:20,:20])
-        similarity = similarity * similarity_mask
-        
-        loss = self.ce_loss(similarity, labels)
-        loss = loss.mean()
-        return loss
-    
-
 class HungarianContrastiveLoss(nn.Module):
     """
     Computes the contrastive loss between two batches of sets of vectors.
@@ -198,32 +133,19 @@ class HungarianContrastiveLoss(nn.Module):
         # positive_embeddings: (batch_size, k, d)
         # negative_embeddings: (batch_size, k, d)
         batch_size, k, d = outputs.shape
-        # print('outputs', outputs[0,0])
         # labels = torch.arange(batch_size * k).long().to(outputs.device)
         outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
         positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        # print('positive_embeddings', positive_embeddings.shape)
         negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        # print('negative_embeddings', negative_embeddings.shape)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
-        # print('all_embeddings', all_embeddings.shape)
         var_sizes = dist_utils.get_varsize(all_embeddings)
-        # print('var_sizes', var_sizes, dist_utils.get_rank())
         
         # handle distributed training
         gather_fn = dist_utils.varsize_gather
         gather_kemb = gather_fn(all_embeddings)
-        # print('gather_kemb', gather_kemb.shape, dist_utils.get_rank())
-        # gather_kemb = all_embeddings
-        # print('gather_kemb', gather_kemb, dist_utils.get_rank())
-        # print('outputs', outputs, dist_utils.get_rank())
         
         similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
-        # print('similarity', similarity, dist_utils.get_rank())
         similarity = self.log_softmax(similarity)
-        # denominator = torch.sum(torch.exp(similarity), dim=1)  # (batch_size * k)
-        # print('similarity after log softmax', similarity, dist_utils.get_rank())
-        # print('denominator', denominator.shape)
         losses = []
         for i in range(batch_size):
             # print('============================')
@@ -254,89 +176,12 @@ class HungarianContrastiveLoss(nn.Module):
         return torch.stack(losses).mean()
 
 
-
-class HungarianContrastiveLossWoSeq(nn.Module):
-    """
-    Computes the contrastive loss between two batches of sets of vectors.
-    Args:
-        input: Tensor of shape (batch_size, k, d)
-        positive_embeddings: Tensor of shape (batch_size, k, d)
-        negative_embeddings: Tensor of shape (batch_size, k, d)
-    Returns:
-        Scalar tensor: average contrastive loss over the batch
-    """
-    def __init__(self, temperature=0.05, use_eos=False, normalize_embeddings=True):
-        super().__init__()
-        from scipy.optimize import linear_sum_assignment
-        self.linear_sum_assignment = linear_sum_assignment
-        self.temperature = temperature
-        self.ce_loss = nn.CrossEntropyLoss()
-        self.log_softmax = nn.LogSoftmax(dim=1)
-        self.use_eos = use_eos
-        self.normalize_embeddings = normalize_embeddings
-            
-    def forward(self, outputs, positive_embeddings, negative_embeddings):
-        # normalize the embeddings
-        if self.normalize_embeddings:
-            outputs = F.normalize(outputs, dim=-1)
-            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
-            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
-
-        # input: (batch_size, k, d)
-        # positive_embeddings: (batch_size, k, d)
-        # negative_embeddings: (batch_size, k, d)
-        batch_size, k, d = outputs.shape
-        outputs = outputs.view(batch_size * k, d)  # (batch_size * k, d)
-        positive_embeddings = positive_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        negative_embeddings = negative_embeddings.view(batch_size * k, d)  # (batch_size * k, d)
-        all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)  # (2 * batch_size * k, d)
-        var_sizes = dist_utils.get_varsize(all_embeddings)
-        
-        # handle distributed training
-        gather_fn = dist_utils.varsize_gather
-        gather_kemb = gather_fn(all_embeddings)
-        
-        similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)  # (batch_size * k, 2 * batch_size * k * num_gpus)
-        # apply mask to eliminate in-sequence negative losses
-        similarity_mask = torch.ones_like(similarity)
-        for i in range(batch_size):
-            start_idx_dim_1 = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
-            start_idx_dim_1 += k*i 
-            start_idx_dim_0 = k*i
-            similarity_mask[start_idx_dim_0:start_idx_dim_0+k, start_idx_dim_1:start_idx_dim_1+k] = 0
-            for j in range(k):
-                similarity_mask[start_idx_dim_0+j, start_idx_dim_1+j] = 1
-        no_in_seq_similarity = similarity * similarity_mask
-        denominator = torch.logsumexp(no_in_seq_similarity, dim=1)
-        
-        losses = []
-        for i in range(batch_size):
-            start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
-            start_idx += k*i 
-            batch_scores = similarity[k*i:k*(i+1)]
-            cost_matrix = batch_scores[:, start_idx:start_idx+k] - denominator[k*i:k*(i+1)].unsqueeze(1)
-            
-            if self.use_eos:
-                # if use eos, force match the last token to the eos token
-                cost_eos = cost_matrix[-1, -1]
-                cost_matrix = cost_matrix[:-1, :-1]
-            
-            row_ind, col_ind = self.linear_sum_assignment(cost_matrix.detach().cpu().numpy(), maximize=True)
-            costs = cost_matrix[row_ind, col_ind]  # (k, )
-            if self.use_eos:
-                costs = torch.cat([costs, cost_eos.unsqueeze(0)])
-            costs = -(costs)
-            losses.append(costs.mean())
-        return torch.stack(losses).mean()
-
 class EmbeddingModel(nn.Module):
 
     def __init__(
         self,
         base_causallm,
-        # latent_token_id,
         start_latent_id,
-        # end_latent_id,
         eos_token_id,
         embedding_model_dim,
         weight_tying=False,
@@ -351,10 +196,8 @@ class EmbeddingModel(nn.Module):
         super(EmbeddingModel, self).__init__()
         self.gen_forward_cnt = 0
         self.base_causallm = base_causallm
-        # self.latent_token_id = latent_token_id
         self.eos_token_id = eos_token_id
         self.start_latent_id = start_latent_id
-        # self.end_latent_id = end_latent_id
 
         # tested with GPT2 and Llama3
         if isinstance(self.base_causallm, GPT2LMHeadModel):
@@ -368,7 +211,6 @@ class EmbeddingModel(nn.Module):
         self.input_projection = nn.Linear(embedding_model_dim, hidden_size, bias=False).float()
         if weight_tying:
             self.output_projection = nn.Linear(hidden_size, embedding_model_dim, bias=False).float()
-            # Tie weights: output_projection's weight is the transpose of input_projection's weight
             self.output_projection.weight[:] = self.input_projection.weight.transpose(0, 1)[:]
         else:
             self.output_projection = nn.Linear(hidden_size, embedding_model_dim, bias=False).float()
@@ -377,18 +219,13 @@ class EmbeddingModel(nn.Module):
         self.compute_loss_on_q = compute_loss_on_q
         self.use_eos = use_eos
         self.normalize_embeddings = normalize_embeddings
-        print('normalize_embeddings', normalize_embeddings)
 
         if loss_function == 'Hungarian_MSE':
             self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
         elif loss_function == 'Contrastive':
             self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'Contrastive_woseq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'Hungarian_Contrastive':
             self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'Hungarian_Contrastive_woseq':
-            self.loss_fct = HungarianContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
         elif loss_function == 'MSE':
             self.loss_fct = torch.nn.MSELoss()
         else:
@@ -415,21 +252,12 @@ class EmbeddingModel(nn.Module):
             outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
         
-        
-        
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-        
         for i in range(inputs['hidden_states'].size(0)):
-            
             # assign the labels to the hidden states as input
             input_start_for_output = inputs['attention_mask'][i].sum()
             
             # [1, 257, 2048], [1, 3, 2048], [1, 3, 1536]
             output_len = labels[i].size(0)
-            # print('input_start_for_output', input_start_for_output, 'output_len', output_len, 'inputs', inputs['hidden_states'].shape, 'labels', labels.shape)
             inputs['hidden_states'][i][input_start_for_output:input_start_for_output+output_len,:] = self.input_projection(labels[i].float())
             
             # ignore the first token, which is the question representation using embedding model
@@ -453,19 +281,16 @@ class EmbeddingModel(nn.Module):
         del inputs['hidden_states']
         
         outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # hidden_states = outputs.last_hidden_state
         out_hidden_states = outputs.hidden_states[-1]
 
         if has_label:
             if self.extra_q_embed and not self.compute_loss_on_q:
                 labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
             # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
             if len(loss_mask.nonzero().size()) > 2:
                 mask_indices = loss_mask.nonzero().squeeze()
             else:
                 mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
             selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
             # Select only the hidden states where mask is 1
             selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
@@ -484,7 +309,6 @@ class EmbeddingModel(nn.Module):
                 #########################################################
                 positive_embeddings = labels
                 negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
                 if self.use_eos:
                     loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
                     loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
@@ -517,11 +341,6 @@ class EmbeddingModel(nn.Module):
             hidden_states = inputs['hidden_states']
             assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
         
-        # hidden_states torch.Size([1, 39, 2048])
-        # attention_mask torch.Size([1, 39])
-        # question_embeddings torch.Size([1, 1536])
-        
-        # HC Implementation
         next_embs = []
         
         assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
@@ -549,7 +368,6 @@ class EmbeddingModel(nn.Module):
             next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
             next_embs.append(next_emb)
             new_inputs_embeds = torch.cat((inputs['hidden_states'], self.input_projection(self.output_projection(next_emb))), dim=1)  
-            # new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
             max_new_tokens = max_new_tokens - 1
 
         # generate the rest of the tokens
@@ -563,7 +381,6 @@ class EmbeddingModel(nn.Module):
                     print("EOS token generated")
                     break
             next_embs.append(next_emb)
-            # new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
             new_inputs_embeds = torch.cat((new_inputs_embeds, self.input_projection(self.output_projection(next_emb))), dim=1)
         
         out_embs = torch.cat(next_embs, dim=1)
@@ -571,142 +388,6 @@ class EmbeddingModel(nn.Module):
         out_embs = self.output_projection(out_embs)
         return out_embs
       
-
-class EmbeddingModelFixed(EmbeddingModel):
-
-    def __init__(
-        self,
-        base_causallm,
-        # latent_token_id,
-        start_latent_id,
-        # end_latent_id,
-        eos_token_id,
-        embedding_model_dim,
-        weight_tying=False,
-        loss_function='Hungarian_MSE',
-        temperature=0.05,
-        extra_q_embed=False,
-        compute_loss_on_q=False,
-        use_eos=False,
-        normalize_embeddings=True
-    ):
-
-        super(EmbeddingModelFixed, self).__init__(
-            base_causallm=base_causallm,
-            start_latent_id=start_latent_id,
-            eos_token_id=eos_token_id,
-            embedding_model_dim=embedding_model_dim,
-            weight_tying=weight_tying,
-            loss_function=loss_function,
-            temperature=temperature,
-            extra_q_embed=extra_q_embed,
-            compute_loss_on_q=compute_loss_on_q,
-            use_eos=use_eos,
-            normalize_embeddings=normalize_embeddings
-        )
-
-    def forward(self, **inputs):
-        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
-        if has_label:  # the labels could be either used for MSE loss or contrastive loss
-            if 'labels' in inputs:
-                labels = inputs.pop("labels")
-                label_type = 'labels'
-            else:
-                labels = inputs.pop("positive_embeddings")
-                label_type = 'positive_embeddings'
-        
-        assert has_label, "only support training now"
-        loss_mask = inputs['attention_mask'].detach().clone()
-        
-        # get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0].clone()
-        
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-        
-        for i in range(inputs['hidden_states'].size(0)):
-            
-            # assign the labels to the hidden states as input
-            input_start_for_output = inputs['attention_mask'][i].sum()
-            
-            # [1, 257, 2048], [1, 3, 2048], [1, 3, 1536]
-            output_len = labels[i].size(0)
-            # print('input_start_for_output', input_start_for_output, 'output_len', output_len, 'inputs', inputs['hidden_states'].shape, 'labels', labels.shape)
-            inputs['hidden_states'][i][input_start_for_output:input_start_for_output+output_len,:] = self.input_projection(labels[i].float())
-            
-            # ignore the first token, which is the question representation using embedding model
-            if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
-                loss_mask[i,:input_start_for_output] = 0
-            else:
-                loss_mask[i,:input_start_for_output-1] = 0                
-
-            # fill out the loss mask and attention mask
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                loss_mask[i,input_start_for_output:(input_start_for_output+output_len-1)] = 1
-                assert loss_mask[i].sum().item() == (output_len - 1), (loss_mask[i].sum().item(), output_len)
-            else:
-                loss_mask[i,(input_start_for_output-1):(input_start_for_output+output_len-1)] = 1
-                assert loss_mask[i].sum().item() == (output_len), (loss_mask[i].sum().item(), output_len)
-            
-            inputs['attention_mask'][i,input_start_for_output:(input_start_for_output+output_len)] = 1
-            assert inputs['attention_mask'][i].sum().item() == (input_start_for_output + output_len)
-        
-        inputs['inputs_embeds'] = inputs['hidden_states']
-        del inputs['hidden_states']
-        
-        outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # hidden_states = outputs.last_hidden_state
-        out_hidden_states = outputs.hidden_states[-1]
-
-        if has_label:
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
-            # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
-            if len(loss_mask.nonzero().size()) > 2:
-                mask_indices = loss_mask.nonzero().squeeze()
-            else:
-                mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
-            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
-            # Select only the hidden states where mask is 1
-            selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
-            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
-            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
-            
-            if label_type == 'labels':
-                #########################################################
-                # MSE loss
-                #########################################################
-                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            elif label_type == 'positive_embeddings':
-                #########################################################
-                # Contrastive loss
-                #########################################################
-                positive_embeddings = labels
-                negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
-                if self.use_eos:
-                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
-                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
-                    
-                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            else:
-                raise ValueError("No positive embeddings found")
-                
-        else:
-            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
-        
-       
-
 
 class EmbeddingModelSS(EmbeddingModel):
 
@@ -757,10 +438,6 @@ class EmbeddingModelSS(EmbeddingModel):
         else:
             outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
         inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
         
         # assign the labels to the hidden states as input
         inputs['inputs_embeds'] = inputs['hidden_states']
@@ -775,13 +452,7 @@ class EmbeddingModelSS(EmbeddingModel):
         for i in range(labels.size(0)):
             assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
         
-        out_hidden_states = []
-        # for i in range(inputs['inputs_embeds'].size(0)):
-        
-        # # determine the start index for the output
-        # input_start_for_output = inputs['attention_mask'][i].sum()
-        # determine the output length
-        
+        out_hidden_states = []    
         current_input = inputs['inputs_embeds'][:, :input_start_for_output] # (1, input_start_for_output, hidden_size)
         
         # Generate the output tokens
@@ -794,43 +465,29 @@ class EmbeddingModelSS(EmbeddingModel):
             
             # do the sampling 
             use_predicted = (torch.rand(current_input.size(0), 1, 1) < sampling_rate).to(current_input.device)
-            # if random.random() < sampling_rate:
-            #     current_input = torch.cat((current_input, self.input_projection(self.output_projection(next_emb)).unsqueeze(1)), dim=1)
-            # else:
-            #     current_input = torch.cat((current_input, self.input_projection(labels[:, j].float()).unsqueeze(1)), dim=1)
             predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)
             teacher = self.input_projection(labels[:, j].float()).unsqueeze(1)
             next_input = torch.where(use_predicted, predicted, teacher)
-            # print('next_input', next_input.size(), 'predicted', predicted.size(), 'teacher', teacher.size())
             current_input = torch.cat((current_input, next_input), dim=1)
-            # print('current_input', current_input.size())
-            # fill out the loss mask: ignore the first token, which is the question representation using embedding model
         
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
             assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
-            # loss_mask[:,:input_start_for_output-1] = 0
             loss_mask[:,:output_len] = 1
             assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
-        # print('out_hidden_states', out_hidden_states.size())
-        # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # # hidden_states = outputs.last_hidden_state
-        # out_hidden_states = outputs.hidden_states[-1]
 
         if has_label:
             if self.extra_q_embed and not self.compute_loss_on_q:
                 labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
             # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
             if len(loss_mask.nonzero().size()) > 2:
                 mask_indices = loss_mask.nonzero().squeeze()
             else:
                 mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
             selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
             # Select only the hidden states where mask is 1
             selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
@@ -849,7 +506,6 @@ class EmbeddingModelSS(EmbeddingModel):
                 #########################################################
                 positive_embeddings = labels
                 negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
                 if self.use_eos:
                     loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
                     loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
@@ -1145,464 +801,6 @@ class EmbeddingModelSSPredLength(EmbeddingModel):
         out_embs = self.output_projection(out_embs)
         return out_embs
 
-class EmbeddingModelSSAddQ(EmbeddingModel):
-
-    def __init__(
-        self,
-        base_causallm,
-        start_latent_id,
-        eos_token_id,
-        embedding_model_dim,
-        weight_tying=False,
-        loss_function='Hungarian_MSE',
-        temperature=0.05,
-        extra_q_embed=False,
-        compute_loss_on_q=False,
-        use_eos=False,
-        normalize_embeddings=True
-    ):
-        super(EmbeddingModelSSAddQ, self).__init__(
-            base_causallm=base_causallm,
-            start_latent_id=start_latent_id,
-            eos_token_id=eos_token_id,
-            embedding_model_dim=embedding_model_dim,
-            weight_tying=weight_tying,
-            loss_function=loss_function,
-            temperature=temperature,
-            extra_q_embed=extra_q_embed,
-            compute_loss_on_q=compute_loss_on_q,
-            use_eos=use_eos,
-            normalize_embeddings=normalize_embeddings
-        )
-        self.input_projection = nn.Linear(2*embedding_model_dim, self.base_causallm.config.hidden_size, bias=False).float()
-
-    def forward(self, **inputs):
-        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
-        if has_label:  # the labels could be either used for MSE loss or contrastive loss
-            if 'labels' in inputs:
-                labels = inputs.pop("labels")
-                label_type = 'labels'
-            else:
-                labels = inputs.pop("positive_embeddings")
-                label_type = 'positive_embeddings'
-        
-        assert has_label, "only support training now"
-        loss_mask = inputs['attention_mask'].detach().clone()
-        
-        # get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(torch.cat((inputs['inputs_embeds'], inputs['inputs_embeds']), dim=-1)), attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
-        
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-        
-        # assign the labels to the hidden states as input
-        inputs['inputs_embeds'] = inputs['hidden_states']
-        del inputs['hidden_states']
-        
-        ## Use Generation Instead of Forward Pass
-        sampling_rate = inputs['sampling_rate']
-        input_start_for_output = inputs['attention_mask'][0].sum()
-        for i in range(inputs['attention_mask'].size(0)):
-            assert inputs['attention_mask'][i].sum() == input_start_for_output, (inputs['attention_mask'][i].sum(), input_start_for_output)
-        output_len = labels[0].size(0)
-        for i in range(labels.size(0)):
-            assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
-        
-        out_hidden_states = []
-        # for i in range(inputs['inputs_embeds'].size(0)):
-        
-        # # determine the start index for the output
-        # input_start_for_output = inputs['attention_mask'][i].sum()
-        # determine the output length
-        
-        current_input = inputs['inputs_embeds'][:, :input_start_for_output] # (1, input_start_for_output, hidden_size)
-        query_representation = self.output_projection(outputs.hidden_states[-1][:, input_start_for_output-1, :]).unsqueeze(1)
-        # Generate the output tokens
-        all_outputs = []
-        for j in range(output_len):
-            # Generate the next token
-            outputs = self.base_causallm(inputs_embeds=current_input, output_hidden_states=True)
-            next_emb = outputs.hidden_states[-1][:, input_start_for_output+j-1, :] # (batch_size, hidden_size)
-            all_outputs.append(next_emb.unsqueeze(1))
-            
-            # do the sampling 
-            use_predicted = (torch.rand(current_input.size(0), 1, 1) < sampling_rate).to(current_input.device)
-
-            predicted = self.output_projection(next_emb).unsqueeze(1)
-            teacher = labels[:, j].float().unsqueeze(1)
-            model_input = torch.where(use_predicted, predicted, teacher)
-            next_input = self.input_projection(torch.cat((model_input, query_representation), dim=-1))
-            # print('next_input', next_input.size(), 'predicted', predicted.size(), 'teacher', teacher.size())
-            current_input = torch.cat((current_input, next_input), dim=1)
-            # print('current_input', current_input.size())
-            # fill out the loss mask: ignore the first token, which is the question representation using embedding model
-        
-        if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
-            loss_mask[:,:1] = 0
-            loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
-        else:
-            # loss_mask[:,:input_start_for_output-1] = 0
-            loss_mask[:,:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
-                
-        out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
-        # print('out_hidden_states', out_hidden_states.size())
-        # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # # hidden_states = outputs.last_hidden_state
-        # out_hidden_states = outputs.hidden_states[-1]
-
-        if has_label:
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
-            # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
-            if len(loss_mask.nonzero().size()) > 2:
-                mask_indices = loss_mask.nonzero().squeeze()
-            else:
-                mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
-            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
-            # Select only the hidden states where mask is 1
-            selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
-            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
-            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
-            
-            if label_type == 'labels':
-                #########################################################
-                # MSE loss
-                #########################################################
-                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            elif label_type == 'positive_embeddings':
-                #########################################################
-                # Contrastive loss
-                #########################################################
-                positive_embeddings = labels
-                negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
-                if self.use_eos:
-                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
-                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
-                    
-                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            else:
-                raise ValueError("No positive embeddings found")
-                
-        else:
-            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
- 
- 
-    def generate(
-        self,
-        max_new_tokens=16, 
-        use_gt_q_embed=False,
-        use_eos=False,
-        **inputs
-    ):
-        self.gen_forward_cnt = 0
-        if 'input_ids' in inputs:
-            input_ids = inputs['input_ids']
-            assert input_ids.shape[0] == 1, "only support batch_size == 1 now"
-        elif 'inputs_embeds' in inputs:
-            inputs_embeds = inputs['inputs_embeds']
-            assert inputs_embeds.shape[0] == 1, "only support batch_size == 1 now"
-        else:
-            hidden_states = inputs['hidden_states']
-            assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
-        
-        # hidden_states torch.Size([1, 39, 2048])
-        # attention_mask torch.Size([1, 39])
-        # question_embeddings torch.Size([1, 1536])
-        
-        next_embs = []
-        
-        assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
-        if 'input_ids' in inputs:
-            assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
-        else:
-            assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
-        
-        # predict the first pass; also get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(torch.cat((inputs['inputs_embeds'], inputs['inputs_embeds']), dim=-1).float()), output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0]
-        
-        query_representation = None
-        if use_gt_q_embed: # use the ground truth question embeddings; the first step doesn't count, generate the rest of the tokens
-            question_embeddings = self.input_projection(inputs['question_embeddings'])  
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], question_embeddings.unsqueeze(1)), dim=1)
-        else:              # do not use the ground truth question embeddings; the first step counts, generate the rest of the tokens
-            if max_new_tokens == 1:  # only predict the question embeddings
-                out_embs = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-                return self.output_projection(out_embs)
-            
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            next_embs.append(next_emb)
-            query_representation = self.output_projection(next_emb)
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], self.input_projection(torch.cat((query_representation, query_representation), dim=-1))), dim=1)  
-            # new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
-            max_new_tokens = max_new_tokens - 1
-
-        # generate the rest of the tokens
-        for _ in range(max_new_tokens):
-            outputs = self.base_causallm(inputs_embeds=new_inputs_embeds, output_hidden_states=True)
-            self.gen_forward_cnt += 1
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            if use_eos:
-                print("next_emb", next_emb.shape, (next_emb - 0.5).abs().mean(), next_emb)
-                if (next_emb - 0.5).abs().mean() < 1e-4:
-                    print("EOS token generated")
-                    break
-            next_embs.append(next_emb)
-            # new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
-            new_inputs_embeds = torch.cat((new_inputs_embeds, self.input_projection(torch.cat((self.output_projection(next_emb), query_representation), dim=-1))), dim=1)
-        
-        out_embs = torch.cat(next_embs, dim=1)
-        
-        out_embs = self.output_projection(out_embs)
-        return out_embs
-        
-
-
-class EmbeddingModelSSAvgQ(EmbeddingModel):
-
-    def __init__(
-        self,
-        base_causallm,
-        start_latent_id,
-        eos_token_id,
-        embedding_model_dim,
-        weight_tying=False,
-        loss_function='Hungarian_MSE',
-        temperature=0.05,
-        extra_q_embed=False,
-        compute_loss_on_q=False,
-        use_eos=False,
-        normalize_embeddings=True
-    ):
-        super(EmbeddingModelSSAvgQ, self).__init__(
-            base_causallm=base_causallm,
-            start_latent_id=start_latent_id,
-            eos_token_id=eos_token_id,
-            embedding_model_dim=embedding_model_dim,
-            weight_tying=weight_tying,
-            loss_function=loss_function,
-            temperature=temperature,
-            extra_q_embed=extra_q_embed,
-            compute_loss_on_q=compute_loss_on_q,
-            use_eos=use_eos,
-            normalize_embeddings=normalize_embeddings
-        )
-
-    def forward(self, **inputs):
-        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
-        if has_label:  # the labels could be either used for MSE loss or contrastive loss
-            if 'labels' in inputs:
-                labels = inputs.pop("labels")
-                label_type = 'labels'
-            else:
-                labels = inputs.pop("positive_embeddings")
-                label_type = 'positive_embeddings'
-        
-        assert has_label, "only support training now"
-        loss_mask = inputs['attention_mask'].detach().clone()
-        
-        # get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-        
-        # assign the labels to the hidden states as input
-        inputs['inputs_embeds'] = inputs['hidden_states']
-        del inputs['hidden_states']
-        
-        ## Use Generation Instead of Forward Pass
-        sampling_rate = inputs['sampling_rate']
-        input_start_for_output = inputs['attention_mask'][0].sum()
-        for i in range(inputs['attention_mask'].size(0)):
-            assert inputs['attention_mask'][i].sum() == input_start_for_output, (inputs['attention_mask'][i].sum(), input_start_for_output)
-        output_len = labels[0].size(0)
-        for i in range(labels.size(0)):
-            assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
-        
-        out_hidden_states = []
-        # for i in range(inputs['inputs_embeds'].size(0)):
-        
-        # # determine the start index for the output
-        # input_start_for_output = inputs['attention_mask'][i].sum()
-        # determine the output length
-        
-        current_input = inputs['inputs_embeds'][:, :input_start_for_output] # (1, input_start_for_output, hidden_size)
-        query_representation = self.input_projection(self.output_projection(outputs.hidden_states[-1][:, input_start_for_output-1, :])).unsqueeze(1)
-        # Generate the output tokens
-        all_outputs = []
-        for j in range(output_len):
-            # Generate the next token
-            outputs = self.base_causallm(inputs_embeds=current_input, output_hidden_states=True)
-            next_emb = outputs.hidden_states[-1][:, input_start_for_output+j-1, :] # (batch_size, hidden_size)
-            all_outputs.append(next_emb.unsqueeze(1))
-            
-            # do the sampling 
-            use_predicted = (torch.rand(current_input.size(0), 1, 1) < sampling_rate).to(current_input.device)
-            # if random.random() < sampling_rate:
-            #     current_input = torch.cat((current_input, self.input_projection(self.output_projection(next_emb)).unsqueeze(1)), dim=1)
-            # else:
-            #     current_input = torch.cat((current_input, self.input_projection(labels[:, j].float()).unsqueeze(1)), dim=1)
-            predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)
-            teacher = self.input_projection(labels[:, j].float()).unsqueeze(1)
-            next_input = torch.where(use_predicted, predicted, teacher)
-            # print('next_input', next_input.size(), 'predicted', predicted.size(), 'teacher', teacher.size())
-            current_input = torch.cat((current_input, (next_input+query_representation)/2), dim=1)
-            # print('current_input', current_input.size())
-            # fill out the loss mask: ignore the first token, which is the question representation using embedding model
-        
-        if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
-            loss_mask[:,:1] = 0
-            loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
-        else:
-            # loss_mask[:,:input_start_for_output-1] = 0
-            loss_mask[:,:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
-                
-        out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
-        # print('out_hidden_states', out_hidden_states.size())
-        # outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # # hidden_states = outputs.last_hidden_state
-        # out_hidden_states = outputs.hidden_states[-1]
-
-        if has_label:
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
-            # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
-            if len(loss_mask.nonzero().size()) > 2:
-                mask_indices = loss_mask.nonzero().squeeze()
-            else:
-                mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
-            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
-            # Select only the hidden states where mask is 1
-            selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
-            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
-            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
-            
-            if label_type == 'labels':
-                #########################################################
-                # MSE loss
-                #########################################################
-                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            elif label_type == 'positive_embeddings':
-                #########################################################
-                # Contrastive loss
-                #########################################################
-                positive_embeddings = labels
-                negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
-                if self.use_eos:
-                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
-                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
-                    
-                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            else:
-                raise ValueError("No positive embeddings found")
-                
-        else:
-            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
-        
-    def generate(
-        self,
-        max_new_tokens=16, 
-        use_gt_q_embed=False,
-        use_eos=False,
-        **inputs
-    ):
-        self.gen_forward_cnt = 0
-        if 'input_ids' in inputs:
-            input_ids = inputs['input_ids']
-            assert input_ids.shape[0] == 1, "only support batch_size == 1 now"
-        elif 'inputs_embeds' in inputs:
-            inputs_embeds = inputs['inputs_embeds']
-            assert inputs_embeds.shape[0] == 1, "only support batch_size == 1 now"
-        else:
-            hidden_states = inputs['hidden_states']
-            assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
-        
-        # hidden_states torch.Size([1, 39, 2048])
-        # attention_mask torch.Size([1, 39])
-        # question_embeddings torch.Size([1, 1536])
-        
-        # HC Implementation
-        next_embs = []
-        
-        assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
-        if 'input_ids' in inputs:
-            assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
-        else:
-            assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
-        
-        # predict the first pass; also get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds'].float()), output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0]
-        
-        query_representation = None
-        if use_gt_q_embed: # use the ground truth question embeddings; the first step doesn't count, generate the rest of the tokens
-            question_embeddings = self.input_projection(inputs['question_embeddings'])  
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], question_embeddings.unsqueeze(1)), dim=1)
-        else:              # do not use the ground truth question embeddings; the first step counts, generate the rest of the tokens
-            if max_new_tokens == 1:  # only predict the question embeddings
-                out_embs = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-                return self.output_projection(out_embs)
-            
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            next_embs.append(next_emb)
-            
-            query_representation = self.input_projection(self.output_projection(next_emb))
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], query_representation), dim=1)  
-            # new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
-            max_new_tokens = max_new_tokens - 1
-
-        # generate the rest of the tokens
-        for _ in range(max_new_tokens):
-            outputs = self.base_causallm(inputs_embeds=new_inputs_embeds, output_hidden_states=True)
-            self.gen_forward_cnt += 1
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            if use_eos:
-                print("next_emb", next_emb.shape, (next_emb - 0.5).abs().mean(), next_emb)
-                if (next_emb - 0.5).abs().mean() < 1e-4:
-                    print("EOS token generated")
-                    break
-            next_embs.append(next_emb)
-            # new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
-            new_inputs_embeds = torch.cat((new_inputs_embeds, (self.input_projection(self.output_projection(next_emb))+query_representation)/2), dim=1)
-        
-        out_embs = torch.cat(next_embs, dim=1)
-        
-        out_embs = self.output_projection(out_embs)
-        return out_embs
-  
-  
 class EmbeddingModelSSVariable(EmbeddingModel):
 
     def __init__(
@@ -1819,27 +1017,15 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
         output_len = labels[0].size(0)
         for i in range(labels.size(0)):
             assert labels[i].size(0) == output_len, (labels[i].size(0), output_len)
-            
-        # print('inputs position ids', inputs['position_ids'][:3].tolist())
-        # print('inputs attention mask', inputs['attention_mask'][:3].tolist())
-        # print('inputs inputs embeds', inputs['input_ids'][:3, -20:])
         # get the input embeddings from the base causal language model
         if 'input_ids' in inputs:
             outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], position_ids=inputs['position_ids'], output_hidden_states=True)
         else:
             outputs = self.base_causallm(inputs_embeds=self.input_projection(inputs['inputs_embeds']), attention_mask=inputs['attention_mask'], position_ids=inputs['position_ids'], output_hidden_states=True)
-        # inputs['hidden_states'] = outputs.hidden_states[0].clone()
         input_start_for_output = inputs['attention_mask'].sum(dim=1).max()
         assert inputs['attention_mask'][:, input_start_for_output:].sum().item() == 0, (inputs['attention_mask'][:, input_start_for_output:].sum().item(), input_start_for_output)
         
         current_input = outputs.hidden_states[0][:, :input_start_for_output, :]
-        # current_input = outputs.hidden_states[0][:, :input_start_for_output, :].clone().detach()
-        
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-
         
         ## Use Generation Instead of Forward Pass
         sampling_rate = inputs['sampling_rate']
@@ -1858,19 +1044,12 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
             predicted = self.input_projection(self.output_projection(next_emb)).unsqueeze(1)                                # (batch_size, 1, hidden_size)
             teacher = self.input_projection(labels[:, j].float()).unsqueeze(1)
             next_input = torch.where(use_predicted, predicted, teacher)
-            # all_inputs_embeds[:, input_start_for_output+j, :] = next_input.squeeze(1)
-            # print('all_inputs_embeds', all_inputs_embeds.size())
             current_input = torch.cat((current_input, next_input), dim=1)
-            
-            
+  
             ## update the position ids & attention mask
             inputs['position_ids'][:, input_start_for_output+j:] = inputs['position_ids'][:, input_start_for_output+j:] + 1
             inputs['attention_mask'][:, input_start_for_output+j] = 1
-
             
-            
-        # print('current_input', current_input.size())
-        
         # fill out the loss mask: ignore the first token, which is the question representation using embedding model
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
@@ -1883,19 +1062,15 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
             assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
         
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
-        # print('out_hidden_states', out_hidden_states.size(), 'loss_mask', loss_mask)
-        
 
         if has_label:
             if self.extra_q_embed and not self.compute_loss_on_q:
                 labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
             # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
             if len(loss_mask.nonzero().size()) > 2:
                 mask_indices = loss_mask.nonzero().squeeze()
             else:
                 mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
             selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
             # Select only the hidden states where mask is 1
             selected_outputs_embeddings = self.output_projection(selected_out_hidden_states).contiguous()
@@ -1914,7 +1089,6 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
                 #########################################################
                 positive_embeddings = labels
                 negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
                 if self.use_eos:
                     loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
                     loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
@@ -2395,235 +1569,6 @@ class EmbeddingModelSSVariableLeftPadPredLength(EmbeddingModel):
         out_embs = self.output_projection(out_embs)
         return out_embs
 
-class EmbeddingModelNoLinear(nn.Module):
-
-    def __init__(
-        self,
-        base_causallm,
-        # latent_token_id,
-        start_latent_id,
-        # end_latent_id,
-        eos_token_id,
-        embedding_model_dim,
-        weight_tying=False,
-        loss_function='Hungarian_MSE',
-        temperature=0.05,
-        extra_q_embed=False,
-        compute_loss_on_q=False,
-        use_eos=False,
-        normalize_embeddings=True
-    ):
-
-        super(EmbeddingModelNoLinear, self).__init__()
-        self.gen_forward_cnt = 0
-        self.base_causallm = base_causallm
-        # self.latent_token_id = latent_token_id
-        self.eos_token_id = eos_token_id
-        self.start_latent_id = start_latent_id
-        # self.end_latent_id = end_latent_id
-
-        # tested with GPT2 and Llama3
-        if isinstance(self.base_causallm, GPT2LMHeadModel):
-            self.embedding = self.base_causallm.transformer.get_input_embeddings()
-        else:
-            self.embedding = self.base_causallm.get_input_embeddings()
-            
-        hidden_size = self.base_causallm.config.hidden_size
-        self.embedding_model_dim = embedding_model_dim
-        self.weight_tying = weight_tying
-            
-        self.extra_q_embed = extra_q_embed
-        self.compute_loss_on_q = compute_loss_on_q
-        self.use_eos = use_eos
-        self.normalize_embeddings = normalize_embeddings
-        print('normalize_embeddings', normalize_embeddings)
-
-        if loss_function == 'Hungarian_MSE':
-            self.loss_fct = HungarianMSELoss(force_match_first=self.extra_q_embed and self.compute_loss_on_q)
-        elif loss_function == 'Contrastive':
-            self.loss_fct = ContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'Contrastive_wo_seq':
-            self.loss_fct = ContrastiveLossWoSeq(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'Hungarian_Contrastive':
-            self.loss_fct = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
-        elif loss_function == 'MSE':
-            self.loss_fct = torch.nn.MSELoss()
-        else:
-            raise ValueError(f"Loss function {loss_function} not supported")
-        self.mse_loss = torch.nn.MSELoss()
-
-    def forward(self, **inputs):
-        has_label = 'labels' in inputs or 'positive_embeddings' in inputs
-        if has_label:  # the labels could be either used for MSE loss or contrastive loss
-            if 'labels' in inputs:
-                labels = inputs.pop("labels")
-                label_type = 'labels'
-            else:
-                labels = inputs.pop("positive_embeddings")
-                label_type = 'positive_embeddings'
-        
-        assert has_label, "only support training now"
-        loss_mask = inputs['attention_mask'].detach().clone()
-        
-        # get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0].clone().detach()
-        
-        
-        
-        # print('hidden_states', inputs['hidden_states'].size())  # [1, 257, dim]
-        # print(inputs['attention_mask'].size()) # [1, 257]
-        # print(loss_mask.size()) # [1, 257]
-        # print(labels.size()) # [1, 257]
-        
-        for i in range(inputs['hidden_states'].size(0)):
-            
-            # assign the labels to the hidden states as input
-            input_start_for_output = inputs['attention_mask'][i].sum()
-            
-            # [1, 257, 2048], [1, 3, 2048], [1, 3, 1536]
-            output_len = labels[i].size(0)
-            inputs['hidden_states'][i][input_start_for_output:input_start_for_output+output_len,:] = labels[i].float()
-            
-            # ignore the first token, which is the question representation using embedding model
-            if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
-                loss_mask[i,:input_start_for_output] = 0
-            else:
-                loss_mask[i,:input_start_for_output-1] = 0                
-
-            # fill out the loss mask and attention mask
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                loss_mask[i,input_start_for_output:(input_start_for_output+output_len-1)] = 1
-                assert loss_mask[i].sum().item() == (output_len - 1), (loss_mask[i].sum().item(), output_len)
-            else:
-                loss_mask[i,(input_start_for_output-1):(input_start_for_output+output_len-1)] = 1
-                assert loss_mask[i].sum().item() == (output_len), (loss_mask[i].sum().item(), output_len)
-            
-            inputs['attention_mask'][i,input_start_for_output:(input_start_for_output+output_len)] = 1
-            assert inputs['attention_mask'][i].sum().item() == (input_start_for_output + output_len)
-        
-        inputs['inputs_embeds'] = inputs['hidden_states']
-        del inputs['hidden_states']
-        
-        outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        # hidden_states = outputs.last_hidden_state
-        out_hidden_states = outputs.hidden_states[-1]
-
-        if has_label:
-            if self.extra_q_embed and not self.compute_loss_on_q:
-                labels = labels[:,1:,:] # only takes the outputs tokens, ignoring the first token (which is the question representation using embedding model)
-            # Get indices where loss_mask is 1
-            # mask_indices = loss_mask.nonzero().squeeze()
-            if len(loss_mask.nonzero().size()) > 2:
-                mask_indices = loss_mask.nonzero().squeeze()
-            else:
-                mask_indices = loss_mask.nonzero()
-            # print(mask_indices.size(), mask_indices)
-            selected_out_hidden_states = out_hidden_states[mask_indices[:, 0], mask_indices[:, 1]]
-            # Select only the hidden states where mask is 1
-            selected_outputs_embeddings = selected_out_hidden_states.contiguous()
-            selected_outputs_embeddings = selected_outputs_embeddings.view(labels.size(0), labels.size(1), -1)  # (batch_size, length, embedding_dim)
-            assert selected_outputs_embeddings.size() == labels.size(), (selected_outputs_embeddings.size(), labels.size())
-            
-            if label_type == 'labels':
-                #########################################################
-                # MSE loss
-                #########################################################
-                loss = self.loss_fct(selected_outputs_embeddings, labels.float())
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            elif label_type == 'positive_embeddings':
-                #########################################################
-                # Contrastive loss
-                #########################################################
-                positive_embeddings = labels
-                negative_embeddings = inputs.pop("negative_embeddings")
-                # print('selected_outputs_embeddings', selected_outputs_embeddings.shape, 'positive_embeddings', positive_embeddings.shape, 'negative_embeddings', negative_embeddings.shape)
-                if self.use_eos:
-                    loss = self.loss_fct(selected_outputs_embeddings[:, :-1, :], positive_embeddings[:, :-1, :], negative_embeddings[:, :-1, :])
-                    loss += ((selected_outputs_embeddings[:, -1, :] - 0.5)**2).mean()
-                    
-                loss = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-                return Outputs(loss=loss, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=labels)
-            else:
-                raise ValueError("No positive embeddings found")
-                
-        else:
-            return Outputs(loss=None, inputs_embeds=inputs['inputs_embeds'], last_hidden_states=selected_outputs_embeddings, labels=None)
-
-    def generate(
-        self,
-        max_new_tokens=16, 
-        use_gt_q_embed=False,
-        use_eos=False,
-        **inputs
-    ):
-        self.gen_forward_cnt = 0
-        if 'input_ids' in inputs:
-            input_ids = inputs['input_ids']
-            assert input_ids.shape[0] == 1, "only support batch_size == 1 now"
-        elif 'inputs_embeds' in inputs:
-            inputs_embeds = inputs['inputs_embeds']
-            assert inputs_embeds.shape[0] == 1, "only support batch_size == 1 now"
-        else:
-            hidden_states = inputs['hidden_states']
-            assert hidden_states.shape[0] == 1, "only support batch_size == 1 now"
-        
-        # hidden_states torch.Size([1, 39, 2048])
-        # attention_mask torch.Size([1, 39])
-        # question_embeddings torch.Size([1, 1536])
-        
-        # HC Implementation
-        next_embs = []
-        
-        assert 'input_ids' in inputs or 'inputs_embeds' in inputs, "only support input_ids or inputs_embeds now"
-        if 'input_ids' in inputs:
-            assert inputs['input_ids'].size(1) == inputs['attention_mask'].sum(), (inputs['input_ids'].size(1), inputs['attention_mask'].sum())
-        else:
-            assert inputs['inputs_embeds'].size(1) == inputs['attention_mask'].sum(), (inputs['inputs_embeds'].size(1), inputs['attention_mask'].sum())
-        
-        # predict the first pass; also get the input embeddings from the base causal language model
-        if 'input_ids' in inputs:
-            outputs = self.base_causallm(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'], output_hidden_states=True)
-        else:
-            outputs = self.base_causallm(inputs_embeds=inputs['inputs_embeds'].float(), output_hidden_states=True)
-        inputs['hidden_states'] = outputs.hidden_states[0]
-        
-        
-        if use_gt_q_embed: # use the ground truth question embeddings; the first step doesn't count, generate the rest of the tokens
-            question_embeddings = inputs['question_embeddings']  
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], question_embeddings.unsqueeze(1)), dim=1)
-        else:              # do not use the ground truth question embeddings; the first step counts, generate the rest of the tokens
-            if max_new_tokens == 1:  # only predict the question embeddings
-                out_embs = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-                return out_embs
-            
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            next_embs.append(next_emb)
-            new_inputs_embeds = torch.cat((inputs['hidden_states'], next_emb), dim=1)  
-            max_new_tokens = max_new_tokens - 1
-
-        # generate the rest of the tokens
-        for _ in range(max_new_tokens):
-            outputs = self.base_causallm(inputs_embeds=new_inputs_embeds, output_hidden_states=True)
-            self.gen_forward_cnt += 1
-            next_emb = outputs.hidden_states[-1][:, -1, :].unsqueeze(1)
-            if use_eos:
-                print("next_emb", next_emb.shape, (next_emb - 0.5).abs().mean(), next_emb)
-                if (next_emb - 0.5).abs().mean() < 1e-4:
-                    print("EOS token generated")
-                    break
-            next_embs.append(next_emb)
-            new_inputs_embeds = torch.cat((new_inputs_embeds, next_emb), dim=1)
-        
-        out_embs = torch.cat(next_embs, dim=1)
-        
-        return out_embs
-    
-
-
 
 class EmbeddingModelDual(nn.Module):
 
@@ -2932,11 +1877,11 @@ def load_model(train_lora, base_model_id, adapter_path, linear_checkpoint_path, 
             print('=======')
             print(f"loading adapter from {adapter_path}")
             model = PeftModel.from_pretrained(base_model, adapter_path, is_trainable=True)
-            # model.print_trainable_parameters()
-            # for param in model.parameters():
-            #     param.requires_grad = True
-            # print('setting all parameters to trainable')
-            # model.print_trainable_parameters()
+            model.print_trainable_parameters()
+            for param in model.parameters():
+                param.requires_grad = True
+            print('setting all parameters to trainable')
+            model.print_trainable_parameters()
         else:
             print("load base model")
             model = base_model
@@ -2989,16 +1934,13 @@ from collections import OrderedDict
 def save_model_distributed(model, save_dir, step, eval_loss, accelerator, logger, save_best_model=False):
     # Save the base causal language model
     state_dict = accelerator.get_state_dict(model)
-    if not isinstance(model, EmbeddingModelNoLinear):
-        if accelerator.is_main_process:
-            linear_layers = {
-                'input_projection': OrderedDict({'weight': state_dict['input_projection.weight']}),
-                'output_projection': OrderedDict({'weight': state_dict['output_projection.weight']}),
-                'step': step,
-                'loss': eval_loss
-            }
-        else:
-            linear_layers = None
+    if accelerator.is_main_process:
+        linear_layers = {
+            'input_projection': OrderedDict({'weight': state_dict['input_projection.weight']}),
+            'output_projection': OrderedDict({'weight': state_dict['output_projection.weight']}),
+            'step': step,
+            'loss': eval_loss
+        }
     else:
         linear_layers = None
     
@@ -3027,8 +1969,6 @@ def save_model_distributed(model, save_dir, step, eval_loss, accelerator, logger
         else:
             accelerator.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
         logger.info(f"saving model.", step=(step), process_index=accelerator.process_index)
-    # accelerator.save_model(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
-    # accelerator.save_model(model.input_projection, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
     
     
 def save_model_single(model, save_dir, step, eval_loss, logger, save_best_model=False):
@@ -3039,16 +1979,14 @@ def save_model_single(model, save_dir, step, eval_loss, logger, save_best_model=
         model.base_causallm.save_pretrained(os.path.join(save_dir, f"checkpoint_{step}"), safe_serialization=True)
     
     # Save the linear layers
-    # print(model.input_projection.state_dict())
-    if not isinstance(model, EmbeddingModelNoLinear):
-        linear_layers = {
-            'input_projection': model.input_projection.state_dict(),
-            'output_projection': model.output_projection.state_dict(),
-            'step': step,
-            'loss': eval_loss
-        }
-        if save_best_model:
-            torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
-        else:
-            torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
+    linear_layers = {
+        'input_projection': model.input_projection.state_dict(),
+        'output_projection': model.output_projection.state_dict(),
+        'step': step,
+        'loss': eval_loss
+    }
+    if save_best_model:
+        torch.save(linear_layers, os.path.join(save_dir, f"best_model_linear.pt"))
+    else:
+        torch.save(linear_layers, os.path.join(save_dir, f"checkpoint_{step}_linear.pt"))
     logger.info(f"saving model.", step=(step))

@@ -31,10 +31,9 @@ class DocSimilarity:
             print('!=self.num_docs', len(documents))
 
         self.saved_similarities.append(np.zeros((self.num_docs, self.num_docs)))
-        # all_vecs = self.model.encode(documents, to_numpy=False)
         
-        query_embeddings = self.model.encode(documents, batch_size=4)
-        doc_embeddings = self.model.encode(documents, batch_size=4)
+        query_embeddings = self.model.encode(documents)
+        doc_embeddings = self.model.encode(documents)
         # (2, 1024) (2, 1024)
 
         similarities = util.cos_sim(query_embeddings, doc_embeddings)
@@ -56,7 +55,7 @@ def main(args):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    project_dir = '/scratch/hc3337/projects/autoregressive'
+    project_dir = '/path/to/project'
     if args.base_retriever == 'inf':
         # base
         rootdir = f'{project_dir}/results/base_retrievers/inf/'
@@ -131,28 +130,37 @@ def main(args):
         _num = args.base_retriever.split('_')[-1]
         rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/{base_model}_multi_sampling_{_num}'
         data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
+    
+    elif args.base_retriever in ['llama-1b_qampari', 'llama-3b_qampari', 'llama-8b_qampari', 'qwen3-4b_qampari']:
+        base_model = args.base_retriever.split('_')[0]
+        rootdir = f'{project_dir}/results/{base_model}/qampari_inf/single'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_1']
+    elif args.base_retriever in ['llama-1b_ambignq', 'llama-3b_ambignq', 'llama-8b_ambignq', 'qwen3-4b_ambignq']:
+        base_model = args.base_retriever.split('_')[0]
+        rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/single'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_1']
+    elif args.base_retriever in ['llama-1b_qampari_multi', 'llama-3b_qampari_multi', 'llama-8b_qampari_multi', 'qwen3-4b_qampari_multi']:
+        base_model = args.base_retriever.split('_')[0]
+        rootdir = f'{project_dir}/results/{base_model}/qampari_inf/multi'
+        data_types = ['retrieval_out_dev_qampari_5_to_8_max_new_tokens_5']
+    elif args.base_retriever in ['llama-1b_ambignq_multi', 'llama-3b_ambignq_multi', 'llama-8b_ambignq_multi', 'qwen3-4b_ambignq_multi']:
+        base_model = args.base_retriever.split('_')[0]
+        rootdir = f'{project_dir}/results/{base_model}/ambiguous_qe_inf/multi'
+        data_types = ['retrieval_out_dev_ambiguous_qe_max_new_tokens_2']
     else:
         raise ValueError(f"Invalid base retriever: {args.base_retriever}")
+    
     
     doc_sim = DocSimilarity(model, tokenizer, device, args)
 
     for data_type in data_types:
         retrieval_results = read_jsonl(f'{rootdir}/{data_type}.jsonl')
-        for ret_inst in tqdm(retrieval_results):
+        for ret_inst in retrieval_results:
             doc_sim.similarity([doc['text'] + ' ' + doc['title'] if 'title' in doc else doc['text'] for doc in ret_inst['ctxs'][:args.num_docs]])
         
         doc_sim.saved_similarities = [sim.reshape(-1, sim.shape[1], sim.shape[1]) for sim in doc_sim.saved_similarities]
         similarities = np.concatenate(doc_sim.saved_similarities, axis=0)
-        print(similarities.shape)
-        
-        # for i in range(similarities.shape[0]):
-        #     for j in range(similarities.shape[1]-1):
-        #         for k in range(j+1, similarities.shape[1]):
-                    # assert similarities[i, j, k] == similarities[i, k, j]
-                    # _sim = (similarities[i, k, j] + similarities[i, j, k]) / 2
-                    # similarities[i, j, k] = _sim
-                    # similarities[i, k, j] = _sim
-                    
+        print(similarities.shape) 
         
         np.save(f'{rootdir}/{data_type}_similarities.npy', similarities)
         doc_sim.clear_similarity()
@@ -162,10 +170,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="infly/inf-retriever-v1-1.5b")
     parser.add_argument("--num_docs", type=int, default=500)
-    parser.add_argument("--base_retriever", type=str, default='inf')
+    parser.add_argument("--base_retriever", type=str, default='inf', choices=['inf', 'qampari_stage1', 'nq_stage2', 'qampari_hungarian_contrastive', 'qampari_contrastive_all_labels_shuffled', 'qampari_contrastive_all_labels_ordered', 'ambiguous_qe_hungarian_contrastive', 'ambiguous_qe_contrastive_all_labels_shuffled', 'ambiguous_qe_contrastive_all_labels_ordered', 'llama-1b_qampari', 'llama-3b_qampari', 'llama-8b_qampari', 'qwen3-4b_qampari', 'llama-1b_ambignq', 'llama-3b_ambignq', 'llama-8b_ambignq', 'qwen3-4b_ambignq', 'llama-1b_qampari_multi', 'llama-3b_qampari_multi', 'llama-8b_qampari_multi', 'qwen3-4b_qampari_multi', 'llama-1b_ambignq_multi', 'llama-3b_ambignq_multi', 'llama-8b_ambignq_multi', 'qwen3-4b_ambignq_multi'])
     args = parser.parse_args()
     
     main(args)
     
-    #  python gen_doc_similarity.py --compute --corpus sphere --retriever bm25
-    # CUDA_VISIBLE_DEVICES=7 PYTHONPATH=. python reranking/gen_doc_similarity.py --compute --retriever bm25

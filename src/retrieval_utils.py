@@ -1,5 +1,3 @@
-import torch
-import torch.distributed
 import numpy as np
 import faiss
 import json
@@ -112,7 +110,6 @@ class Indexer(object):
 
     def __init__(self, vector_sz, n_subquantizers=0, n_bits=8, use_gpu=False):
         if n_subquantizers > 0:
-            # self.index = faiss.IndexPQ(vector_sz, n_subquantizers, n_bits, faiss.METRIC_INNER_PRODUCT)
             quantizer = faiss.IndexFlatIP(vector_sz)  # Inner Product as base index
             nlist = 4096
             self.index = faiss.IndexIVFPQ(quantizer, vector_sz, nlist, n_subquantizers, n_bits)
@@ -122,30 +119,6 @@ class Indexer(object):
             if use_gpu:
                 print('using gpu')
                 self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, self.index)
-            # cpu_index = faiss.IndexFlatIP(vector_sz)
-
-            # self.num_gpus = faiss.get_num_gpus()
-            # gpu_resources = [faiss.StandardGpuResources() for _ in range(self.num_gpus)]
-            
-            # gpu_indexes = []
-            # for i in range(self.num_gpus):
-            #     gpu_index = faiss.index_cpu_to_gpu(gpu_resources[i], i, cpu_index)
-            #     gpu_indexes.append(gpu_index)
-            # self.index = faiss.IndexShards(1536, threaded=True, successive_ids=True)
-            # for gpu_index in gpu_indexes:
-            #     self.index.add_shard(gpu_index)
-    
-            # # # Shard the index across all available GPUs
-            # # # self.index = faiss.index_cpu_to_all_gpus(cpu_index)
-            # # resources = faiss.StandardGpuResources()
-            # # # cloner_options = faiss.GpuClonerOptions()
-            # cloner_options = faiss.GpuMultipleClonerOptions()
-            # cloner_options.useFloat16 = True 
-            # cloner_options.shard = True
-            # # self.index = faiss.index_cpu_to_gpu(resources, 0, cpu_index, cloner_options)
-            
-
-        #self.index_id_to_db_id = np.empty((0), dtype=np.int64)
         self.index_id_to_db_id = []
 
     def index_data(self, ids, embeddings):
@@ -154,9 +127,6 @@ class Indexer(object):
         if not self.index.is_trained:
             self.index.train(embeddings)
             
-        # vectors_per_gpu = np.array_split(embeddings, self.num_gpus)
-        # for i, chunk in enumerate(vectors_per_gpu):
-        #     self.index[i].add(chunk)
         self.index.add(embeddings)
         print(f'Total data indexed {len(self.index_id_to_db_id)}')
 
@@ -197,6 +167,4 @@ class Indexer(object):
             self.index_id_to_db_id) == self.index.ntotal, 'Deserialized index_id_to_db_id should match faiss index size'
 
     def _update_id_mapping(self, db_ids: List):
-        #new_ids = np.array(db_ids, dtype=np.int64)
-        #self.index_id_to_db_id = np.concatenate((self.index_id_to_db_id, new_ids), axis=0)
         self.index_id_to_db_id.extend(db_ids)

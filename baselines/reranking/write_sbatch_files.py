@@ -1,20 +1,7 @@
-retriever_list = ["llama-1b_qampari_0", "llama-3b_qampari_0", "llama-8b_qampari_0", "qwen3-4b_qampari_0", "llama-1b_ambignq_0", "llama-3b_ambignq_0", "llama-8b_ambignq_0", "qwen3-4b_ambignq_0",
-                  "llama-1b_qampari_1", "llama-3b_qampari_1", "llama-8b_qampari_1", "qwen3-4b_qampari_1", "llama-1b_ambignq_1", "llama-3b_ambignq_1", "llama-8b_ambignq_1", "qwen3-4b_ambignq_1",
-                  "llama-1b_qampari_2", "llama-3b_qampari_2", "llama-8b_qampari_2", "qwen3-4b_qampari_2", "llama-1b_ambignq_2", "llama-3b_ambignq_2", "llama-8b_ambignq_2", "qwen3-4b_ambignq_2"]
-# retriever_list = ["llama-8b_qampari_0", 
-#                   "llama-8b_qampari_1", 
-#                    "llama-8b_qampari_2"]
 
-# # SS (Scheduled Sampling)
-# retriever_list += ["llama-1b_qampari_multi_SS_0", "llama-3b_qampari_multi_SS_0", "llama-8b_qampari_multi_SS_0", "qwen3-4b_qampari_multi_SS_0", "llama-1b_ambignq_multi_SS_0", "llama-3b_ambignq_multi_SS_0", "llama-8b_ambignq_multi_SS_0", "qwen3-4b_ambignq_multi_SS_0",
-#                   "llama-1b_qampari_multi_SS_1", "llama-3b_qampari_multi_SS_1", "llama-8b_qampari_multi_SS_1", "qwen3-4b_qampari_multi_SS_1", "llama-1b_ambignq_multi_SS_1", "llama-3b_ambignq_multi_SS_1", "llama-8b_ambignq_multi_SS_1", "qwen3-4b_ambignq_multi_SS_1",
-#                   "llama-1b_qampari_multi_SS_2", "llama-3b_qampari_multi_SS_2", "llama-8b_qampari_multi_SS_2", "qwen3-4b_qampari_multi_SS_2", "llama-1b_ambignq_multi_SS_2", "llama-3b_ambignq_multi_SS_2", "llama-8b_ambignq_multi_SS_2", "qwen3-4b_ambignq_multi_SS_2"]
-# # Sampling
-# retriever_list += ["llama-1b_qampari_multi_sampling_0", "llama-3b_qampari_multi_sampling_0", "llama-8b_qampari_multi_sampling_0", "qwen3-4b_qampari_multi_sampling_0", "llama-1b_ambignq_multi_sampling_0", "llama-3b_ambignq_multi_sampling_0", "llama-8b_ambignq_multi_sampling_0", "qwen3-4b_ambignq_multi_sampling_0",
-#                   "llama-1b_qampari_multi_sampling_1", "llama-3b_qampari_multi_sampling_1", "llama-8b_qampari_multi_sampling_1", "qwen3-4b_qampari_multi_sampling_1", "llama-1b_ambignq_multi_sampling_1", "llama-3b_ambignq_multi_sampling_1", "llama-8b_ambignq_multi_sampling_1", "qwen3-4b_ambignq_multi_sampling_1",
-#                   "llama-1b_qampari_multi_sampling_2", "llama-3b_qampari_multi_sampling_2", "llama-8b_qampari_multi_sampling_2", "qwen3-4b_qampari_multi_sampling_2", "llama-1b_ambignq_multi_sampling_2", "llama-3b_ambignq_multi_sampling_2", "llama-8b_ambignq_multi_sampling_2", "qwen3-4b_ambignq_multi_sampling_2"]
+retriever_list = ["llama-1b_qampari", "llama-3b_qampari", "llama-8b_qampari", "qwen3-4b_qampari", "llama-1b_ambignq", "llama-3b_ambignq", "llama-8b_ambignq", "qwen3-4b_ambignq"]
 # retriever_list = ["llama-1b_qampari_multi", "llama-3b_qampari_multi", "llama-8b_qampari_multi", "qwen3-4b_qampari_multi", "llama-1b_ambignq_multi", "llama-3b_ambignq_multi", "llama-8b_ambignq_multi", "qwen3-4b_ambignq_multi"]
-#command = "reranking" # gen doc similarity
+# command = "reranking" # gen doc similarity
 command = "mmr"       # actually perform mmr
 
 if command == "reranking":
