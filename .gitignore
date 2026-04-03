@@ -19,3 +19,8 @@ sbatch_jobs*
 __pycache__/
 wandb/
 slurm_scripts
+baselines/*.SBATCH
+logs/
+*.log
+output_embeddings/
+checkpoints/
