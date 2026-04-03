@@ -1,0 +1,84 @@
+# Sweep config for ambignq experiments.
+# - `train`: fixed args passed to train_distributed.py / train.py (maps directly to argparse)
+# - `sweep`: lists of values; all combinations are submitted as separate jobs
+# - `slurm`: cluster configuration
+# - `job`: paths and runtime settings
+
+# =================================================================
+# TRAINING ARGS (fixed across all sweep jobs)
+# =================================================================
+train:
+  project: diverse_retrieval
+  save_path: results/doc_enc_trained/inf
+  train_path: training_datasets/doc_enc_trained/autoregressive_ambiguous_qe_inf_train_dataset_contrastive_2_to_5_ctxs/
+  model_id: infly/inf-retriever-v1-1.5b
+  adapter_path: null
+  linear_checkpoint_path: null
+  model_type: EmbeddingModelSSVariableLeftPadDocEncTrained
+  loss_function: Hungarian_Contrastive
+  embedding_model_dim: 1536
+  lr_min_ratio: 0.0
+  gradient_accumulation_steps: 1
+  weight_decay: 0.01
+  scheduler: linear
+  max_grad_norm: 5.0
+  save_every_n_steps: 200
+  log_with: wandb
+  seed: 0
+  # boolean flags — true adds --flag, false omits it
+  shuffle_sequence: true
+  save_only_improve: true
+  save_best_model: true
+  normalize_embeddings: true
+  schedule_sampling: true
+  left_padding: true
+  mix_one_label_shuffled: true
+  train_doc_encoder: true
+  full_finetuning: false
+  train_on_all_data: false
+  resume_from_checkpoint: false
+  use_stateful_dataloader: false
+
+# =================================================================
+# SWEEP SPACE (Cartesian product of all lists)
+# =================================================================
+sweep:
+  lr: [1e-5]
+  temperature: [0.05]
+  batch_size_training: [8]
+  num_epochs: [120]
+  warmup_ratio: [0.05]
+  sample_rate_multiplier: [1]
+
+# =================================================================
+# EXPERIMENT NAMING
+# =================================================================
+experiment:
+  # Prefix for experiment names. Sweep values are appended automatically.
+  prefix: mix_one_train_doc_encoder_inf
+
+# =================================================================
+# SLURM CONFIGURATION
+# =================================================================
+slurm:
+  account: torch_pr_152_courant
+  time: "10:00:00"
+  mem: 128GB
+  cpus_per_task: 8
+  gpus: 4
+  constraint: h200
+  preemption: true   # adds #SBATCH --comment="preemption=yes;requeue=yes"
+  multiple_gpus: true  # false → single GPU, uses train.py instead of train_distributed.py
+
+# =================================================================
+# RUNTIME / PATHS
+# =================================================================
+job:
+  work_dir: /scratch/hc3337/projects/autoregressive
+  hf_token: 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
+  singularity_image: /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
+  overlay_file: /scratch/hc3337/envs/div.ext3
+  sbatch_dir: sbatch_jobs
+  output_dir: sbatch_outputs
+  dry_run: false          # true → generate SBATCH files but don't submit
+  submission_delay: 2     # seconds between sbatch calls

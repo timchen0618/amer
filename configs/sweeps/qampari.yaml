@@ -1,0 +1,65 @@
+# Sweep config for qampari experiments.
+
+train:
+  project: diverse_retrieval
+  save_path: results/inf/qampari_inf
+  train_path: training_datasets/doc_enc_trained/autoregressive_qampari_inf_train_dataset_contrastive_5_6_7_8_ctxs/
+  model_id: infly/inf-retriever-v1-1.5b
+  adapter_path: null
+  linear_checkpoint_path: null
+  model_type: EmbeddingModelDocEncNoProj
+  loss_function: Hungarian_Contrastive
+  embedding_model_dim: 1536
+  lr_min_ratio: 0.0
+  gradient_accumulation_steps: 1
+  weight_decay: 0.01
+  scheduler: linear
+  max_grad_norm: 5.0
+  save_every_n_steps: 200
+  log_with: wandb
+  seed: 0
+  # boolean flags
+  shuffle_sequence: true
+  take_first: true
+  save_only_improve: true
+  save_best_model: true
+  normalize_embeddings: true
+  schedule_sampling: true
+  left_padding: true
+  mix_one_label_shuffled: false
+  train_doc_encoder: true
+  full_finetuning: true
+  train_on_all_data: false
+  resume_from_checkpoint: false
+  use_stateful_dataloader: false
+
+sweep:
+  lr: [1e-5]
+  temperature: [0.05]
+  batch_size_training: [256]
+  num_epochs: [100]
+  warmup_ratio: [0.05]
+  sample_rate_multiplier: [1]
+
+experiment:
+  prefix: qampari_inf_single_0
+
+slurm:
+  account: torch_pr_152_courant
+  time: "3:00:00"
+  mem: 128GB
+  cpus_per_task: 8
+  gpus: 2
+  constraint: h200
+  preemption: true
+  multiple_gpus: true
+
+job:
+  work_dir: /scratch/hc3337/projects/autoregressive
+  hf_token: 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
+  singularity_image: /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
+  overlay_file: /scratch/hc3337/envs/div.ext3
+  sbatch_dir: sbatch_jobs
+  output_dir: sbatch_outputs
+  dry_run: false
+  submission_delay: 2
