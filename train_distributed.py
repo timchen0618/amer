@@ -12,6 +12,7 @@ from src.dataset import (
     DataHandler
 )
 from src.model import load_model, save_model_distributed
+from src.model_train_enc import load_model as load_model_doc_enc, save_model_distributed as save_model_distributed_doc_enc
 from src.utils import set_optim
 from src.option import get_training_args
 
@@ -115,21 +116,46 @@ def train(configs):
     # total_length = total_length // accelerator.num_processes
     
     
-    assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength', 'EmbeddingModelSSVariableLeftPadDocEncTrained']), 'Schedule sampling is only supported for EmbeddingModelSS'
+    if not configs.train_doc_encoder:
+        assert configs.schedule_sampling == (configs.model_type in ['EmbeddingModelSS', 'EmbeddingModelSSVariable', 'EmbeddingModelSSVariableLeftPad', 'EmbeddingModelSSAddQ', 'EmbeddingModelSSAvgQ', 'EmbeddingModelSSPredLength', 'EmbeddingModelSSVariableLeftPadPredLength', 'EmbeddingModelSSVariableLeftPadDocEncTrained']), 'Schedule sampling is only supported for EmbeddingModelSS'
     # Instantiate the model (we build the model here so that the seed also control new weights initialization)
-    model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
-                                base_model_id=configs.model_id, 
-                                adapter_path=configs.adapter_path, 
-                                linear_checkpoint_path=configs.linear_checkpoint_path,
-                                embedding_model_dim=configs.embedding_model_dim, 
-                                weight_tying=configs.weight_tying, 
-                                loss_function=configs.loss_function, 
-                                temperature=configs.temperature,
-                                extra_q_embed=configs.extra_q_embed,
-                                compute_loss_on_q=configs.compute_loss_on_q,
-                                use_eos=configs.use_eos,
-                                model_type=configs.model_type,
-                                normalize_embeddings=configs.normalize_embeddings)
+    if configs.train_doc_encoder:
+        model, tokenizer = load_model_doc_enc(train_lora=(not configs.full_finetuning),
+                                    base_model_id=configs.model_id,
+                                    adapter_path=configs.adapter_path,
+                                    linear_checkpoint_path=configs.linear_checkpoint_path,
+                                    embedding_model_dim=configs.embedding_model_dim,
+                                    loss_function=configs.loss_function,
+                                    temperature=configs.temperature,
+                                    normalize_embeddings=configs.normalize_embeddings,
+                                    model_type="EmbeddingModelDocEncNoProj")
+    else:
+        # model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
+        #                             base_model_id=configs.model_id,
+        #                             adapter_path=configs.adapter_path,
+        #                             linear_checkpoint_path=configs.linear_checkpoint_path,
+        #                             embedding_model_dim=configs.embedding_model_dim,
+        #                             weight_tying=configs.weight_tying,
+        #                             loss_function=configs.loss_function,
+        #                             temperature=configs.temperature,
+        #                             extra_q_embed=configs.extra_q_embed,
+        #                             compute_loss_on_q=configs.compute_loss_on_q,
+        #                             use_eos=configs.use_eos,
+        #                             model_type=configs.model_type,
+        #                             normalize_embeddings=configs.normalize_embeddings)
+        model, tokenizer = load_model(train_lora=(not configs.full_finetuning),
+                                    base_model_id=configs.model_id,
+                                    adapter_path=configs.adapter_path,
+                                    linear_checkpoint_path=configs.linear_checkpoint_path,
+                                    embedding_model_dim=configs.embedding_model_dim,
+                                    weight_tying=configs.weight_tying,
+                                    loss_function=configs.loss_function,
+                                    temperature=configs.temperature,
+                                    extra_q_embed=configs.extra_q_embed,
+                                    compute_loss_on_q=configs.compute_loss_on_q,
+                                    use_eos=configs.use_eos,
+                                    model_type=configs.model_type,
+                                    normalize_embeddings=configs.normalize_embeddings)
     model = model.to(accelerator.device)
 
     # optimize and scheduler    
@@ -333,7 +359,8 @@ def train(configs):
                         not configs.save_only_improve
                         and not configs.debug
                     ):
-                        save_model_distributed(model, save_dir, total_train_steps-1, best_val_loss, accelerator, logger, configs.save_best_model)
+                        _save_fn = save_model_distributed_doc_enc if configs.train_doc_encoder else save_model_distributed
+                        _save_fn(model, save_dir, total_train_steps-1, best_val_loss, accelerator, logger, configs.save_best_model)
                         gc.collect()
                         torch.cuda.empty_cache()
 
@@ -389,7 +416,8 @@ def train(configs):
                         and not configs.debug
                     ):
                         best_val_loss = total_loss / len(valid_loss_dataloader)
-                        save_model_distributed(model, save_dir, total_train_steps, best_val_loss, accelerator, logger, configs.save_best_model)
+                        _save_fn = save_model_distributed_doc_enc if configs.train_doc_encoder else save_model_distributed
+                        _save_fn(model, save_dir, total_train_steps, best_val_loss, accelerator, logger, configs.save_best_model)
                         
 
                     gc.collect()
