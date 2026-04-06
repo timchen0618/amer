@@ -114,9 +114,8 @@ class Options:
         self.parser.add_argument("--negative_hard_ratio", type=float, default=0.0)
         
         # added 
-        self.parser.add_argument("--training_mode", type=str, default="standard")
+        self.parser.add_argument("--training_mode", type=str, default="standard_org_q")
         self.parser.add_argument("--eval_recall", action="store_true")
-        self.parser.add_argument("--add_input_negatives", action="store_true")
         self.parser.add_argument("--sample_length", action="store_true")
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
         self.parser.add_argument("--not_save", action='store_true')

@@ -84,6 +84,7 @@ def tokenize_queries(data, tokenizer, model_id, max_length):
     prompt = f"{instruction_template} Given a web search query, retrieve relevant passages that answer the query \nQuery: [QUERY]{response_template}".strip('\n')
 
     results = []
+    tokenizer.padding_side = 'right'
     for inst in tqdm(data, desc="tokenizing queries"):
         question = inst.get('question') or inst.get('question_text')
         text = prompt.replace('[QUERY]', question)

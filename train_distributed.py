@@ -43,7 +43,7 @@ def train(configs):
         log_with_string = None  
     
     # Initialize accelerator
-    accelerator = Accelerator(gradient_accumulation_steps=configs.gradient_accumulation_steps, log_with=log_with_string, mixed_precision='fp16')
+    accelerator = Accelerator(gradient_accumulation_steps=configs.gradient_accumulation_steps, log_with=log_with_string, mixed_precision='bf16')
     
     if log_with_wandb:
         if accelerator.is_main_process:

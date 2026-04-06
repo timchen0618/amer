@@ -72,8 +72,6 @@ class INFRetriever(nn.Module):
         
         # Get last hidden states
         last_hidden = outputs.last_hidden_state
-        
-        last_hidden = outputs.last_hidden_state
         if self.config.pooling in ("last_token", "last"):
             seq_lens = attention_mask.sum(dim=1) - 1
             emb = last_hidden[torch.arange(last_hidden.size(0), device=last_hidden.device), seq_lens]
@@ -120,12 +118,8 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         if hasattr(opt, "run_name"):
             if hasattr(opt, "training_mode"):
                 print(f"Training mode: {opt.training_mode}")
-                if opt.training_mode in ['standard', 'base']:
+                if opt.training_mode == 'standard_org_q':
                     model_class = inbatch.InBatch
-                elif opt.training_mode == 'gru':
-                    model_class = inbatch.InBatchGRU
-                elif opt.training_mode == 'linear_projection':
-                    model_class = inbatch.InBatchLinearProjection
                 else:
                     model_class = inbatch.InBatch
             else:
@@ -141,18 +135,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             retriever.load_state_dict(pretrained_dict, strict=True)
         else:
             # Load InBatch models
-            if opt.training_mode == 'standard':
+            if opt.training_mode == 'standard_org_q':
                 model = inbatch.InBatch(opt, None, None)
                 print("Using model = InBatch", flush=True)
-            elif opt.training_mode == 'base':
-                model = inbatch.InBatch(opt, None, None)
-                print("Using model = InBatch for base mode", flush=True)
-            elif opt.training_mode == 'gru':
-                model = inbatch.InBatchGRU(opt, None, None)
-                print("Using model = InBatchGRU", flush=True)
-            elif opt.training_mode == 'linear_projection':
-                model = inbatch.InBatchLinearProjection(opt, None, None)
-                print("Using model = InBatchLinearProjection", flush=True)
             else:
                 model = inbatch.InBatch(opt, None, None)
 
@@ -160,7 +145,7 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             model.eval()
             print('Finished loading model')
             
-            if opt.training_mode in ['standard']:
+            if opt.training_mode == 'standard_org_q':
                 retriever = model.encoder
             else:
                 retriever = model

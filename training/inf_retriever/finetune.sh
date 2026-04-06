@@ -21,14 +21,14 @@ training_mode="standard_org_q"
 
 data_dir="/scratch/hc3337/projects/diverse_response/training/data/qampari_data/qampari_corpus"
 output_dir="checkpoints/"
-run_name="qampari_${model_name}_${training_mode}_finetuned_steps${total_steps}_t${temperature}_lr${lr}_ws${warmup_steps}_bs${per_gpu_batch_size}_gradchkpt"
+run_name="enc_trained_qampari_${model_name}_${training_mode}_finetuned_steps${total_steps}_t${temperature}_lr${lr}_ws${warmup_steps}_bs${per_gpu_batch_size}_gradchkpt"
 
 chunk_length=512
 accumulation_steps=1
 max_positive_documents=1
 num_workers=2
 
-accelerate launch --main_process_port 29501 training/inf_retriever/finetuning.py --train_data $data_dir/train_data.jsonl \
+accelerate launch --main_process_port 29501 training/inf_retriever/finetuning_multi.py --train_data $data_dir/train_data.jsonl \
                                                  --eval_data $data_dir/train_eval_data.jsonl \
                                                  --temperature $temperature \
                                                  --total_steps $total_steps \

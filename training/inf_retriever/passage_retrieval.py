@@ -119,19 +119,9 @@ def embed_batch_texts(args, texts, model, tokenizer, normalize=None):
 
 
 @torch.no_grad()
-def embed_queries(args, queries, input_negatives, model, tokenizer):
-    if args.training_mode == "base" or args.training_mode == "standard" or args.training_mode == "standard_concat":
+def embed_queries(args, queries, model, tokenizer):
+    if args.training_mode == 'standard_org_q':
         return embed_queries_standard(args, queries, model, tokenizer)
-    elif args.training_mode == "subtraction":
-        return embed_queries_subtraction(args, queries, input_negatives, model, tokenizer)
-    elif args.training_mode == "gru":
-        return embed_queries_gru(args, queries, input_negatives, model, tokenizer)
-    elif args.training_mode == "linear_projection":
-        return embed_queries_linear_projection(args, queries, input_negatives, model, tokenizer)
-    elif args.training_mode == "subtraction_linear":
-        return embed_queries_subtraction_linear(args, queries, input_negatives, model, tokenizer)
-    elif args.training_mode == "sentence_transformer":
-        return embed_queries_sentence_transformer(args, queries, input_negatives, model, tokenizer)
     else:
         raise ValueError(f"Invalid training mode: {args.training_mode}")
 
@@ -149,13 +139,7 @@ def embed_queries_standard(args, queries, model, tokenizer):
     task = 'Given a query, retrieve relevant passages that answer the query'
     queries = [get_detailed_instruct(task, q) for q in queries]
 
-    if args.training_mode == "base":
-        if hasattr(model, 'encoder'):
-            embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer, normalize=normalize_query)
-        else:
-            embeddings = embed_batch_texts(args, queries, model, tokenizer)
-    else:
-        embeddings = embed_batch_texts(args, queries, model, tokenizer)
+    embeddings = embed_batch_texts(args, queries, model, tokenizer)
     print(f"Questions embeddings shape: {embeddings.size()}")
     # if embeddings.dtype == torch.bfloat16:
     #     embeddings = embeddings.float()
@@ -169,148 +153,6 @@ def embed_queries_standard(args, queries, model, tokenizer):
     
     return embeddings.cpu().numpy()
 
-
-
-@torch.no_grad()
-def embed_queries_subtraction(args, queries, input_negatives, model, tokenizer):
-    model.eval()
-    # embeddings, batch_question, inpn_embeddings, batch_inpn = [], [], [], []
-    len_input_negatives = [len(inpn) for inpn in input_negatives]
-    input_negatives = [inpn for inpn_list in input_negatives for inpn in inpn_list]  # flatten list
-        
-    embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer)
-    print(f"Questions embeddings shape: {embeddings.size()}")
-    
-    if len(input_negatives) == 0:
-        return embeddings.cpu().numpy()
-    
-    inpn_embeddings = embed_batch_texts(args, input_negatives, model.encoder, tokenizer)
-    print(f"Input Negatives embeddings shape: {inpn_embeddings.size()}")
-    
-    assert len(len_input_negatives) == embeddings.size(0)
-    start = 0
-    for i, _len in enumerate(len_input_negatives):
-        end = start + _len
-        embeddings[i] = embeddings[i] - inpn_embeddings[start:end].sum(dim=0)
-        start = end
-    return embeddings.cpu().numpy()
-
-
-
-@torch.no_grad()
-def embed_queries_gru(args, queries, input_negatives, model, tokenizer):
-    model.eval()
-    # embeddings, batch_question, inpn_embeddings, batch_inpn = [], [], [], []
-    len_input_negatives = [len(inpn) for inpn in input_negatives]
-    input_negatives = [inpn for inpn_list in input_negatives for inpn in inpn_list]  # flatten list
-
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
-    queries = [get_detailed_instruct(task, q) for q in queries]
-    
-    embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer)
-    print(f"Questions embeddings shape: {embeddings.size()}")
-    
-    if len(input_negatives) == 0:
-        return embeddings.cpu().numpy()
-    
-    inpn_embeddings = embed_batch_texts(args, input_negatives, model.encoder, tokenizer)
-    print(f"Input Negatives embeddings shape: {inpn_embeddings.size()}")
-
-    
-    gru = model.gru
-    
-    assert len(len_input_negatives) == embeddings.size(0)
-    start = 0
-    for i, _len in enumerate(len_input_negatives):
-        end = start + _len
-        _, hn = gru(inpn_embeddings[start:start+_len], embeddings[i].unsqueeze(0))
-        embeddings[i] = hn[-1]
-        start = end
-    return embeddings.cpu().numpy()
-
-@torch.no_grad()
-def embed_queries_linear_projection(args, queries, input_negatives, model, tokenizer):
-    model.eval()
-    # embeddings, batch_question, inpn_embeddings, batch_inpn = [], [], [], []
-    len_input_negatives = [len(inpn) for inpn in input_negatives]
-    input_negatives = [inpn for inpn_list in input_negatives for inpn in inpn_list]  # flatten list
-
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
-    queries = [get_detailed_instruct(task, q) for q in queries]
-    
-    embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer)
-    print(f"Questions embeddings shape: {embeddings.size()}")
-    
-    if len(input_negatives) == 0:
-        return embeddings.cpu().numpy()
-    
-    inpn_embeddings = embed_batch_texts(args, input_negatives, model.encoder, tokenizer)
-    print(f"Input Negatives embeddings shape: {inpn_embeddings.size()}")
-
-    linear = model.linear
-    
-    assert len(len_input_negatives) == embeddings.size(0)
-    start = 0
-    for i, _len in enumerate(len_input_negatives):
-        end = start + _len
-        
-        doc_emb = inpn_embeddings[start:start+_len].mean(dim=0)
-        q_doc_emb = torch.cat([embeddings[i].unsqueeze(0), doc_emb.unsqueeze(0)], dim=1)
-        embeddings[i] = linear(q_doc_emb).squeeze(0)
-        start = end
-    return embeddings.cpu().numpy()
-
-
-@torch.no_grad()
-def embed_queries_subtraction_linear(args, queries, input_negatives, model, tokenizer):
-    model.eval()
-    # embeddings, batch_question, inpn_embeddings, batch_inpn = [], [], [], []
-    len_input_negatives = [len(inpn) for inpn in input_negatives]
-    input_negatives = [inpn for inpn_list in input_negatives for inpn in inpn_list]  # flatten list
-
-    embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer)
-    print(f"Questions embeddings shape: {embeddings.size()}")
-    
-    if len(input_negatives) == 0:
-        return embeddings.cpu().numpy()
-    
-    inpn_embeddings = embed_batch_texts(args, input_negatives, model.encoder, tokenizer)
-    print(f"Input Negatives embeddings shape: {inpn_embeddings.size()}")
-    
-
-    
-    weights = model.weights
-    bias = model.bias
-    
-    assert len(len_input_negatives) == embeddings.size(0)
-    start = 0
-    for i, _len in enumerate(len_input_negatives):
-        end = start + _len
-        doc_emb = weights * torch.t(inpn_embeddings[start:start+_len]) * bias # (768, _len)
-        embeddings[i] = embeddings[i] - torch.sum(doc_emb, dim=1)
-        start = end
-    return embeddings.cpu().numpy()
-
-
-@torch.no_grad()
-def embed_queries_sentence_transformer(args, queries, input_negatives, model, tokenizer):
-    model.eval()
-    # embeddings, batch_question, inpn_embeddings, batch_inpn = [], [], [], []
-    input_negatives = ['\n'.join(inpn_list) for inpn_list in input_negatives]  # flatten list
-    
-    embeddings = embed_batch_texts(args, queries, model.encoder, tokenizer)
-    print(f"Questions embeddings shape: {embeddings.size()}")
-    
-    if len(input_negatives) == 0:
-        return embeddings.cpu().numpy()
-    
-    inpn_embeddings = embed_batch_texts(args, input_negatives, model.encoder, tokenizer)
-    print(f"Input Negatives embeddings shape: {inpn_embeddings.size()}")
-
-    linear = model.linear
-    embeddings = linear(torch.cat([embeddings, inpn_embeddings], dim=1))             
-    
-    return embeddings.cpu().numpy()
 
 
 def index_encoded_data(index, embedding_files, indexing_batch_size):
@@ -476,23 +318,11 @@ def main(args):
     print(f"Total tokens: {total_tokens}",flush=True)
 
     print(f'doing {args.training_mode}....', flush=True)
-    input_negatives = []
-    if args.training_mode != "base" and args.training_mode != "standard" and (not args.autoregressive):
-        for example in data:
-            input_negatives.append([
-                n["title"] + " " + n["text"] if ("title" in n and len(n["title"]) > 0) else n["text"] for n in example['input_negative_ctxs']
-            ])
-    elif args.training_mode == "standard_concat":
-        for example in data:
-            input_negatives.append([
-                n["title"] + " " + n["text"] if ("title" in n and len(n["title"]) > 0) else n["text"] for n in example['input_negative_ctxs']
-            ])
-        queries = ['Question: ' + ex[args.question_key] + '\n\n' + 'Documents:' + '\n'.join(inpn) for ex, inpn in zip(data, input_negatives)]
 
     torch.cuda.reset_peak_memory_stats()
     embed_start_time = time.time()
-        
-    questions_embedding = embed_queries(args, queries, input_negatives, model, tokenizer)    
+
+    questions_embedding = embed_queries(args, queries, model, tokenizer)
 
     embed_end_time = time.time()
     embed_time = embed_end_time - embed_start_time
@@ -532,25 +362,12 @@ def main(args):
             
             # add the passages to ctxs
             add_passages(data, passage_id_map, top_ids_and_scores)
-            for inst in data:
-                inst['input_negative_ctxs'] = inst['ctxs']
-                assert len(inst['input_negative_ctxs']) == num_docs
-            
+
             # re-embed the query
-            
             print(f'doing {args.training_mode}....')
-            input_negatives = []
-            for example in data:
-                input_negatives.append([
-                    n["title"] + " " + n["text"] if ("title" in n and len(n["title"]) > 0) else n["text"] for n in example['input_negative_ctxs']
-                ])
-            if args.training_mode == "standard":
-                assert len(data) == len(input_negatives)
-                queries = ['Question: ' + ex[args.question_key] + '\n\n' + 'Documents:' + '\n'.join(inpn) for ex, inpn in zip(data, input_negatives)]
-            else:
-                queries = [ex[args.question_key] for ex in data]
-                
-            questions_embedding = embed_queries(args, queries, input_negatives, model, tokenizer)    
+            queries = [ex[args.question_key] for ex in data]
+
+            questions_embedding = embed_queries(args, queries, model, tokenizer)
 
     
             
@@ -636,7 +453,7 @@ if __name__ == "__main__":
     parser.add_argument("--normalize_text", action="store_true", help="normalize text")
     
     parser.add_argument("--outfile", type=str, default="output.jsonl")
-    parser.add_argument("--training_mode", type=str, default="standard")
+    parser.add_argument("--training_mode", type=str, default="standard_org_q")
     parser.add_argument("--question_key", type=str, default="question")
     parser.add_argument("--autoregressive", action="store_true", help="autoregressive retrieval")
     parser.add_argument("--step", type=int, default=3, help="number of documents to retrieve per step")

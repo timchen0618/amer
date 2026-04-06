@@ -39,7 +39,7 @@ accelerate launch --main_process_port 29501 /scratch/dq2024/diverse_retriever/tr
                                                  --accumulation_steps 2 \
                                                  --run_name "qampari_infly_base_finetuned_0-6_both_obj_istr_lr_0.00001_temp0.05" \
                                                  --output_dir "/scratch/dq2024/models/diverse_retriever/checkpoints/" \
-                                                 --training_mode "standard" \
+                                                 --training_mode "standard_org_q" \
                                                  --max_positive_documents 1 \
                                                  --num_workers 4 \
                                                  --sample_length \

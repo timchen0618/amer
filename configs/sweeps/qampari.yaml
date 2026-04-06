@@ -5,8 +5,8 @@ train:
   save_path: results/inf/qampari_inf
   train_path: training_datasets/doc_enc_trained/autoregressive_qampari_inf_train_dataset_contrastive_5_6_7_8_ctxs/
   model_id: infly/inf-retriever-v1-1.5b
-  adapter_path: null
-  linear_checkpoint_path: null
+  adapter_path: "None"
+  linear_checkpoint_path: "None"
   model_type: EmbeddingModelDocEncNoProj
   loss_function: Hungarian_Contrastive
   embedding_model_dim: 1536
@@ -20,7 +20,7 @@ train:
   seed: 0
   # boolean flags
   shuffle_sequence: true
-  take_first: true
+  take_first: false
   save_only_improve: true
   save_best_model: true
   normalize_embeddings: true
@@ -36,22 +36,22 @@ train:
 sweep:
   lr: [1e-5]
   temperature: [0.05]
-  batch_size_training: [256]
-  num_epochs: [100]
+  batch_size_training: [8]
+  num_epochs: [10]
   warmup_ratio: [0.05]
   sample_rate_multiplier: [1]
 
 experiment:
-  prefix: qampari_inf_single_0
+  prefix: qampari_inf_multi_bsz8
 
 slurm:
   account: torch_pr_152_courant
-  time: "3:00:00"
+  time: "24:00:00"
   mem: 128GB
   cpus_per_task: 8
   gpus: 2
   constraint: h200
-  preemption: true
+  preemption: false
   multiple_gpus: true
 
 job:
