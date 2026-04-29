@@ -4,13 +4,14 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=4:00:00
 #SBATCH --mem=256GB
-#SBATCH --job-name=qampari_infly_embedding_model_doc_enc_no_proj_refiltered_5to8_multi_hungarian_masked
-#SBATCH --output=sbatch_outputs/qampari_infly_embedding_model_doc_enc_no_proj_refiltered_5to8_multi_hungarian_masked.out
+#SBATCH --job-name=qampari_infly_embedding_model_doc_enc_no_proj_refiltered_5to8_multi_hungarian
+#SBATCH --output=sbatch_outputs/qampari_infly_embedding_model_doc_enc_no_proj_refiltered_5to8_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
 #SBATCH --account=torch_pr_152_courant
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
+#SBATCH --comment="preemption=yes;preemption_partitions_only=yes;requeue=true"
 
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/div.ext3:ro \
@@ -41,7 +42,7 @@ fi
 training_mode=multi
 # Loss for EmbeddingModelDocEncNoProj. Choices: auto | contrastive | hungarian_masked | hungarian
 # 'auto' -> hungarian_masked when training_mode=multi, contrastive otherwise.
-loss_fn=hungarian_masked
+loss_fn=hungarian
 
 data_dir=/scratch/hc3337/projects/autoregressive/data/training/filtered
 output_dir=checkpoints/

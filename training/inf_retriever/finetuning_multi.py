@@ -760,7 +760,12 @@ def main():
     # else:
     #     raise NotImplementedError
 
-    model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
+    if opt.training_mode == 'standard_org_q':
+        model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
+    elif opt.training_mode == 'multi':
+        model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
+    else:
+        raise NotImplementedError
     tokenizer = model.tokenizer
 
     # set up optimizers

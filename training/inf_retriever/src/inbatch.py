@@ -7,7 +7,7 @@ import transformers
 import logging
 import torch.distributed as dist
 
-from training.inf_retriever.src import dist_utils, utils
+from . import dist_utils, utils
 
 
 logger = logging.getLogger(__name__)
