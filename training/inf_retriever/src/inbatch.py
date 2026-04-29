@@ -537,6 +537,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         # assert k_tokens.size(0) == bsz
         
         sampling_rate = kwargs.get("sampling_rate", 1.0)
+        iter_stats[f"{stats_prefix}/sampling_rate"] = (sampling_rate, bsz)
 
         positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
         teacher_embeddings = positive_embeddings.reshape(bsz, -1, positive_embeddings.size(-1))
@@ -563,6 +564,16 @@ class EmbeddingModelDocEncNoProj(nn.Module):
             next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
             all_outputs.append(next_hidden.unsqueeze(1))
 
+            # Per-step cosine similarity between the model's output and its teacher embedding
+            with torch.no_grad():
+                teacher_j = teacher_embeddings[:, j, :].to(dtype=next_hidden.dtype)
+                cos_sim_j = F.cosine_similarity(
+                    F.normalize(next_hidden, dim=-1),
+                    F.normalize(teacher_j, dim=-1),
+                    dim=-1,
+                ).mean().item()
+                iter_stats[f"{stats_prefix}/step_{j}_teacher_cos_sim"] = (cos_sim_j, bsz)
+
             if j == output_len - 1:
                 break
 
@@ -578,7 +589,17 @@ class EmbeddingModelDocEncNoProj(nn.Module):
             )
             pos = torch.cat((pos, pos[:, -1:] + 1), dim=1)
 
-        selected_outputs_embeddings = torch.cat(all_outputs, dim=1)
+        selected_outputs_embeddings = torch.cat(all_outputs, dim=1)  # (bsz, k, d)
+
+        # Pairwise cosine similarity of the k generated embeddings (mode collapse diagnostic)
+        with torch.no_grad():
+            if output_len > 1:
+                outputs_norm = F.normalize(selected_outputs_embeddings.float(), dim=-1)  # (bsz, k, d)
+                sim_mat = torch.bmm(outputs_norm, outputs_norm.transpose(1, 2))  # (bsz, k, k)
+                eye_mask = torch.eye(output_len, dtype=torch.bool, device=device).unsqueeze(0)
+                pairwise_sim = sim_mat.masked_fill(eye_mask, 0.0).sum() / (bsz * output_len * (output_len - 1))
+                iter_stats[f"{stats_prefix}/pairwise_cos_sim"] = (pairwise_sim.item(), bsz)
+
         loss, iter_stats = self.loss_fct(
             selected_outputs_embeddings,
             positive_embeddings,

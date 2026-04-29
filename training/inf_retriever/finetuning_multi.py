@@ -5,6 +5,7 @@ import os
 import time
 import sys
 import torch
+import torch.nn.functional as F
 import logging
 import time
 import pickle
@@ -486,6 +487,12 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     total_mrr = 0.0
     total_queries = 0
 
+    # Multi-embedding diagnostics
+    multi_step_correct = {}   # step_j -> total correct across all batches
+    multi_step_total = 0
+    total_pairwise_sim = 0.0
+    total_pairwise_count = 0
+
     for i, batch in tqdm(enumerate(eval_loader)):
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
@@ -519,6 +526,37 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
                         total_mrr += 1.0 / (rank + 1)
                         break
                 total_queries += 1
+
+            # --- Multi-embedding diagnostics ---
+            # Autoregressively generate k embeddings (no teacher forcing)
+            multi_embs = model.generate(
+                batch["q_tokens"], batch["q_mask"], batch["q_position_ids"],
+                max_new_tokens=nqe,
+            )  # (bsz, nqe, hidden_dim)
+            if opt.norm_query:
+                multi_embs = F.normalize(multi_embs, dim=-1)
+
+            # Pairwise cosine similarity within each query's k embeddings
+            if nqe > 1:
+                emb_norm = F.normalize(multi_embs.float(), dim=-1)  # (bsz, nqe, d)
+                sim_mat = torch.bmm(emb_norm, emb_norm.transpose(1, 2))  # (bsz, nqe, nqe)
+                eye_mask = torch.eye(nqe, dtype=torch.bool, device=sim_mat.device).unsqueeze(0)
+                total_pairwise_sim += sim_mat.masked_fill(eye_mask, 0.0).sum().item()
+                total_pairwise_count += bsz * nqe * (nqe - 1)
+
+            # Per-step accuracy: for step j, is top-1 retrieved doc any gold of that query?
+            for step_j in range(nqe):
+                if step_j not in multi_step_correct:
+                    multi_step_correct[step_j] = 0
+                step_emb = multi_embs[:, step_j, :]  # (bsz, d)
+                step_scores = torch.einsum("id,jd->ij", step_emb, all_docs)  # (bsz, total_docs)
+                top1 = step_scores.argmax(dim=-1)  # (bsz,)
+                for qi in range(bsz):
+                    pos_start = qi * nqe
+                    pos_end = pos_start + nqe
+                    multi_step_correct[step_j] += int(top1[qi].item() in range(pos_start, pos_end))
+            multi_step_total += bsz
+
         else:
             labels = torch.arange(0, bsz, device=q_emb.device, dtype=torch.long)
             argmax_idx = torch.argmax(scores, dim=1)
@@ -533,9 +571,21 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     mrr = total_mrr / max(total_queries, 1)
 
     message = [f"eval acc: {acc:.2f}%", f"eval mrr: {mrr:.3f}"]
-    logger.info(" | ".join(message))
+    log_dict = {"eval_acc": acc, "eval_mrr": mrr}
 
-    accelerator.log({"eval_acc": acc, "eval_mrr": mrr}, step=step)
+    if is_multi and multi_step_total > 0:
+        if total_pairwise_count > 0:
+            avg_pairwise_sim = total_pairwise_sim / total_pairwise_count
+            log_dict["eval_pairwise_cos_sim"] = avg_pairwise_sim
+            message.append(f"pairwise_cos_sim: {avg_pairwise_sim:.4f}")
+
+        for j in sorted(multi_step_correct):
+            step_acc = 100.0 * multi_step_correct[j] / multi_step_total
+            log_dict[f"eval_step_{j}_acc"] = step_acc
+            message.append(f"step_{j}_acc: {step_acc:.2f}%")
+
+    logger.info(" | ".join(message))
+    accelerator.log(log_dict, step=step)
     return acc, mrr
 
 
