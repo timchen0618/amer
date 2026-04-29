@@ -8,8 +8,8 @@ eval_freq=250
 negative_hard_ratio=0.0
 negative_ctxs=1
 
-per_gpu_batch_size=256
-per_gpu_eval_batch_size=256
+per_gpu_batch_size=50
+per_gpu_eval_batch_size=50
 model_name="infly"
 if [ "$model_name" = "infly" ]; then
     model_path="infly/inf-retriever-v1-1.5b"
@@ -17,11 +17,13 @@ else
     echo "Invalid model name"
     exit 1
 fi
-training_mode="standard_org_q"
 
-data_dir="/scratch/hc3337/projects/diverse_response/training/data/qampari_data/qampari_corpus"
+training_mode="multi"
+loss_fn="hungarian_masked"
+
+data_dir="/scratch/hc3337/projects/autoregressive/data/training/filtered"
 output_dir="checkpoints/"
-run_name="enc_trained_qampari_${model_name}_${training_mode}_finetuned_steps${total_steps}_t${temperature}_lr${lr}_ws${warmup_steps}_bs${per_gpu_batch_size}_gradchkpt"
+run_name="enc_trained_qampari_${model_name}_${training_mode}_finetuned_steps${total_steps}_t${temperature}_lr${lr}_ws${warmup_steps}_bs${per_gpu_batch_size}_gradchkpt_refiltered_5to8_multi_${loss_fn}_negctxs${negative_ctxs}"
 
 chunk_length=512
 accumulation_steps=1
@@ -29,7 +31,7 @@ max_positive_documents=1
 num_workers=2
 
 accelerate launch --main_process_port 29501 training/inf_retriever/finetuning_multi.py --train_data $data_dir/train_data.jsonl \
-                                                 --eval_data $data_dir/train_eval_data.jsonl \
+                                                 --eval_data $data_dir/dev_data.jsonl \
                                                  --temperature $temperature \
                                                  --total_steps $total_steps \
                                                  --warmup_steps $warmup_steps \

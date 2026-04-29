@@ -140,6 +140,8 @@ def load_data(data_path):
 def prepare_data(opt, tokenizer):
     if opt.training_mode == 'standard_org_q':
         collator = finetuning_data.CollatorMulti(tokenizer, passage_maxlength=opt.chunk_length)
+    elif opt.training_mode == 'multi':
+        collator = finetuning_data.CollatorDocEncMultiQuery(tokenizer, passage_maxlength=opt.chunk_length)
     else:
         raise NotImplementedError
     
@@ -200,29 +202,56 @@ def prepare_data(opt, tokenizer):
         )
     
     
-    train_sampler = RandomSampler(train_dataset)
-    train_dataloader = DataLoader(
-        train_dataset,
-        sampler=train_sampler,
-        batch_size=opt.per_gpu_batch_size,
-        drop_last=True,
-        num_workers=0,                 # << was 4
-        pin_memory=False,              # << was True
-        persistent_workers=False,      # << was True when num_workers>0
-        # prefetch_factor=2,           # only valid if num_workers>0
-        collate_fn=collator,
-    )
-    eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(
-        eval_dataset,
-        sampler=eval_sampler,
-        batch_size=opt.per_gpu_eval_batch_size,
-        drop_last=False,
-        num_workers=0,                 # << keep 0 for eval too
-        pin_memory=False,              # << save host RAM
-        persistent_workers=False,
-        collate_fn=collator,
-    )
+    if opt.training_mode == 'multi' and hasattr(train_dataset, 'gold_counts') and train_dataset.gold_counts:
+        train_batch_sampler = finetuning_data.GoldLengthGroupedBatchSampler(
+            train_dataset.gold_counts, opt.per_gpu_batch_size, drop_last=True, shuffle=True,
+        )
+        train_dataloader = DataLoader(
+            train_dataset,
+            batch_sampler=train_batch_sampler,
+            num_workers=0,
+            pin_memory=False,
+            persistent_workers=False,
+            collate_fn=collator,
+        )
+    else:
+        train_sampler = RandomSampler(train_dataset)
+        train_dataloader = DataLoader(
+            train_dataset,
+            sampler=train_sampler,
+            batch_size=opt.per_gpu_batch_size,
+            drop_last=True,
+            num_workers=0,
+            pin_memory=False,
+            persistent_workers=False,
+            collate_fn=collator,
+        )
+
+    eval_collator = finetuning_data.CollatorDocEncMultiQuery(tokenizer, passage_maxlength=opt.chunk_length) if opt.training_mode == 'multi' else collator
+    if opt.training_mode == 'multi' and hasattr(eval_dataset, 'gold_counts') and eval_dataset.gold_counts:
+        eval_batch_sampler = finetuning_data.GoldLengthGroupedBatchSampler(
+            eval_dataset.gold_counts, opt.per_gpu_eval_batch_size, drop_last=False, shuffle=False,
+        )
+        eval_dataloader = DataLoader(
+            eval_dataset,
+            batch_sampler=eval_batch_sampler,
+            num_workers=0,
+            pin_memory=False,
+            persistent_workers=False,
+            collate_fn=eval_collator,
+        )
+    else:
+        eval_sampler = SequentialSampler(eval_dataset)
+        eval_dataloader = DataLoader(
+            eval_dataset,
+            sampler=eval_sampler,
+            batch_size=opt.per_gpu_eval_batch_size,
+            drop_last=False,
+            num_workers=0,
+            pin_memory=False,
+            persistent_workers=False,
+            collate_fn=eval_collator,
+        )
 
     return train_dataloader, eval_dataloader
 
@@ -441,59 +470,68 @@ def eval_retrieve_docs(retrieved_docs, data_path, has_gold_id=False, topk=100):
 
 @torch.no_grad()
 def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
-    # create a new model and use this to load the weights
     if opt.training_mode == 'standard_org_q':
-        model = inbatch.InBatch(opt, None, None)
+        model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
+    elif opt.training_mode == 'multi':
+        model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
     else:
         raise NotImplementedError
     model.load_state_dict(state_dict, strict=True)
     model.eval()
+    model = model.to(device)
     print('finish getting model')
-    # get the encoder
-    encoder = model.encoder
-    encoder = encoder.to(device)
-    
-    all_q, all_g, all_n = [], [], []
-    
-    
+
+    is_multi = opt.training_mode == 'multi'
+    total_correct = 0
+    total_mrr = 0.0
+    total_queries = 0
+
     for i, batch in tqdm(enumerate(eval_loader)):
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-        all_tokens = torch.cat([batch["g_tokens"], batch["n_tokens"]], dim=0)
-        all_mask = torch.cat([batch["g_mask"], batch["n_mask"]], dim=0)
-        # print(batch['q_tokens'].size())
-        q_emb = encoder(input_ids=batch["q_tokens"], attention_mask=batch["q_mask"], normalize=opt.norm_query)
-        all_emb = encoder(input_ids=all_tokens, attention_mask=all_mask, normalize=opt.norm_doc)
+        all_tokens = torch.cat([batch["g_tokens"], batch["n_tokens"]], dim=0)  # (2 * batch_size, seq_len)
+        all_mask = torch.cat([batch["g_mask"], batch["n_mask"]], dim=0)  # (2 * batch_size, seq_len)
 
-        g_emb, n_emb = torch.split(all_emb, [len(batch["g_tokens"]), len(batch["n_tokens"])])
-        
-        all_q.append(q_emb)
-        all_g.append(g_emb)
-        all_n.append(n_emb)
+        q_out = model.encoder(input_ids=batch["q_tokens"], attention_mask=batch["q_mask"], position_ids=batch["q_position_ids"])
+        q_emb = model.last_token_pool(q_out.last_hidden_state, batch["q_mask"])
+        if opt.norm_query:
+            q_emb = torch.nn.functional.normalize(q_emb, dim=-1)
 
-    all_q = torch.cat(all_q, dim=0)
-    all_g = torch.cat(all_g, dim=0)
-    all_n = torch.cat(all_n, dim=0)
+        g_emb, n_emb = model.encode_documents(input_document_ids=all_tokens, attention_mask_document=all_mask)  # (batch_size, embedding_dim)
+        if opt.norm_doc:
+            g_emb = torch.nn.functional.normalize(g_emb, dim=-1)
+            n_emb = torch.nn.functional.normalize(n_emb, dim=-1)
 
-    labels = torch.arange(0, len(all_q), device=all_q.device, dtype=torch.long)
+        bsz = q_emb.size(0)
+        all_docs = torch.cat([g_emb, n_emb], dim=0)
+        scores = torch.einsum("id, jd->ij", q_emb, all_docs)
 
+        if is_multi:
+            nqe = g_emb.size(0) // bsz
+            for qi in range(bsz):
+                pos_start = qi * nqe
+                pos_end = pos_start + nqe
+                pos_indices = set(range(pos_start, pos_end))
+                sorted_indices = scores[qi].argsort(descending=True)
+                total_correct += int(sorted_indices[0].item() in pos_indices)
+                for rank, idx in enumerate(sorted_indices):
+                    if idx.item() in pos_indices:
+                        total_mrr += 1.0 / (rank + 1)
+                        break
+                total_queries += 1
+        else:
+            labels = torch.arange(0, bsz, device=q_emb.device, dtype=torch.long)
+            argmax_idx = torch.argmax(scores, dim=1)
+            total_correct += (argmax_idx == labels).sum().item()
+            sorted_indices = torch.argsort(scores, dim=1, descending=True)
+            for qi in range(bsz):
+                rank = (sorted_indices[qi] == labels[qi]).nonzero(as_tuple=True)[0]
+                total_mrr += 1.0 / (rank[0].item() + 1) if rank.numel() > 0 else 0.0
+            total_queries += bsz
 
-    scores_pos = torch.einsum("id, jd->ij", all_q, all_g)
-    scores_neg = torch.einsum("id, jd->ij", all_q, all_n)
-    scores = torch.cat([scores_pos, scores_neg], dim=-1)
-    
-    argmax_idx = torch.argmax(scores, dim=1)
-    sorted_scores, indices = torch.sort(scores, descending=True)
-    isrelevant = indices == labels[:, None]
-    rs = [r.cpu().numpy().nonzero()[0] for r in isrelevant]
-    mrr = np.mean([1.0 / (r[0] + 1) if r.size else 0.0 for r in rs])
+    acc = 100 * total_correct / max(total_queries, 1)
+    mrr = total_mrr / max(total_queries, 1)
 
-    acc = (argmax_idx == labels).sum() / all_q.size(0)
-
-    acc = acc.item()
-    mrr = mrr.item()
-    acc = 100 * acc
-    
     message = [f"eval acc: {acc:.2f}%", f"eval mrr: {mrr:.3f}"]
     logger.info(" | ".join(message))
 
@@ -555,11 +593,11 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         
                 # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-                train_loss, iter_stats = model(**batch, stats_prefix="train")
+                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=step/opt.total_steps)
                 accelerator.backward(train_loss)
                 if opt.optim == "sam" or opt.optim == "asam":
                     optimizer.first_step(zero_grad=True)
-                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt")
+                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=step/opt.total_steps)
                     # sam_loss.backward()
                     accelerator.backward(sam_loss)
                     optimizer.second_step(zero_grad=True)

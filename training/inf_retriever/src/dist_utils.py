@@ -60,28 +60,76 @@ def varsize_gather_nograd(x: torch.Tensor):
 
     return output
 
+# def varsize_gather(x: torch.Tensor):
+#     """gather tensors of different sizes along the first dimension"""
+#     if not dist.is_initialized():
+#         return x
+
+#     # determine max size
+#     size = torch.tensor([x.shape[0]], device=x.device, dtype=torch.int)
+#     allsizes = [torch.zeros_like(size) for _ in range(dist.get_world_size())]
+#     dist.all_gather(allsizes, size)
+#     max_size = max([size.cpu().max() for size in allsizes])
+
+#     padded = torch.empty(max_size, *x.shape[1:], dtype=x.dtype, device=x.device)
+#     padded[: x.shape[0]] = x
+#     output = [torch.zeros_like(padded) for _ in range(dist.get_world_size())]
+#     dist.all_gather(output, padded)
+
+#     output = [tensor[: allsizes[k]] for k, tensor in enumerate(output)]
+#     output = torch.cat(output, dim=0)
+
+#     return output
+
+
+
+class VarsizeGather(torch.autograd.Function):
+    """all_gather for tensors with different first-dim sizes, with gradient support."""
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor):
+        world_size = dist.get_world_size()
+        local_size = torch.tensor([x.shape[0]], device=x.device, dtype=torch.int)
+        all_sizes = [torch.zeros_like(local_size) for _ in range(world_size)]
+        dist.all_gather(all_sizes, local_size)
+        all_sizes_list = [s.item() for s in all_sizes]
+        max_size = max(all_sizes_list)
+
+        padded = torch.zeros(max_size, *x.shape[1:], dtype=x.dtype, device=x.device)
+        padded[: x.shape[0]] = x
+        output = [torch.zeros_like(padded) for _ in range(world_size)]
+        dist.all_gather(output, padded)
+
+        output = [tensor[: all_sizes_list[k]] for k, tensor in enumerate(output)]
+
+        ctx.all_sizes_list = all_sizes_list
+        ctx.max_size = max_size
+        ctx.trailing_shape = x.shape[1:]
+        return tuple(output)
+
+    @staticmethod
+    def backward(ctx, *grads):
+        rank = dist.get_rank()
+        max_size = ctx.max_size
+        trailing_shape = ctx.trailing_shape
+
+        padded_grads = []
+        for g in grads:
+            padded = torch.zeros(max_size, *trailing_shape, dtype=g.dtype, device=g.device)
+            padded[: g.shape[0]] = g
+            padded_grads.append(padded)
+        all_gradients = torch.stack(padded_grads)
+        dist.all_reduce(all_gradients)
+        return all_gradients[rank][: ctx.all_sizes_list[rank]]
+
 
 def varsize_gather(x: torch.Tensor):
-    """gather tensors of different sizes along the first dimension"""
+    """gather tensors of different sizes along the first dimension, with gradient support"""
     if not dist.is_initialized():
         return x
 
-    # determine max size
-    size = torch.tensor([x.shape[0]], device=x.device, dtype=torch.int)
-    allsizes = [torch.zeros_like(size) for _ in range(dist.get_world_size())]
-    dist.all_gather(allsizes, size)
-    max_size = max([size.cpu().max() for size in allsizes])
-
-    padded = torch.empty(max_size, *x.shape[1:], dtype=x.dtype, device=x.device)
-    padded[: x.shape[0]] = x
-    output = [torch.zeros_like(padded) for _ in range(dist.get_world_size())]
-    dist.all_gather(output, padded)
-
-    output = [tensor[: allsizes[k]] for k, tensor in enumerate(output)]
-    output = torch.cat(output, dim=0)
-
-    return output
-
+    output = VarsizeGather.apply(x)
+    return torch.cat(output, dim=0)
 
 
 @torch.no_grad()
@@ -95,7 +143,6 @@ def get_varsize(x: torch.Tensor):
     allsizes = [torch.zeros_like(size) for _ in range(dist.get_world_size())]
     dist.all_gather(allsizes, size)
     allsizes = torch.cat(allsizes)
-    print("max size")
     return allsizes
 
 

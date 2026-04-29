@@ -7,7 +7,7 @@ import transformers
 import logging
 import torch.distributed as dist
 
-from src import inf_retriever, dist_utils, utils
+from training.inf_retriever.src import dist_utils, utils
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class ContrastiveLoss(nn.Module):
         self.normalize_embeddings = normalize_embeddings
         self.ce_loss = nn.CrossEntropyLoss(reduce=False)
 
-    def forward(self, outputs, positive_embeddings, negative_embeddings):
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats={}):
         if self.normalize_embeddings:
             outputs = F.normalize(outputs, dim=-1)
             positive_embeddings = F.normalize(positive_embeddings, dim=-1)
@@ -32,28 +32,31 @@ class ContrastiveLoss(nn.Module):
         negative_embeddings = negative_embeddings.view(batch_size * k, d)
         all_embeddings = torch.cat([positive_embeddings, negative_embeddings], dim=0)
 
+        # handle distributed training: Use var size gather to handle different sizes of embeddings
         var_sizes = dist_utils.get_varsize(all_embeddings)
         start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
         labels = labels + start_idx
         gather_kemb = dist_utils.varsize_gather(all_embeddings)
+        
+        # original gather
+        # gather_kemb = dist_utils.gather(all_embeddings)
+        # labels = labels + dist_utils.get_rank() * len(all_embeddings)
 
         similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)
         loss = self.ce_loss(similarity, labels)
         
         
         # log stats
-        iter_stats = {}
-        iter_stats["loss"] = (loss.item(), batch_size)
-
         predicted_idx = torch.argmax(similarity, dim=-1)
         
         accuracy = 100 * (predicted_idx == labels).float().mean()
         stdq = torch.std(outputs, dim=0).mean().item()
         stdk = torch.std(all_embeddings, dim=0).mean().item()
-        iter_stats["accuracy"] = (accuracy, batch_size)
-        iter_stats["stdq"] = (stdq, batch_size)
-        iter_stats["stdk"] = (stdk, batch_size)
+        iter_stats[f"{stats_prefix}/accuracy"] = (accuracy, batch_size)
+        iter_stats[f"{stats_prefix}/stdq"] = (stdq, batch_size)
+        iter_stats[f"{stats_prefix}/stdk"] = (stdk, batch_size)
         
+        iter_stats[f"{stats_prefix}/loss"] = (loss.mean().item(), batch_size)
         return loss.mean(), iter_stats
 
 
@@ -68,7 +71,14 @@ class HungarianContrastiveLoss(nn.Module):
         self.use_eos = use_eos
         self.normalize_embeddings = normalize_embeddings
 
-    def forward(self, outputs, positive_embeddings, negative_embeddings):
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+        if iter_stats is None:
+            iter_stats = {}
+        loss = self._core_forward(outputs, positive_embeddings, negative_embeddings)
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), outputs.shape[0])
+        return loss, iter_stats
+
+    def _core_forward(self, outputs, positive_embeddings, negative_embeddings):
         if self.normalize_embeddings:
             outputs = F.normalize(outputs, dim=-1)
             positive_embeddings = F.normalize(positive_embeddings, dim=-1)
@@ -97,9 +107,141 @@ class HungarianContrastiveLoss(nn.Module):
             costs = -(costs)
             losses.append(costs.mean())
         return torch.stack(losses).mean()
-    
-    
-    
+
+
+class HungarianMaskedContrastiveLoss(nn.Module):
+    """Multi-positive contrastive loss with Hungarian assignment and same-example
+    positive masking.
+
+    Given ``outputs`` of shape (bsz, k, d) — k auto-regressive query embeddings
+    per example — and ``positive_embeddings`` / ``negative_embeddings`` each of
+    shape (bsz, k, d) (the j-th row is the j-th gold / random negative for the
+    example), this loss:
+
+    1. Uses the scipy linear-sum-assignment to match each of the k predicted
+       embeddings to the best-scoring positive *of the same example*. This
+       removes the arbitrary "embedding j must match gold j" supervision.
+    2. When computing the softmax denominator, masks out the *other* positives
+       of the same example so they do not count as in-batch negatives. Only
+       the Hungarian-assigned positive remains among the same-example
+       candidates; every negative (local + cross-rank) and every positive /
+       negative from *other* examples stays in the pool as usual.
+
+    Differences from ``HungarianContrastiveLoss``:
+        - HungarianContrastiveLoss takes log_softmax over the full candidate
+          pool *before* the Hungarian step, so the other k-1 positives of the
+          same example are inside the log-partition and push the loss up even
+          when the model has ranked them correctly (false negatives).
+        - HungarianContrastiveLoss has no stats / iter_stats plumbing and
+          returns only the scalar loss, so it cannot be dropped into
+          EmbeddingModelDocEncNoProj without changes.
+        - This loss reports both a strict accuracy (argmax == Hungarian
+          assignment, over the masked logits) and a relaxed accuracy (argmax
+          over the *unmasked* similarity is any same-example positive), which
+          is the fair counterpart to the standard_org_q accuracy curve.
+    """
+
+    def __init__(self, temperature=0.05, normalize_embeddings=True):
+        super().__init__()
+        from scipy.optimize import linear_sum_assignment
+        self.linear_sum_assignment = linear_sum_assignment
+        self.temperature = temperature
+        self.normalize_embeddings = normalize_embeddings
+
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats={}):
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+
+        batch_size, k, d = outputs.shape
+        bk = batch_size * k
+        outputs_flat = outputs.reshape(bk, d)
+        positive_flat = positive_embeddings.reshape(bk, d)
+        negative_flat = negative_embeddings.reshape(bk, d)
+
+        # Order within each rank's gather chunk: [bsz*k positives ; bsz*k negatives]
+        all_embeddings = torch.cat([positive_flat, negative_flat], dim=0)
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        rank = dist_utils.get_rank()
+        start_idx_local = 0 if rank == 0 else int(var_sizes[:rank].sum().item())
+        gather_kemb = dist_utils.varsize_gather(all_embeddings)
+
+        # Local positives live at [local_pos_start, local_pos_end) in the gathered tensor.
+        # Positives from other ranks belong to different examples, so they are legitimate
+        # in-batch negatives and need no masking.
+        local_pos_start = start_idx_local
+        local_pos_end = start_idx_local + bk
+
+        similarity = torch.einsum('bd,cd->bc', outputs_flat / self.temperature, gather_kemb)  # (bk, total)
+
+        # Hungarian assignment per example, using the (k, k) block of similarity
+        # between this example's k predicted embeddings and its k local positives.
+        assigned_targets = torch.empty(bk, dtype=torch.long, device=outputs.device)
+        sim_detached = similarity.detach().float().cpu().numpy()
+        for i in range(batch_size):
+            pos_start = local_pos_start + k * i
+            cost = sim_detached[k * i : k * (i + 1), pos_start : pos_start + k]  # (k, k)
+            row_ind, col_ind = self.linear_sum_assignment(cost, maximize=True)
+            for ri, ci in zip(row_ind, col_ind):
+                assigned_targets[k * i + ri] = pos_start + ci
+
+        # Mask out same-example positives except the Hungarian-assigned target.
+        q_example = torch.arange(bk, device=outputs.device) // k   # (bk,)
+        cand_example = torch.arange(bk, device=outputs.device) // k  # example of each local positive slot
+        same_example = q_example.unsqueeze(1).eq(cand_example.unsqueeze(0))  # (bk, bk)
+
+        mask = torch.ones_like(similarity, dtype=torch.bool)          # True = keep
+        mask[:, local_pos_start:local_pos_end] = ~same_example        # drop all same-example local positives
+        mask[torch.arange(bk, device=outputs.device), assigned_targets] = True  # re-enable the assigned one
+
+        masked_similarity = similarity.masked_fill(~mask, float('-inf'))
+        loss = F.cross_entropy(masked_similarity, assigned_targets)
+
+        with torch.no_grad():
+            strict_correct = (masked_similarity.argmax(dim=-1) == assigned_targets)
+            strict_acc = 100.0 * strict_correct.float().mean()
+
+            raw_pred = similarity.argmax(dim=-1)                      # (bk,)
+            # argmax falls inside this example's local positive block?
+            pos_block_start = local_pos_start + k * q_example
+            pos_block_end = pos_block_start + k
+            relaxed_correct = (raw_pred >= pos_block_start) & (raw_pred < pos_block_end)
+            relaxed_acc = 100.0 * relaxed_correct.float().mean()
+
+            stdq = torch.std(outputs_flat, dim=0).mean().item()
+            stdk = torch.std(all_embeddings, dim=0).mean().item()
+
+        iter_stats[f"{stats_prefix}/accuracy"] = (relaxed_acc.item(), batch_size)
+        iter_stats[f"{stats_prefix}/accuracy_strict"] = (strict_acc.item(), batch_size)
+        iter_stats[f"{stats_prefix}/stdq"] = (stdq, batch_size)
+        iter_stats[f"{stats_prefix}/stdk"] = (stdk, batch_size)
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), batch_size)
+        return loss, iter_stats
+
+
+LOSS_REGISTRY = {
+    "contrastive": ContrastiveLoss,
+    "hungarian_masked": HungarianMaskedContrastiveLoss,
+    "hungarian": HungarianContrastiveLoss,
+}
+
+
+def build_loss(opt):
+    """Instantiate the loss module requested by ``opt.loss_fn``.
+
+    ``loss_fn='auto'`` resolves to ``hungarian_masked`` for multi mode and
+    ``contrastive`` otherwise, preserving the old default behaviour.
+    """
+    name = getattr(opt, "loss_fn", "auto")
+    if name == "auto":
+        name = "hungarian_masked" if getattr(opt, "training_mode", None) == "multi" else "contrastive"
+    if name not in LOSS_REGISTRY:
+        raise ValueError(f"Unknown loss_fn={name!r}; valid choices: {sorted(LOSS_REGISTRY)}")
+    print(f"[build_loss] training_mode={getattr(opt, 'training_mode', None)!r} -> loss_fn={name!r}", flush=True)
+    return LOSS_REGISTRY[name](temperature=opt.temperature)
+
+
 class InBatch(nn.Module):
     
     def __init__(self, opt, retriever=None, tokenizer=None):
@@ -193,7 +335,7 @@ class InBatch(nn.Module):
         # log stats
         if len(stats_prefix) > 0:
             stats_prefix = stats_prefix + "/"
-        iter_stats[f"{stats_prefix}loss"] = (loss.item(), bsz)
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
 
         predicted_idx = torch.argmax(scores, dim=-1)
         
@@ -209,9 +351,9 @@ class InBatch(nn.Module):
             accuracy = 100 * (float(accuracy) / len_labels.size(0))
         stdq = torch.std(qemb, dim=0).mean().item()
         stdk = torch.std(kemb, dim=0).mean().item()
-        iter_stats[f"{stats_prefix}accuracy"] = (accuracy, bsz)
-        iter_stats[f"{stats_prefix}stdq"] = (stdq, bsz)
-        iter_stats[f"{stats_prefix}stdk"] = (stdk, bsz)
+        iter_stats[f"{stats_prefix}/accuracy"] = (accuracy, bsz)
+        iter_stats[f"{stats_prefix}/stdq"] = (stdq, bsz)
+        iter_stats[f"{stats_prefix}/stdk"] = (stdk, bsz)
 
         return loss, iter_stats
 
@@ -221,17 +363,16 @@ class InBatch(nn.Module):
 
 class EmbeddingModelDocEncNoProj(nn.Module):
     """
-    Multi-query variant of InBatch. Uses the same shared encoder for queries and
-    documents, but each query produces num_query_embeddings embeddings.
+    Autoregressive multi-query encoder: one left-padded query sequence produces
+    num_query_embeddings query vectors (last-token hidden states), with hidden
+    states fed back as additional input tokens (no projection).
 
-    Query output shape:  (batch_size, num_query_embeddings, embedding_dim)
-    Document input:      num_query_embeddings positive + num_query_embeddings negative
-                         docs per sample, encoded with the same encoder.
+    Forward:
+        q_tokens, q_mask, q_position_ids: (batch_size, seq_len) — left-padded query
+        k_tokens, k_mask: (batch_size, num_query_embeddings * 2, seq_len)
+            First num_query_embeddings slots are positive docs, second half negatives.
 
-    Forward signature mirrors InBatch:
-        q_tokens:  (batch_size, num_query_embeddings, seq_len)
-        k_tokens:  (batch_size, num_query_embeddings * 2, seq_len)
-                   first num_query_embeddings are positives, rest are negatives
+    Query output shape passed to ContrastiveLoss: (batch_size, num_query_embeddings, dim).
     """
 
     def __init__(self, opt, retriever=None, tokenizer=None):
@@ -249,31 +390,26 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         self.tokenizer = tokenizer
         self.encoder = retriever
         self.embedding = retriever.get_input_embeddings()
-        self.loss_fct = ContrastiveLoss(
-            temperature=opt.temperature,
-        )
+        # Loss module is selected via --loss_fn (with 'auto' -> hungarian_masked
+        # for multi mode, contrastive otherwise). See build_loss above.
+        self.loss_fct = build_loss(opt)
 
     def _load_retriever(self, model_id):
-        # cfg = utils.load_hf(transformers.AutoConfig, model_id, trust_remote_code=True)
         tokenizer = utils.load_hf(transformers.AutoTokenizer, model_id, trust_remote_code=True)
-        retriever = utils.load_hf(transformers.AutoModel, model_id, trust_remote_code=True)
-
-        # cfg.name_or_path = model_id
-
-        # # Determine model class based on model_id
-        # if "inf" in model_id.lower() or "infly" in model_id.lower():
-        #     model_class = inf_retriever.INFRetriever
-
-        # if random_init:
-        #     retriever = model_class(cfg)
-        # else:
-        #     if "inf" in model_id.lower() or "infly" in model_id.lower():
-        #         pooling = pooling if pooling else "last_token"
-        #         retriever = model_class(cfg, pooling=pooling)
-        #     else:
-        #         retriever = utils.load_hf(model_class, model_id)
-
-        # retriever.config.pooling = pooling
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "right"
+        retriever = transformers.AutoModel.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+            use_cache=False,
+        )
+        if hasattr(retriever, 'gradient_checkpointing_enable'):
+            retriever.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+            print("grad checkpoint enabled for EmbeddingModelDocEncNoProj")
         return retriever, tokenizer
 
     def get_encoder(self):
@@ -282,24 +418,39 @@ class EmbeddingModelDocEncNoProj(nn.Module):
     
     def encode_documents(self, input_document_ids, attention_mask_document):
         """
-        Encode raw document tokens using the shared base_causallm (no projection).
+        Encode document token batches in hidden_size space (no projection).
 
-        Returns embeddings in hidden_size space.
+        - 3D input (batch_size, 2 * nqe, seq_len): returns positives and negatives
+          each (batch_size, nqe, hidden_size).
+        - 2D input (N, seq_len) with N even (e.g. concat of all golds then all negs):
+          returns (N/2, hidden_size) for each half — used by evaluate().
+          The first half is all golds, the second half is all negatives.
         """
-        batch_size, num_docs, doc_seq_len = input_document_ids.shape
-        assert num_docs % 2 == 0, f"num_documents must be even (pos+neg), got {num_docs}"
+        # if input_document_ids.dim() == 3:
+        #     bsz, num_docs, doc_seq_len = input_document_ids.shape
+        #     assert num_docs % 2 == 0, f"num_documents must be even (pos+neg), got {num_docs}"
+        #     nqe = num_docs // 2
+        #     flat_ids = input_document_ids.reshape(-1, doc_seq_len)
+        #     flat_mask = attention_mask_document.reshape(-1, doc_seq_len)
+        #     outputs = self.encoder(input_ids=flat_ids, attention_mask=flat_mask)
+        #     doc_embeddings = self.last_token_pool(outputs.last_hidden_state, flat_mask)
+        #     half = flat_ids.size(0) // 2
+        #     positive_embeddings = doc_embeddings[:half, :].view(bsz, nqe, -1)
+        #     negative_embeddings = doc_embeddings[half:, :].view(bsz, nqe, -1)
+        #     return positive_embeddings, negative_embeddings
 
-        flat_ids = input_document_ids.reshape(-1, doc_seq_len)
-        flat_mask = attention_mask_document.reshape(-1, doc_seq_len)
+        flat_ids = input_document_ids
+        flat_mask = attention_mask_document
+        batch_size = flat_ids.size(0) // 2
+        assert flat_ids.size(0) % 2 == 0, f"num_documents must be even (pos+neg), got {flat_ids.size(0)}"
 
-        outputs = self.encoder(input_ids=flat_ids, attention_mask=flat_mask, normalize=self.norm_doc)
-        # Last-token pooling → stays in hidden_size space, no projection
+        outputs = self.encoder(input_ids=flat_ids, attention_mask=flat_mask)
         doc_embeddings = self.last_token_pool(outputs.last_hidden_state, flat_mask)
 
-        doc_embeddings = doc_embeddings.reshape(batch_size, num_docs, -1)
-        num_pos = num_docs // 2
-        positive_embeddings = doc_embeddings[:, :num_pos, :]
-        negative_embeddings = doc_embeddings[:, num_pos:, :]
+        positive_embeddings = doc_embeddings[:batch_size, :]
+        negative_embeddings = doc_embeddings[batch_size:, :]
+        assert positive_embeddings.size(0) == batch_size
+        assert negative_embeddings.size(0) == batch_size
         return positive_embeddings, negative_embeddings
 
     def last_token_pool(self, last_hidden_states, attention_mask):
@@ -316,61 +467,128 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         
 
 
+    @torch.no_grad()
+    def generate(self, q_tokens, q_mask, q_position_ids, max_new_tokens=5):
+        """Autoregressively generate multiple query embeddings at inference time.
+
+        Each step pools the last-token hidden state as one query embedding, then feeds
+        it back as the next input token. No teacher forcing or scheduled sampling.
+
+        Args:
+            q_tokens:       (batch_size, seq_len) — left-padded query token ids
+            q_mask:         (batch_size, seq_len) — attention mask (1 = real, 0 = pad)
+            q_position_ids: (batch_size, seq_len) — position ids for left-padded input
+            max_new_tokens: number of query embeddings to generate
+
+        Returns:
+            (batch_size, max_new_tokens, hidden_size) float tensor, unnormalized
+        """
+        bsz = q_tokens.size(0)
+        device = q_tokens.device
+
+        assert (q_mask[:, -1] == 1).all(), \
+            "Left-padding expected: last token position must always be a real token"
+
+        current_input = self.embedding(q_tokens)
+        attn = q_mask
+        pos = q_position_ids
+        all_outputs = []
+
+        for j in range(max_new_tokens):
+            outputs = self.encoder(
+                inputs_embeds=current_input,
+                attention_mask=attn,
+                position_ids=pos,
+            )
+            next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
+            all_outputs.append(next_hidden.unsqueeze(1))
+
+            if j == max_new_tokens - 1:
+                break
+
+            next_tok = next_hidden.unsqueeze(1)
+            current_input = torch.cat((current_input, next_tok), dim=1)
+            attn = torch.cat(
+                (attn, torch.ones(bsz, 1, dtype=attn.dtype, device=device)),
+                dim=1,
+            )
+            pos = torch.cat((pos, pos[:, -1:] + 1), dim=1)
+
+        return torch.cat(all_outputs, dim=1)  # (bsz, max_new_tokens, hidden_size)
+
     def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
         """
         Args:
-            q_tokens: (batch_size, 1, seq_len)
-            q_mask:   (batch_size, 1, seq_len)
-            q_position_ids: (batch_size, 1, seq_len)
-            k_tokens: (batch_size, 1 * 2, seq_len)
-                      First 1 are positives, rest are negatives.
-            k_mask:   (batch_size, 1 * 2, seq_len)
-            labels:   optional, per-query-embedding labels (same semantics as InBatch)
+            q_tokens: (batch_size, seq_len)
+            q_mask:   (batch_size, seq_len)
+            q_position_ids: (batch_size, seq_len)
+            k_tokens: (batch_size*num_query_embeddings * 2, seq_len)
+            k_mask:   (batch_size*num_query_embeddings * 2, seq_len)
+            labels:   reserved (optional)
+            sampling_rate (kwargs): probability of feeding back the predicted hidden state
+                on non-final steps; else teacher (positive doc) embedding. Default 1.0.
 
         Returns:
             loss, iter_stats
         """
+        assert k_tokens.dim() == 2 and k_mask.dim() == 2
+        assert k_tokens.size(0) % 2 == 0
         bsz = q_tokens.size(0)
-        nqe = 1
-        q_tokens = q_tokens.unsqueeze(1)
-        q_mask = q_mask.unsqueeze(1)
-        q_position_ids = q_position_ids.unsqueeze(1)
-        k_tokens = k_tokens.unsqueeze(1)
-        k_mask = k_mask.unsqueeze(1)
+        # assert k_tokens.size(0) == bsz
         
-        
-        loss_mask = q_mask.detach().clone()
-        
-        # Step 1: Encode documents (hidden_size space, no projection)
-        positive_embeddings, negative_embeddings = self.encode_documents(
-            k_tokens, k_mask
+        sampling_rate = kwargs.get("sampling_rate", 1.0)
+
+        positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
+        teacher_embeddings = positive_embeddings.reshape(bsz, -1, positive_embeddings.size(-1))
+        negative_embeddings = negative_embeddings.reshape(bsz, -1, negative_embeddings.size(-1))
+        output_len = teacher_embeddings.size(1)
+
+        assert (q_mask[:, -1] == 1).all(), (
+            "Left-padding expected: last position should always be a real token",
+            q_mask[:, -1],
         )
-        labels = positive_embeddings  # teacher forcing targets (hidden_size)
-        output_len = labels.size(1)
-        
-        # Step 2: Run causal LM on query tokens (left-padded)
-        # With left-padding, padding is at the start; real tokens are contiguous at the end.
-        # Verify: for each sample, leading positions are padding (0) and trailing are real (1).
-        
-        # input_start_for_output = q_mask.sum(dim=1).max()
-        # assert q_mask[:, input_start_for_output:].sum().item() == 0
-        seq_len = q_mask.size(-1)
-        num_real = q_mask.sum(dim=-1)  # (bsz, 1)
-        pad_len = seq_len - num_real   # (bsz, 1) — number of leading pad tokens per sample
-        assert (q_mask[:, :, -1] == 1).all(), "Left-padding expected: last position should always be a real token"
 
-        initial_embeds = self.embedding(q_tokens)
-        # current_input = initial_embeds[:, :input_start_for_output, :] 
-        outputs = self.encoder(inputs_embeds=initial_embeds, attention_mask=q_mask, position_ids=q_position_ids,)
+        current_input = self.embedding(q_tokens)
+        attn = q_mask
+        pos = q_position_ids
+        device = q_tokens.device
+        all_outputs = []
 
-        # last_token_pool handles left-padding: simply take the last position
-        selected_outputs_embeddings = self.last_token_pool(outputs.last_hidden_state, q_mask)
-            
-        # Step 6: Contrastive loss (all in hidden_size space)
-        loss, iter_stats = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-        
+        for j in range(output_len):
+            outputs = self.encoder(
+                inputs_embeds=current_input,
+                attention_mask=attn,
+                position_ids=pos,
+            )
+            next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
+            all_outputs.append(next_hidden.unsqueeze(1))
+
+            if j == output_len - 1:
+                break
+
+            use_predicted = (torch.rand(bsz, 1, 1, device=device) < sampling_rate)
+            predicted = next_hidden.unsqueeze(1)
+            teacher = teacher_embeddings[:, j, :].unsqueeze(1).to(dtype=next_hidden.dtype)
+            next_tok = torch.where(use_predicted, predicted, teacher)
+
+            current_input = torch.cat((current_input, next_tok), dim=1)
+            attn = torch.cat(
+                (attn, torch.ones(bsz, 1, dtype=attn.dtype, device=device)),
+                dim=1,
+            )
+            pos = torch.cat((pos, pos[:, -1:] + 1), dim=1)
+
+        selected_outputs_embeddings = torch.cat(all_outputs, dim=1)
+        loss, iter_stats = self.loss_fct(
+            selected_outputs_embeddings,
+            positive_embeddings,
+            negative_embeddings,
+            stats_prefix=stats_prefix,
+            iter_stats=iter_stats,
+        )
         return loss, iter_stats
-            
+
+
 
     # def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
     #     """
@@ -512,7 +730,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         # # log stats
         # if len(stats_prefix) > 0:
         #     stats_prefix = stats_prefix + "/"
-        # iter_stats[f"{stats_prefix}loss"] = (loss.item(), bsz)
+        # iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
 
         # predicted_idx = torch.argmax(scores, dim=-1)
 
@@ -528,14 +746,150 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         #     accuracy = 100 * (float(accuracy) / len_labels.size(0))
         # stdq = torch.std(qemb, dim=0).mean().item()
         # stdk = torch.std(kemb, dim=0).mean().item()
-        # iter_stats[f"{stats_prefix}accuracy"] = (accuracy, bsz)
-        # iter_stats[f"{stats_prefix}stdq"] = (stdq, bsz)
-        # iter_stats[f"{stats_prefix}stdk"] = (stdk, bsz)
+        # iter_stats[f"{stats_prefix}/accuracy"] = (accuracy, bsz)
+        # iter_stats[f"{stats_prefix}/stdq"] = (stdq, bsz)
+        # iter_stats[f"{stats_prefix}/stdk"] = (stdk, bsz)
 
         # return loss, iter_stats
     
+
+class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
+    """
+    Multi-query variant of InBatch. Uses the same shared encoder for queries and
+    documents, but each query produces num_query_embeddings embeddings.
+
+    Query output shape:  (batch_size, num_query_embeddings, embedding_dim)
+    Document input:      num_query_embeddings positive + num_query_embeddings negative
+                         docs per sample, encoded with the same encoder.
+
+    Forward signature mirrors InBatch:
+        q_tokens:  (batch_size, num_query_embeddings, seq_len)
+        k_tokens:  (batch_size, num_query_embeddings * 2, seq_len)
+                   first num_query_embeddings are positives, rest are negatives
+    """
+
+    def __init__(self, opt, retriever=None, tokenizer=None):
+        super(EmbeddingModelDocEncNoProjSingleQuery, self).__init__()
+
+        self.opt = opt
+        self.norm_doc = opt.norm_doc
+        self.norm_query = opt.norm_query
+        self.label_smoothing = opt.label_smoothing
+
+        if retriever is None or tokenizer is None:
+            retriever, tokenizer = self._load_retriever(
+                opt.retriever_model_id
+            )
+        self.tokenizer = tokenizer
+        self.encoder = retriever
+        self.embedding = retriever.get_input_embeddings()
+        self.loss_fct = ContrastiveLoss(
+            temperature=opt.temperature,
+        )
+
+    def _load_retriever(self, model_id):
+        tokenizer = utils.load_hf(transformers.AutoTokenizer, model_id, trust_remote_code=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "right"
+        retriever = transformers.AutoModel.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+            use_cache=False,
+        )
+        if hasattr(retriever, 'gradient_checkpointing_enable'):
+            retriever.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False}
+            )
+            print("grad checkpoint enabled for EmbeddingModelDocEncNoProj")
+        return retriever, tokenizer
+
+    def get_encoder(self):
+        return self.encoder
     
     
-    
-    
-    
+    def encode_documents(self, input_document_ids, attention_mask_document):
+        """
+        Encode raw document tokens using the shared base_causallm (no projection).
+
+        Returns embeddings in hidden_size space.
+        """
+        flat_ids = input_document_ids
+        flat_mask = attention_mask_document
+        batch_size = flat_ids.size(0) // 2
+        assert flat_ids.size(0) % 2 == 0, f"num_documents must be even (pos+neg), got {flat_ids.size(0)}"
+
+        outputs = self.encoder(input_ids=flat_ids, attention_mask=flat_mask)
+        # Last-token pooling → stays in hidden_size space, no projection
+        doc_embeddings = self.last_token_pool(outputs.last_hidden_state, flat_mask)
+
+        positive_embeddings = doc_embeddings[:batch_size, :] # first half of the embeddings are positive
+        negative_embeddings = doc_embeddings[batch_size:, :] # second half of the embeddings are negative
+        assert positive_embeddings.size(0) == batch_size
+        assert negative_embeddings.size(0) == batch_size
+        return positive_embeddings, negative_embeddings
+
+    def last_token_pool(self, last_hidden_states, attention_mask):
+        """
+        Pool the last token as per INF-Retriever documentation
+        """
+        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+        if left_padding:
+            return last_hidden_states[:, -1]
+        else:
+            sequence_lengths = attention_mask.sum(dim=1) - 1
+            batch_size = last_hidden_states.shape[0]
+            return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+        
+
+
+    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
+        """
+        Args:
+            q_tokens: (batch_size, seq_len)
+            q_mask:   (batch_size, seq_len)
+            q_position_ids: (batch_size, seq_len)
+            k_tokens: (batch_size, 1 * 2, seq_len)
+                      First 1 are positives, rest are negatives.
+            k_mask:   (batch_size, 1 * 2, seq_len)
+            labels:   optional, per-query-embedding labels (same semantics as InBatch)
+
+        Returns:
+            loss, iter_stats
+        """
+        bsz = q_tokens.size(0)
+        nqe = 1
+        
+        
+        loss_mask = q_mask.detach().clone()
+        
+        # Step 1: Encode documents (hidden_size space, no projection)
+        positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
+        labels = positive_embeddings  # teacher forcing targets (hidden_size)
+        output_len = labels.size(1)
+        
+        # Step 2: Run causal LM on query tokens (left-padded)
+        # With left-padding, padding is at the start; real tokens are contiguous at the end.
+        # Verify: for each sample, leading positions are padding (0) and trailing are real (1).
+        
+        # input_start_for_output = q_mask.sum(dim=1).max()
+        # assert q_mask[:, input_start_for_output:].sum().item() == 0
+        seq_len = q_mask.size(-1)
+        num_real = q_mask.sum(dim=-1)  # (bsz, 1)
+        pad_len = seq_len - num_real   # (bsz, 1) — number of leading pad tokens per sample
+        assert (q_mask[:, -1] == 1).all(), ("Left-padding expected: last position should always be a real token", q_mask[:, -1])
+
+        initial_embeds = self.embedding(q_tokens)
+        print('initial_embeds', initial_embeds.shape)
+        # current_input = initial_embeds[:, :input_start_for_output, :] 
+        outputs = self.encoder(inputs_embeds=initial_embeds, attention_mask=q_mask, position_ids=q_position_ids,)
+        print('outputs.last_hidden_state', outputs.last_hidden_state.shape)
+        # last_token_pool handles left-padding: simply take the last position
+        selected_outputs_embeddings = self.last_token_pool(outputs.last_hidden_state, q_mask)
+        print('selected_outputs_embeddings', selected_outputs_embeddings.shape)
+        selected_outputs_embeddings = selected_outputs_embeddings.unsqueeze(1)
+        # Step 6: Contrastive loss (all in hidden_size space)
+        loss, iter_stats = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings, stats_prefix=stats_prefix, iter_stats=iter_stats)
+        print('loss', loss.shape, loss)
+        return loss, iter_stats

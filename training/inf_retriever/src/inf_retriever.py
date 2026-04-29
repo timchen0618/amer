@@ -119,9 +119,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             if hasattr(opt, "training_mode"):
                 print(f"Training mode: {opt.training_mode}")
                 if opt.training_mode == 'standard_org_q':
-                    model_class = inbatch.InBatch
-                else:
-                    model_class = inbatch.InBatch
+                    model_class = inbatch.EmbeddingModelDocEncNoProjSingleQuery
+                elif opt.training_mode == 'multi':
+                    model_class = inbatch.EmbeddingModelDocEncNoProj
             else:
                 raise NotImplementedError("training_mode not specified")
         else:
@@ -135,12 +135,13 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             retriever.load_state_dict(pretrained_dict, strict=True)
         else:
             # Load InBatch models
-            if opt.training_mode == 'standard_org_q':
-                model = inbatch.InBatch(opt, None, None)
-                print("Using model = InBatch", flush=True)
-            else:
-                model = inbatch.InBatch(opt, None, None)
-
+            # if opt.training_mode == 'standard_org_q':
+            #     model = inbatch.InBatch(opt, None, None)
+            #     print("Using model = InBatch", flush=True)
+            # else:
+            #     model = inbatch.InBatch(opt, None, None)
+            model = model_class(opt, None, None)
+            print(f"Using model = {model_class}", flush=True)
             model.load_state_dict(pretrained_dict, strict=True)
             model.eval()
             print('Finished loading model')

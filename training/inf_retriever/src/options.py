@@ -115,6 +115,18 @@ class Options:
         
         # added 
         self.parser.add_argument("--training_mode", type=str, default="standard_org_q")
+        self.parser.add_argument(
+            "--loss_fn",
+            type=str,
+            default="auto",
+            choices=["auto", "contrastive", "hungarian_masked", "hungarian"],
+            help=(
+                "Loss used by EmbeddingModelDocEncNoProj. 'auto' picks "
+                "hungarian_masked when training_mode=='multi' and contrastive "
+                "otherwise. 'hungarian' is the legacy HungarianContrastiveLoss "
+                "(kept for comparison; has the same-example false-negative issue)."
+            ),
+        )
         self.parser.add_argument("--eval_recall", action="store_true")
         self.parser.add_argument("--sample_length", action="store_true")
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
