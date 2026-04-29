@@ -4,18 +4,32 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=4:00:00
 #SBATCH --mem=256GB
-#SBATCH --job-name=gen_embed_qampari_infly_standard_org_q
-#SBATCH --output=sbatch_outputs/gen_embed_qampari_infly_standard_org_q.out
+#SBATCH --job-name=gen_embed_qampari_infly_multi_hungarian
+#SBATCH --output=sbatch_outputs/gen_embed_qampari_infly_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
 #SBATCH --account=torch_pr_152_courant
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:1
-#SBATCH --array=1-31
+#SBATCH --array=7-31
 
 PASSAGES="/scratch/hc3337/wikipedia_chunks/chunks_v5.tsv"
-OUTPUT_DIR="wikipedia_embeddings"
-MODEL_NAME_OR_PATH="checkpoints/qampari_infly_standard_org_q_finetuned_steps5000_t0.05_lr0.00001_ws200_bs256_gradchkpt/checkpoint/best_model/"
+
+TRAINING_MODE="multi_hungarian"
+
+OUTPUT_DIR="wikipedia_embeddings/${TRAINING_MODE}"
+
+if [ "$TRAINING_MODE" == "standard" ]; then
+    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_standard_org_q_finetuned_steps5000_t0.05_lr0.00001_ws200_bs256_gradchkpt_refiltered_5to8/checkpoint/best_model/"
+elif [ "$TRAINING_MODE" == "multi_hungarian_masked" ]; then
+    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian_masked/checkpoint/best_model/"
+elif [ "$TRAINING_MODE" == "multi_hungarian" ]; then
+    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian/checkpoint/best_model/"
+else
+    echo "Invalid training mode"
+    exit 1
+fi
+
 SHARD_ID=${SLURM_ARRAY_TASK_ID}
 NUM_SHARDS=32
 PER_GPU_BATCH_SIZE=512

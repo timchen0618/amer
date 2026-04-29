@@ -165,16 +165,14 @@ def main(args):
     if use_finetuned:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training', 'inf_retriever'))
-        from training.inf_retriever.src.inf_retriever import load_retriever
+        from src.inference_utils import load_retriever
         print(f'Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever')
         retriever, tokenizer, _ = load_retriever(checkpoint_dir)
         # Extract the underlying AutoModel (returns last_hidden_state, compatible with embed_passages_iterative_retrieval)
-        if hasattr(retriever, 'inf_model'):        # INFRetriever (standard mode)
-            model = retriever.inf_model
-        elif hasattr(retriever, 'encoder'):        # InBatch (standard_org_q and others)
-            model = retriever.encoder.inf_model
+        if hasattr(retriever, 'encoder'):        # EmbeddingModelDocEncNoProj (multi mode)
+            model = retriever.encoder
         else:
-            raise ValueError(f'Cannot extract underlying AutoModel from {type(retriever)}')
+            model = retriever
     elif ('stella' in args.model_name_or_path) or ('inf-retriever' in args.model_name_or_path) or ('NV-Embed' in args.model_name_or_path):
         model = SentenceTransformer(args.model_name_or_path, trust_remote_code=True)
         if 'inf-retriever' in args.model_name_or_path:

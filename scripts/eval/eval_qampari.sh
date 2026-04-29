@@ -159,11 +159,14 @@ suffix_list=(
 
     # "multi_SS"
     # "multi_sampling"
-    "inf"
+    # "inf"
+    "standard"
+    "multi_hungarian"
+    "multi_hungarian_masked"
 
 )
 
-file_list="dev_data_gt_qampari_corpus_5_to_8_ctxs.jsonl"  # retrieval_out_dev_qampari_5_to_8_max_new_tokens_1.jsonl
+file_list="qampari.jsonl"  # retrieval_out_dev_qampari_5_to_8_max_new_tokens_1.jsonl
 # file_list="retrieval_out_dev_qampari_5_to_8_max_new_tokens_1_reranked_l0.5.jsonl retrieval_out_dev_qampari_5_to_8_max_new_tokens_1_reranked_l0.75.jsonl retrieval_out_dev_qampari_5_to_8_max_new_tokens_1_reranked_l0.9.jsonl"
 retriever="inf"
 # base_model="qwen3-4b" # llama-1b, qwen3-4b, llama-3b, llama-8b
@@ -211,15 +214,30 @@ fi
 # done
 
 
+# for suffix in "${suffix_list[@]}"
+# do
+#     base_model="${suffix%%_*}"
+#     echo "Evaluating retrieval results for $suffix | base_model: $base_model"
+#     # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/"
+#     ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/finetuned/${suffix}/"
+#     echo "Evaluating retrieval results for $retriever"
+#     python eval.py --data-type $data_name \
+#         --root $ROOT_DIR \
+#         --topk $topk_list --has-gold-id $select_indices_file_str $file_list_str
+
+# done
+
+
 for suffix in "${suffix_list[@]}"
 do
     base_model="${suffix%%_*}"
     echo "Evaluating retrieval results for $suffix | base_model: $base_model"
     # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/base_retrievers/inf/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/finetuned/${suffix}/"
     echo "Evaluating retrieval results for $retriever"
-    python eval.py --data-type $data_name \
-        --root $ROOT_DIR \
-        --topk $topk_list --has-gold-id $select_indices_file_str $file_list_str
+    python eval.py --data_path data/amer_data/eval_data/qampari.jsonl \
+        --topk $topk_list \
+        --input-file results/base_retrievers/inf/dev_data_gt_qampari_corpus_5_to_8_ctxs.json
+        #--input-file $ROOT_DIR/qampari.jsonl
 
 done
