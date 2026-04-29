@@ -492,6 +492,8 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     multi_step_total = 0
     total_pairwise_sim = 0.0
     total_pairwise_count = 0
+    total_same_top1 = 0       # queries where all k embeddings retrieve the same top-1 doc
+    total_top1_agree_frac = 0.0  # sum of (mode_count / k) per query
 
     for i, batch in tqdm(enumerate(eval_loader)):
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
@@ -545,16 +547,31 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
                 total_pairwise_count += bsz * nqe * (nqe - 1)
 
             # Per-step accuracy: for step j, is top-1 retrieved doc any gold of that query?
+            all_top1 = torch.zeros(bsz, nqe, dtype=torch.long, device=batch["q_tokens"].device)
             for step_j in range(nqe):
                 if step_j not in multi_step_correct:
                     multi_step_correct[step_j] = 0
                 step_emb = multi_embs[:, step_j, :]  # (bsz, d)
                 step_scores = torch.einsum("id,jd->ij", step_emb, all_docs)  # (bsz, total_docs)
                 top1 = step_scores.argmax(dim=-1)  # (bsz,)
+                all_top1[:, step_j] = top1
                 for qi in range(bsz):
                     pos_start = qi * nqe
                     pos_end = pos_start + nqe
                     multi_step_correct[step_j] += int(top1[qi].item() in range(pos_start, pos_end))
+
+            # Mode collapse check: all k embeddings retrieve the same top-1 document
+            same_top1 = (all_top1 == all_top1[:, :1]).all(dim=-1)  # (bsz,)
+            total_same_top1 += same_top1.sum().item()
+
+            # Repeat rate: (k - num_unique) / (k - 1) per query
+            # 0% = all k predictions distinct, 100% = all k predictions identical
+            if nqe <= 1:
+                raise ValueError(f"repeat rate requires nqe > 1, got nqe={nqe}")
+            for qi in range(bsz):
+                num_unique = all_top1[qi].unique().numel()
+                total_top1_agree_frac += (nqe - num_unique) / (nqe - 1)
+
             multi_step_total += bsz
 
         else:
@@ -578,6 +595,14 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             avg_pairwise_sim = total_pairwise_sim / total_pairwise_count
             log_dict["eval_pairwise_cos_sim"] = avg_pairwise_sim
             message.append(f"pairwise_cos_sim: {avg_pairwise_sim:.4f}")
+
+        same_top1_pct = 100.0 * total_same_top1 / multi_step_total
+        log_dict["eval_same_top1_pct"] = same_top1_pct
+        message.append(f"same_top1_pct: {same_top1_pct:.1f}%")
+
+        repeat_pct = 100.0 * total_top1_agree_frac / multi_step_total
+        log_dict["eval_repeat_pct"] = repeat_pct
+        message.append(f"repeat_pct: {repeat_pct:.1f}%")
 
         for j in sorted(multi_step_correct):
             step_acc = 100.0 * multi_step_correct[j] / multi_step_total
