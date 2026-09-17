@@ -24,3 +24,4 @@ logs/
 *.log
 output_embeddings/
 checkpoints/
+Hung_ting_cc_autoregressive_retrieval_2024_icml26_draft.pdf
