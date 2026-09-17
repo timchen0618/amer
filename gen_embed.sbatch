@@ -4,29 +4,52 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=4:00:00
 #SBATCH --mem=256GB
-#SBATCH --job-name=gen_embed_qampari_infly_multi_hungarian
-#SBATCH --output=sbatch_outputs/gen_embed_qampari_infly_multi_hungarian.out
+#SBATCH --job-name=gen_embed_ambigqa_infly_multi_hungarian
+#SBATCH --output=sbatch_outputs/gen_embed_ambigqa_infly_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
 #SBATCH --account=torch_pr_152_courant
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:1
-#SBATCH --array=7-31
+#SBATCH --array=0-31
 
 PASSAGES="/scratch/hc3337/wikipedia_chunks/chunks_v5.tsv"
 
 TRAINING_MODE="multi_hungarian"
+DATA_NAME="ambigqa"
+OUTPUT_DIR="wikipedia_embeddings/${DATA_NAME}/${TRAINING_MODE}"
 
-OUTPUT_DIR="wikipedia_embeddings/${TRAINING_MODE}"
-
-if [ "$TRAINING_MODE" == "standard" ]; then
-    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_standard_org_q_finetuned_steps5000_t0.05_lr0.00001_ws200_bs256_gradchkpt_refiltered_5to8/checkpoint/best_model/"
-elif [ "$TRAINING_MODE" == "multi_hungarian_masked" ]; then
-    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian_masked/checkpoint/best_model/"
-elif [ "$TRAINING_MODE" == "multi_hungarian" ]; then
-    MODEL_NAME_OR_PATH="checkpoints/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian/checkpoint/best_model/"
+if [ "$DATA_NAME" == "qampari" ]; then
+    if [ "$TRAINING_MODE" == "standard" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/qampari/enc_trained_qampari_infly_standard_org_q_finetuned_steps5000_t0.05_lr0.00001_ws200_bs256_gradchkpt_refiltered_5to8/checkpoint/best_model/"
+    elif [ "$TRAINING_MODE" == "multi_hungarian_masked" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/qampari/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian_masked/checkpoint/best_model/"
+    elif [ "$TRAINING_MODE" == "multi_hungarian" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/qampari/enc_trained_qampari_infly_multi_finetuned_steps5000_t0.05_lr0.00001_ws200_bs50_gradchkpt_refiltered_5to8_multi_hungarian/checkpoint/best_model/"
+    else
+        echo "Invalid training mode"
+        exit 1
+    fi
+elif [ "$DATA_NAME" == "ambigqa" ]; then
+    if [ "$TRAINING_MODE" == "standard" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/ambigqa/enc_trained_ambigqa_infly_standard_org_q_finetuned_steps800_t0.05_lr0.00001_ws30_bs50_auto/checkpoint/best_model/"
+    elif [ "$TRAINING_MODE" == "multi_hungarian" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/ambigqa/enc_trained_ambigqa_infly_multi_finetuned_steps800_t0.05_lr0.00001_ws30_bs50_hungarian/checkpoint/best_model/"
+    else
+        echo "Invalid training mode"
+        exit 1
+    fi
+elif [ "$DATA_NAME" == "ambigqa_2docs" ]; then
+    if [ "$TRAINING_MODE" == "standard" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/ambigqa_2docs/enc_trained_ambigqa_2docs_infly_standard_org_q_finetuned_steps400_t0.05_lr0.00001_ws20_bs50_auto/checkpoint/best_model/"
+    elif [ "$TRAINING_MODE" == "multi_hungarian" ]; then
+        MODEL_NAME_OR_PATH="checkpoints/ambigqa_2docs/enc_trained_ambigqa_2docs_infly_multi_finetuned_steps400_t0.05_lr0.00001_ws20_bs50_hungarian/checkpoint/best_model/"
+    else
+        echo "Invalid training mode"
+        exit 1
+    fi
 else
-    echo "Invalid training mode"
+    echo "Invalid data name"
     exit 1
 fi
 

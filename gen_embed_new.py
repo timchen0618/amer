@@ -163,8 +163,6 @@ def main(args):
     tokenizer = None
 
     if use_finetuned:
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'training', 'inf_retriever'))
         from src.inference_utils import load_retriever
         print(f'Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever')
         retriever, tokenizer, _ = load_retriever(checkpoint_dir)

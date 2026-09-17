@@ -97,15 +97,43 @@ rootdir="/scratch/hc3337"
 #      --use_gpu \
 #      --output_file quest_last_queries_searchr1_finetuned_RL.jsonl
 
+# python retrieval_base.py \
+#      --model_name_or_path /scratch/hc3337/models/iterative_retrieval/qwen3-finetuned/ \
+#      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+#      --passages_embeddings "/scratch/hc3337/embeddings/iterative_retrieval/qwen3-finetuned/qampari_embeddings/*" \
+#      --data "/scratch/hc3337/projects/Search-R1/outputs_quest/last_query/output_qwen3-0.6b_finetuned_RL.jsonl"  \
+#      --output_dir results/base_retrievers/qwen3-0.6b/ \
+#      --projection_size 1024 \
+#      --per_gpu_batch_size 4 \
+#      --n_docs 500 \
+#      --num_shards 16 \
+#      --use_gpu \
+#      --output_file quest_last_queries_searchr1_finetuned_RL.jsonl
+
+
 python retrieval_base.py \
-     --model_name_or_path /scratch/hc3337/models/iterative_retrieval/qwen3-finetuned/ \
+     --model_name_or_path infly/inf-retriever-v1-1.5b \
      --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
-     --passages_embeddings "/scratch/hc3337/embeddings/iterative_retrieval/qwen3-finetuned/qampari_embeddings/*" \
-     --data "/scratch/hc3337/projects/Search-R1/outputs_quest/last_query/output_qwen3-0.6b_finetuned_RL.jsonl"  \
-     --output_dir results/base_retrievers/qwen3-0.6b/ \
-     --projection_size 1024 \
+     --passages_embeddings "${data_dir}/inf/qampari_embeddings/*" \
+     --data "/scratch/hc3337/projects/autoregressive/data/amer_data/eval_data/ambigqa_2docs.jsonl"  \
+     --output_dir results/base_retrievers/inf/amer_data/ \
+     --projection_size 1536 \
      --per_gpu_batch_size 4 \
      --n_docs 500 \
      --num_shards 16 \
      --use_gpu \
-     --output_file quest_last_queries_searchr1_finetuned_RL.jsonl
+     --output_file ambigqa_2docs.jsonl
+
+
+python retrieval_base.py \
+     --model_name_or_path infly/inf-retriever-v1-1.5b \
+     --passages "${rootdir}/wikipedia_chunks/chunks_v5.tsv" \
+     --passages_embeddings "${data_dir}/inf/qampari_embeddings/*" \
+     --data "/scratch/hc3337/projects/autoregressive/data/amer_data/eval_data/ambigqa.jsonl"  \
+     --output_dir results/base_retrievers/inf/amer_data/ \
+     --projection_size 1536 \
+     --per_gpu_batch_size 4 \
+     --n_docs 500 \
+     --num_shards 16 \
+     --use_gpu \
+     --output_file ambigqa.jsonl

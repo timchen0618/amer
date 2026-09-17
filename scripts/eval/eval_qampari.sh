@@ -233,11 +233,11 @@ do
     base_model="${suffix%%_*}"
     echo "Evaluating retrieval results for $suffix | base_model: $base_model"
     # ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/${base_model}/${training_data_name}_${retriever}/${sanity_check_str}${suffix}/"
-    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/finetuned/${suffix}/"
+    ROOT_DIR="/scratch/hc3337/projects/autoregressive/results/finetuned/${training_data_name}/${suffix}/"
     echo "Evaluating retrieval results for $retriever"
     python eval.py --data_path data/amer_data/eval_data/qampari.jsonl \
         --topk $topk_list \
-        --input-file results/base_retrievers/inf/dev_data_gt_qampari_corpus_5_to_8_ctxs.json
-        #--input-file $ROOT_DIR/qampari.jsonl
+        --input-file $ROOT_DIR/qampari.jsonl
+        # --input-file results/base_retrievers/inf/dev_data_gt_qampari_corpus_5_to_8_ctxs.json
 
 done
