@@ -76,6 +76,8 @@ python test.py --model_paths <checkpoint_dir> \
 
 Loss functions: `ContrastiveLoss`, `HungarianContrastiveLoss`, `MSELoss`, `HungarianMSELoss`. Hungarian variants use the scipy assignment algorithm for optimal matching between predicted and target embeddings.
 
+**`--model_type` variants:** `train.py`/`train_distributed.py` dispatch on this flag to pick a subclass of `EmbeddingModel` (all in `src/model.py`). Naming is compositional: `SS` = schedule sampling (curriculum over `max_new_tokens`, requires `--schedule_sampling`), `Variable` = model decides when to stop generating instead of a fixed step count, `LeftPad` = batch uses left-padded sequences, `PredLength` = model predicts the number of embeddings to generate, `DocEncTrained` = the document encoder is fine-tuned jointly instead of using frozen precomputed embeddings. Per the README, use `EmbeddingModelSSVariableLeftPad` for real data (AmbigQA/QAMPARI) and plain `EmbeddingModel` for synthetic/Gaussian data.
+
 ### Data Flow
 
 Training data is pre-computed HuggingFace datasets on disk containing: `input_ids`, `attention_mask`, `positive_embeddings` (tensor), `negative_embeddings` (tensor). The collators in `src/dataset.py` handle left-padding and EOS token insertion.
@@ -117,6 +119,12 @@ Pipeline: raw JSONL questions → tokenize → embed corpus with external retrie
 - Eval data: `amer_data/eval_data/` (JSONL with questions + ground truth)
 - Corpus: TSV with columns `id`, `text`, `title` (built from `chunked_wikipedia/`)
 - Corpus embeddings: sharded numpy arrays in `output_embeddings/`
+
+## Data Creation — Filtered Training Data
+
+`data_creation/sample_negatives_and_split.py` filters instances by gold count, samples negatives from the corpus, and splits into train/dev. Raw input data lives in `data/training/raw/`. Filtered output goes to `data/training/filtered/<dataset>/`.
+
+**AmbigQA format quirk:** `positive_ctxs` is `list[list[dict]]` (passages grouped by answer), not a flat list. The script flattens this by taking `grp[0]` from each group before filtering and negative sampling. QAMPARI's `ground_truths` is already a flat `list[dict]`.
 
 ## INF-Retriever Fine-tuning Pipeline
 

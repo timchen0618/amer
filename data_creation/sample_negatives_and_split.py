@@ -103,6 +103,15 @@ def sample_negatives(
 
 
 def main():
+    # Qampari
+    # python sample_negatives_and_split.py 
+    #     --input_path /scratch/hc3337/projects/diverse_response/data/qampari_data/train_data_gt_qampari_corpus.jsonl \
+    #     --corpus_path /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv \
+    #     --output_dir /scratch/hc3337/projects/autoregressive/data/training/filtered \
+    #     --num_negatives 25 --overlap_threshold 0.3 --min_gold 5 --max_gold 8 --dev_size 300 --seed 42
+    
+    # AmbigQA
+    # python data_creation/sample_negatives_and_split.py        --input_path /scratch/hc3337/projects/autoregressive/data/amer_data/ambigqa_train.jsonl         --corpus_path /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv         --output_dir /scratch/hc3337/projects/autoregressive/data/training/filtered/ambigqa/         --num_negatives 25 --overlap_threshold 0.3 --min_gold 2 --max_gold 5 --dev_size 300 --seed 42
     parser = argparse.ArgumentParser(
         description="Sample negatives, filter by gold count, and split train/dev"
     )
@@ -158,7 +167,10 @@ def main():
             )
 
         instance = json.loads(line)
-        gold_passages = instance["ground_truths"]
+        gold_passages = instance["ground_truths"] if "ground_truths" in instance else instance["positive_ctxs"]
+        # AmbigQA groups passages by answer; take the first passage from each group
+        if gold_passages and isinstance(gold_passages[0], list):
+            gold_passages = [grp[0] for grp in gold_passages if grp]
         num_gold = len(gold_passages)
 
         if not (args.min_gold <= num_gold <= args.max_gold):
@@ -178,7 +190,8 @@ def main():
             skipped_neg_count += 1
             continue
 
-        instance["positive_ctxs"] = gold_passages
+        instance["question_text"] = instance.get("question_text") or instance.get("question", "")
+        instance["positive_ctxs"] = gold_passages  # flattened (one passage per answer group for AmbigQA)
         instance["negative_ctxs"] = negatives
         instance["hard_negative_ctxs"] = []
         processed.append(instance)
