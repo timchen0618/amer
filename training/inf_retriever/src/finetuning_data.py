@@ -45,7 +45,7 @@ class Dataset(torch.utils.data.Dataset):
             return
         for ex in self.data:
             if self.training:
-                self.gold_counts.append(len(ex.get("ground_truths", [])))
+                self.gold_counts.append(len(ex.get("positive_ctxs", [])))
             else:
                 self.gold_counts.append(len(ex.get("positive_ctxs", [])))
 
@@ -62,7 +62,7 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.training:
             ### Training ###
-            positive_string = 'ground_truths'
+            positive_string = 'positive_ctxs'
             # if len(example[positive_string]) > self.max_positive_documents:
             #     gold = random.sample(example[positive_string], self.max_positive_documents)
             # else:

@@ -668,11 +668,12 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         
                 # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=step/opt.total_steps)
+                _sampling_rate = 1.0 if opt.full_sampling else step / opt.total_steps
+                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate)
                 accelerator.backward(train_loss)
                 if opt.optim == "sam" or opt.optim == "asam":
                     optimizer.first_step(zero_grad=True)
-                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=step/opt.total_steps)
+                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=_sampling_rate)
                     # sam_loss.backward()
                     accelerator.backward(sam_loss)
                     optimizer.second_step(zero_grad=True)
@@ -684,17 +685,17 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                 run_stats.update(iter_stats)
 
                 if step % (opt.log_freq * opt.accumulation_steps) == 0:
+                    avg = run_stats.average_stats
                     log = f"{step} / {opt.total_steps}"
-                    for k, v in sorted(run_stats.average_stats.items()):
+                    for k, v in sorted(avg.items()):
                         log += f" | {k}: {v:.3f}"
 
                     log += f" | lr: {scheduler.get_last_lr()[0]:0.3g}"
                     log += f" | Memory: {torch.cuda.max_memory_allocated()//1e9} GiB"
 
                     logger.info(log)
-                    wandb_stats = {k: float(v) for k, v in run_stats.average_stats.items()}
+                    wandb_stats = {k: float(v) for k, v in avg.items()}
                     accelerator.log(wandb_stats, step=step)
-                   # accelerator.log(run_stats.average_stats, step=step)
                     run_stats.reset()
 
                 if step % (opt.eval_freq * opt.accumulation_steps) == 0:

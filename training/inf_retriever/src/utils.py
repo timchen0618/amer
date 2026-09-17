@@ -196,14 +196,21 @@ class WeightedAvgStats:
     def average_stats(self) -> Dict[str, float]:
         keys = sorted(self.raw_stats.keys())
         if torch.distributed.is_initialized():
-            torch.distributed.broadcast_object_list(keys, src=0)
+            # Each rank may have accumulated different stat keys (e.g. different
+            # gold-count batches produce different numbers of step_X_teacher_cos_sim
+            # keys). broadcast_object_list requires identical list lengths on all
+            # ranks, so use all_gather_object to take the union instead.
+            all_keys_list = [None] * torch.distributed.get_world_size()
+            torch.distributed.all_gather_object(all_keys_list, keys)
+            keys = sorted(set(k for ks in all_keys_list for k in ks))
         global_dict = {}
         for k in keys:
-            if not k in self.total_weights:
-                v = 0.0
+            if k not in self.total_weights:
+                v, w = 0.0, 0.0
             else:
-                v = self.raw_stats[k] / self.total_weights[k]
-            v, _ = dist_utils.weighted_average(v, self.total_weights[k])
+                w = self.total_weights[k]
+                v = self.raw_stats[k] / w
+            v, _ = dist_utils.weighted_average(v, w)
             global_dict[k] = v
         return global_dict
 

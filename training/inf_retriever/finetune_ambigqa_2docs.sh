@@ -4,8 +4,8 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=4:00:00
 #SBATCH --mem=256GB
-#SBATCH --job-name=qampari_infly_embedding_model_doc_enc_single_query
-#SBATCH --output=sbatch_outputs/qampari_infly_embedding_model_doc_enc_single_query.out
+#SBATCH --job-name=ambigqa_2docs_infly_embedding_model_doc_enc_multi_hungarian
+#SBATCH --output=sbatch_outputs/ambigqa_2docs_infly_embedding_model_doc_enc_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
 #SBATCH --account=torch_pr_152_courant
@@ -20,15 +20,15 @@ source /ext3/env.sh
 cd /scratch/hc3337/projects/autoregressive
 
 temperature=0.05
-total_steps=5000
-warmup_steps=200
+total_steps=400
+warmup_steps=20
 lr=0.00001
-save_freq=250
-log_freq=25
-eval_freq=250
+save_freq=15
+log_freq=5
+eval_freq=15
 negative_hard_ratio=0.0
 negative_ctxs=1
-data_name=qampari
+data_name=ambigqa_2docs
 
 per_gpu_batch_size=50
 per_gpu_eval_batch_size=50
@@ -48,7 +48,7 @@ loss_fn=hungarian
 full_sampling=1
 
 data_dir=/scratch/hc3337/projects/autoregressive/data/training/filtered/\${data_name}
-output_dir=checkpoints/\${data_name}
+output_dir=checkpoints/\${data_name}/
 sampling_tag=\$([ "\${full_sampling}" = "1" ] && echo "fullsr" || echo "rampsr")
 run_name=enc_trained_\${data_name}_\${model_name}_\${training_mode}_finetuned_steps\${total_steps}_t\${temperature}_lr\${lr}_ws\${warmup_steps}_bs\${per_gpu_batch_size}_\${loss_fn}_\${sampling_tag}
 

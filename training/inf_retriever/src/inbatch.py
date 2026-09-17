@@ -579,7 +579,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
 
             use_predicted = (torch.rand(bsz, 1, 1, device=device) < sampling_rate)
             predicted = next_hidden.unsqueeze(1)
-            teacher = teacher_embeddings[:, j, :].unsqueeze(1).to(dtype=next_hidden.dtype)
+            teacher = teacher_embeddings[:, j, :].unsqueeze(1).to(dtype=next_hidden.dtype).detach()
             next_tok = torch.where(use_predicted, predicted, teacher)
 
             current_input = torch.cat((current_input, next_tok), dim=1)

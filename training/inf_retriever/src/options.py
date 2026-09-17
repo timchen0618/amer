@@ -132,6 +132,14 @@ class Options:
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
         self.parser.add_argument("--not_save", action='store_true')
         self.parser.add_argument("--doc_lengths", nargs='+', default=[3])
+        self.parser.add_argument(
+            "--full_sampling",
+            action="store_true",
+            help=(
+                "If set, sampling_rate=1.0 always (fully autoregressive, no teacher forcing). "
+                "Default is the linear ramp sampling_rate=step/total_steps."
+            ),
+        )
 
     def print_options(self, opt):
         message = ""
