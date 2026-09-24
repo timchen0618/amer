@@ -37,18 +37,27 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         if hasattr(opt, "run_name"):
             if hasattr(opt, "training_mode"):
                 print(f"Training mode: {opt.training_mode}")
+                freeze_doc_encoder = getattr(opt, "freeze_doc_encoder", False)
                 if opt.training_mode == 'standard_org_q':
-                    model_class = inbatch.EmbeddingModelDocEncNoProjSingleQuery
+                    model_class = (
+                        inbatch.EmbeddingModelFrozenDocEncSingleQuery
+                        if freeze_doc_encoder
+                        else inbatch.EmbeddingModelDocEncNoProjSingleQuery
+                    )
                 elif opt.training_mode == 'multi':
-                    model_class = inbatch.EmbeddingModelDocEncNoProj
+                    model_class = (
+                        inbatch.EmbeddingModelFrozenDocEnc
+                        if freeze_doc_encoder
+                        else inbatch.EmbeddingModelDocEncNoProj
+                    )
             else:
                 raise NotImplementedError("training_mode not specified")
         else:
             raise NotImplementedError("run_name not specified")
-            
+
         print(f"Using model class: {model_class}, retriever_model_id: {retriever_model_id}")
         pretrained_dict = pretrained_dict["model"]
-        
+
         model = model_class(opt, None, None)
         print(f"Using model = {model_class}", flush=True)
         model.load_state_dict(pretrained_dict, strict=True)
@@ -56,6 +65,12 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         print('Finished loading model')
         if opt.training_mode == 'standard_org_q':
             retriever = model.encoder
+            if hasattr(model, 'doc_encoder'):
+                # Expose the frozen document encoder on the returned query-encoder
+                # object, so document-embedding callers (e.g. gen_embed_new.py) can
+                # find it via hasattr(retriever, 'doc_encoder') even though the
+                # query-encoder object itself is what's returned here.
+                retriever.doc_encoder = model.doc_encoder
         else:
             retriever = model
         retriever._is_multi_query = (opt.training_mode != 'standard_org_q')

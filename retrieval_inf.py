@@ -230,7 +230,9 @@ def embed_queries_multi(args, queries, model, tokenizer):
 
     task = 'Given a web search query, retrieve relevant passages that answer the query'
     max_length = 1024
-    max_new_tokens = getattr(args, 'max_new_tokens', 5)
+    if args.max_new_tokens is None:
+        raise ValueError("max_new_tokens must be set explicitly for multi-query embedding -- see retrieval_inf.py's --max_new_tokens help text.")
+    max_new_tokens = args.max_new_tokens
     device = next(model.parameters()).device
 
     model.eval()
@@ -320,6 +322,16 @@ def main(args):
         if use_finetuned:
             assert tokenizer is not None
             if getattr(model, '_is_multi_query', False):
+                if args.max_new_tokens is None:
+                    raise ValueError(
+                        "This checkpoint was trained with training_mode='multi', so "
+                        "--max_new_tokens (the number of query embeddings k to generate) "
+                        "must be passed explicitly -- there is no safe default, since the "
+                        "right k is an empirical, per-dataset choice (e.g. QAMPARI=5, "
+                        "AmbigQA=2 as of this writing) and silently using the wrong one "
+                        "produces a real but wrong retrieval result with no error. See "
+                        "the amer-retrieval-pipeline skill for current per-dataset values."
+                    )
                 questions_embedding = embed_queries_multi(args, queries, model, tokenizer)
             else:
                 questions_embedding = embed_queries_single(args, queries, model, tokenizer)
@@ -436,8 +448,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_new_tokens",
         type=int,
-        default=5,
-        help="Number of query embeddings to generate per question (multi-query mode only)",
+        default=None,
+        help=(
+            "Number of query embeddings to generate per question (multi-query "
+            "checkpoints only). No default -- this is an empirical per-dataset "
+            "choice (QAMPARI=5, AmbigQA=2 as of this writing) and must be passed "
+            "explicitly. Omitting it for a multi-query checkpoint raises an error "
+            "rather than silently using a possibly-wrong value."
+        ),
     )
     parser.add_argument(
         "--agg_func",

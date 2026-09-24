@@ -131,6 +131,34 @@ class Options:
         self.parser.add_argument("--sample_length", action="store_true")
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
         self.parser.add_argument("--not_save", action='store_true')
+        self.parser.add_argument(
+            "--save_every_eval",
+            action="store_true",
+            help=(
+                "If set, save a step-numbered checkpoint (checkpoint/step-<N>) "
+                "at every eval_freq, independent of the best-so-far MRR gate "
+                "used for the 'best_model' checkpoint. Needed to evaluate the "
+                "full training trajectory rather than only whichever eval "
+                "happened to be 'best' at the time (which resets to 0 on every "
+                "restart, since best_eval_metric is re-initialized each run -- "
+                "see experiment_plan.md's multi_hungarian_with_detach writeup). "
+                "Saves far more checkpoints than typically needed for eval -- "
+                "consider --save_at_steps instead if disk space is tight."
+            ),
+        )
+        self.parser.add_argument(
+            "--save_at_steps",
+            nargs="+",
+            type=int,
+            default=None,
+            help=(
+                "If set, save a step-numbered checkpoint (checkpoint/step-<N>) "
+                "at exactly these training steps, independent of the "
+                "best-so-far MRR gate. Same purpose as --save_every_eval but "
+                "bounded disk cost -- use this when only specific steps will "
+                "actually be evaluated."
+            ),
+        )
         self.parser.add_argument("--doc_lengths", nargs='+', default=[3])
         self.parser.add_argument(
             "--full_sampling",
@@ -140,6 +168,43 @@ class Options:
                 "Default is the linear ramp sampling_rate=step/total_steps."
             ),
         )
+        self.parser.add_argument(
+            "--freeze_doc_encoder",
+            action="store_true",
+            help=(
+                "If set, use EmbeddingModelFrozenDocEnc(SingleQuery) instead of "
+                "EmbeddingModelDocEncNoProj(SingleQuery): documents are encoded by a "
+                "second, separate, frozen copy of the backbone (matching the paper's "
+                "frozen-document-encoder design) instead of the trainable query-encoder "
+                "weights. Does not modify EmbeddingModelDocEncNoProj."
+            ),
+        )
+        self.parser.add_argument(
+            "--force_causal",
+            action="store_true",
+            help=(
+                "Only used with --freeze_doc_encoder and training_mode=multi "
+                "(EmbeddingModelFrozenDocEnc). If set, passes is_causal=True on every "
+                "query-encoder forward call, matching the paper's autoregressive-decoder-LM "
+                "assumption. Default is bidirectional (is_causal=False), the backbone's "
+                "normal embedding-model behavior."
+            ),
+        )
+        self.parser.add_argument(
+            "--use_lora",
+            action="store_true",
+            help=(
+                "Only used with --freeze_doc_encoder (EmbeddingModelFrozenDocEnc(SingleQuery)). "
+                "If set, wraps the trainable query encoder in a LoRA adapter (peft) instead of "
+                "full fine-tuning, matching the paper's real-data recipe (Appendix A.6). The "
+                "frozen doc_encoder never gets LoRA -- it isn't trained at all either way. "
+                "Isolates whether full-FT-without-LoRA is itself degrading retrieval quality, "
+                "independent of the multi-query objective (see experiment_plan.md)."
+            ),
+        )
+        self.parser.add_argument("--lora_r", type=int, default=64)
+        self.parser.add_argument("--lora_alpha", type=int, default=16)
+        self.parser.add_argument("--lora_dropout", type=float, default=0.1)
 
     def print_options(self, opt):
         message = ""

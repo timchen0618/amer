@@ -118,10 +118,19 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         if hasattr(opt, "run_name"):
             if hasattr(opt, "training_mode"):
                 print(f"Training mode: {opt.training_mode}")
+                freeze_doc_encoder = getattr(opt, "freeze_doc_encoder", False)
                 if opt.training_mode == 'standard_org_q':
-                    model_class = inbatch.EmbeddingModelDocEncNoProjSingleQuery
+                    model_class = (
+                        inbatch.EmbeddingModelFrozenDocEncSingleQuery
+                        if freeze_doc_encoder
+                        else inbatch.EmbeddingModelDocEncNoProjSingleQuery
+                    )
                 elif opt.training_mode == 'multi':
-                    model_class = inbatch.EmbeddingModelDocEncNoProj
+                    model_class = (
+                        inbatch.EmbeddingModelFrozenDocEnc
+                        if freeze_doc_encoder
+                        else inbatch.EmbeddingModelDocEncNoProj
+                    )
             else:
                 raise NotImplementedError("training_mode not specified")
         else:
@@ -148,9 +157,13 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             
             if opt.training_mode == 'standard_org_q':
                 retriever = model.encoder
+                if hasattr(model, 'doc_encoder'):
+                    # See src/inference_utils.py::load_retriever for why this is needed:
+                    # document-embedding callers look for .doc_encoder on the returned object.
+                    retriever.doc_encoder = model.doc_encoder
             else:
                 retriever = model
-        
+
     else:
         # Loading from HuggingFace
         retriever_model_id = model_path

@@ -166,8 +166,14 @@ def main(args):
         from src.inference_utils import load_retriever
         print(f'Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever')
         retriever, tokenizer, _ = load_retriever(checkpoint_dir)
-        # Extract the underlying AutoModel (returns last_hidden_state, compatible with embed_passages_iterative_retrieval)
-        if hasattr(retriever, 'encoder'):        # EmbeddingModelDocEncNoProj (multi mode)
+        # Extract the underlying AutoModel (returns last_hidden_state, compatible with embed_passages_iterative_retrieval).
+        # Documents must be embedded with the DOCUMENT encoder, which is only the same
+        # object as the query encoder (.encoder) when the doc encoder was trained jointly.
+        # For EmbeddingModelFrozenDocEnc(SingleQuery), .doc_encoder is the frozen copy
+        # that was actually used to supervise training, so it must be preferred here.
+        if hasattr(retriever, 'doc_encoder'):     # EmbeddingModelFrozenDocEnc(SingleQuery) (frozen doc encoder)
+            model = retriever.doc_encoder
+        elif hasattr(retriever, 'encoder'):       # EmbeddingModelDocEncNoProj (multi mode, joint doc encoder)
             model = retriever.encoder
         else:
             model = retriever

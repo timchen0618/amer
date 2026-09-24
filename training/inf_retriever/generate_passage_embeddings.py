@@ -89,7 +89,13 @@ def embed_passages(args, passages, model, tokenizer):
 def main(args):
     model, tokenizer, _ = src.inf_retriever.load_retriever(args.model_name_or_path)
     if not isinstance(model, src.inf_retriever.INFRetriever):
-        if hasattr(model, "encoder"):
+        # Documents must be embedded with the DOCUMENT encoder; prefer the frozen
+        # .doc_encoder (EmbeddingModelFrozenDocEnc(SingleQuery)) over the query
+        # encoder .encoder, which only doubles as the document encoder when it was
+        # trained jointly (EmbeddingModelDocEncNoProj).
+        if hasattr(model, "doc_encoder"):
+            model = model.doc_encoder
+        elif hasattr(model, "encoder"):
             model = model.encoder
 
     print(f"Model loaded from {args.model_name_or_path}.", flush=True)

@@ -472,9 +472,15 @@ def eval_retrieve_docs(retrieved_docs, data_path, has_gold_id=False, topk=100):
 @torch.no_grad()
 def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     if opt.training_mode == 'standard_org_q':
-        model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
+        if getattr(opt, "freeze_doc_encoder", False):
+            model = inbatch.EmbeddingModelFrozenDocEncSingleQuery(opt, None, None)
+        else:
+            model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
     elif opt.training_mode == 'multi':
-        model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
+        if getattr(opt, "freeze_doc_encoder", False):
+            model = inbatch.EmbeddingModelFrozenDocEnc(opt, None, None)
+        else:
+            model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
     else:
         raise NotImplementedError
     model.load_state_dict(state_dict, strict=True)
@@ -611,6 +617,15 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
 
     logger.info(" | ".join(message))
     accelerator.log(log_dict, step=step)
+
+    # evaluate() instantiates a full fresh model every call (line ~483);
+    # explicit cleanup reduces GPU memory fragmentation risk from repeated
+    # create/destroy cycles over a long run (precautionary -- the more
+    # likely root cause of the training crashes was disk quota exhaustion
+    # during checkpoint saves, not this, but this is cheap and safe either way).
+    del model
+    torch.cuda.empty_cache()
+
     return acc, mrr
 
 
@@ -641,19 +656,22 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     
     # get the state dict of the main model
     state_dict=accelerator.get_state_dict(model)
-    
-    # if accelerator.is_main_process:
-    #     evaluate(opt, state_dict, eval_loader, accelerator, step, device)
-    #     utils.save_state_dict(
-    #         state_dict,
-    #         optimizer,
-    #         scheduler,
-    #         step,
-    #         opt,
-    #         opt.output_dir + opt.run_name,
-    #         f"step-{step}",
-    #     )
-                                  
+
+    # Zero-shot ("untrained") baseline: eval the freshly-loaded model before any
+    # optimizer step, and save it as a real checkpoint (step-0) so it can be
+    # reloaded later (e.g. for corpus embedding generation) for comparison.
+    if accelerator.is_main_process:
+        evaluate(opt, state_dict, eval_loader, accelerator, step, device)
+        utils.save_state_dict(
+            state_dict,
+            optimizer,
+            scheduler,
+            step,
+            opt,
+            opt.output_dir + opt.run_name,
+            f"step-{step}",
+        )
+
     while step < opt.total_steps:
         logger.info(f"Start epoch {epoch}, number of batches: {len(train_dataloader)}")
         best_eval_metric = 0
@@ -721,6 +739,24 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                                         f"best_model",
                                     )
 
+                        # Opt-in, independent of the best-so-far gate above: save
+                        # every eval checkpoint so the full trajectory can be
+                        # evaluated later, not just whichever eval happened to be
+                        # "best" (which resets every run -- see --save_every_eval
+                        # help text).
+                        should_save_step = opt.save_every_eval or (opt.save_at_steps and step in opt.save_at_steps)
+                        if should_save_step and step % (opt.save_freq * opt.accumulation_steps) == 0 and dist_utils.get_rank() == 0:
+                            if (not opt.not_save) and accelerator.is_main_process:
+                                utils.save_state_dict(
+                                    state_dict,
+                                    optimizer,
+                                    scheduler,
+                                    step,
+                                    opt,
+                                    opt.output_dir + opt.run_name,
+                                    f"step-{step}",
+                                )
+
                     model.train()
 
                 if step >= (opt.total_steps * opt.accumulation_steps):
@@ -762,9 +798,15 @@ def main():
     #     raise NotImplementedError
 
     if opt.training_mode == 'standard_org_q':
-        model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
+        if getattr(opt, "freeze_doc_encoder", False):
+            model = inbatch.EmbeddingModelFrozenDocEncSingleQuery(opt, None, None)
+        else:
+            model = inbatch.EmbeddingModelDocEncNoProjSingleQuery(opt, None, None)
     elif opt.training_mode == 'multi':
-        model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
+        if getattr(opt, "freeze_doc_encoder", False):
+            model = inbatch.EmbeddingModelFrozenDocEnc(opt, None, None)
+        else:
+            model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
     else:
         raise NotImplementedError
     tokenizer = model.tokenizer
