@@ -2,6 +2,18 @@
 
 import pdb
 import os
+# Must be set before the first CUDA allocation. Mixed precision keeps fp32 weights,
+# grads and AdamW state on every GPU (~21 GB more than pure bf16 for this 1.5B model),
+# so memory is tight; expandable segments reduce allocator fragmentation. Does not
+# change numerics. On this cluster it only takes effect in single-process runs: with
+# 2 processes (DDP/FSDP) PyTorch prints "expandable_segments not supported on this
+# platform" and ignores it (harmless).
+# Measured on H200 (2026-09-25): DDP and 1-GPU still OOM at 50 examples/GPU; DDP fits
+# at 40/GPU; FSDP fits at 50/GPU.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+import random
+import hashlib
+from collections import Counter
 import time
 import sys
 import torch
@@ -26,7 +38,7 @@ import wandb
 from tqdm import tqdm
 
 # add accelerator
-from accelerate import Accelerator, InitProcessGroupKwargs
+from accelerate import Accelerator, InitProcessGroupKwargs, DistributedDataParallelKwargs
 from accelerate.utils import LoggerType
 
 
@@ -206,6 +218,7 @@ def prepare_data(opt, tokenizer):
     if opt.training_mode == 'multi' and hasattr(train_dataset, 'gold_counts') and train_dataset.gold_counts:
         train_batch_sampler = finetuning_data.GoldLengthGroupedBatchSampler(
             train_dataset.gold_counts, opt.per_gpu_batch_size, drop_last=True, shuffle=True,
+            seed=opt.seed,
         )
         train_dataloader = DataLoader(
             train_dataset,
@@ -629,6 +642,28 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     return acc, mrr
 
 
+def build_accelerator(opt, log_with="wandb"):
+    """The training Accelerator (also used by tests/test_scheduler_stepping.py).
+
+    mixed_precision="bf16": bf16 autocast compute over the fp32 weights cast in main().
+    step_scheduler_with_optimizer=False: step the LR scheduler exactly once per
+    training step. accelerate's default steps it num_processes times per call,
+    which on 2 GPUs halved warmup and hit lr=0 at total_steps/2.
+    gradient_as_bucket_view=True (DDP only): gradients live directly in DDP's
+    all-reduce buckets instead of a second fp32 copy (~7 GB saved). Same math.
+    """
+    return Accelerator(
+        gradient_accumulation_steps=opt.accumulation_steps,
+        mixed_precision="bf16",
+        step_scheduler_with_optimizer=False,
+        log_with=log_with,
+        kwargs_handlers=[
+            InitProcessGroupKwargs(timeout=timedelta(seconds=3000)),
+            DistributedDataParallelKwargs(gradient_as_bucket_view=True),
+        ],
+    )
+
+
 def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     run_stats = utils.WeightedAvgStats()
 
@@ -640,7 +675,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     #########
     # accelerate: multi-gpu training
     #########
-    accelerator = Accelerator(gradient_accumulation_steps=opt.accumulation_steps, mixed_precision="bf16", log_with="wandb", kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=3000))])
+    accelerator = build_accelerator(opt)
     device = accelerator.device
     
     wandb_config = {
@@ -653,30 +688,56 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     model, optimizer, train_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, scheduler
     )
-    
+
+    # Precision guard: training must be mixed precision (fp32 trainable weights)
+    # on every backend. Fails fast if a config/backend ever changes that silently.
+    trainable_dtypes = Counter(str(p.dtype) for p in model.parameters() if p.requires_grad)
+    frozen_dtypes = Counter(str(p.dtype) for p in model.parameters() if not p.requires_grad)
+    logger.warning(
+        f"[setup] rank={accelerator.process_index} distributed_type={accelerator.distributed_type} "
+        f"num_processes={accelerator.num_processes} mixed_precision={accelerator.mixed_precision} "
+        f"trainable_param_dtypes={dict(trainable_dtypes)} frozen_param_dtypes={dict(frozen_dtypes)}"
+    )
+    if set(trainable_dtypes) != {"torch.float32"}:
+        raise RuntimeError(
+            f"Expected fp32 trainable weights (mixed precision), got {dict(trainable_dtypes)}"
+        )
+
     # get the state dict of the main model
     state_dict=accelerator.get_state_dict(model)
 
     # Zero-shot ("untrained") baseline: eval the freshly-loaded model before any
     # optimizer step, and save it as a real checkpoint (step-0) so it can be
     # reloaded later (e.g. for corpus embedding generation) for comparison.
+    # The save respects --not_save (a fp32 checkpoint is ~7 GB).
     if accelerator.is_main_process:
         evaluate(opt, state_dict, eval_loader, accelerator, step, device)
-        utils.save_state_dict(
-            state_dict,
-            optimizer,
-            scheduler,
-            step,
-            opt,
-            opt.output_dir + opt.run_name,
-            f"step-{step}",
-        )
+        if not opt.not_save:
+            utils.save_state_dict(
+                state_dict,
+                optimizer,
+                scheduler,
+                step,
+                opt,
+                opt.output_dir + opt.run_name,
+                f"step-{step}",
+            )
 
+    # Best eval MRR over the whole run (it used to reset every epoch, so
+    # best_model meant "best since the start of the current epoch").
+    best_eval_metric = 0
     while step < opt.total_steps:
         logger.info(f"Start epoch {epoch}, number of batches: {len(train_dataloader)}")
-        best_eval_metric = 0
         for i, batch in enumerate(train_dataloader):
             step += 1
+            if i == 0:
+                # Data-order fingerprint: differs between ranks (disjoint batches),
+                # identical across reruns with the same seed.
+                fp = hashlib.sha1(batch["q_tokens"].cpu().numpy().tobytes()).hexdigest()[:12]
+                logger.warning(
+                    f"[data] rank={accelerator.process_index} epoch={epoch} first_batch "
+                    f"size={batch['q_tokens'].shape[0]} q_tokens_sha1={fp}"
+                )
             if step % 50 == 0:
                 print(f"==> at global step {step}", flush=True)
             with accelerator.accumulate(model):
@@ -698,6 +759,26 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                 else:
                     optimizer.step()
                 scheduler.step()
+
+                if step == 1:
+                    # AdamW state is created on the first step; it must be fp32 too.
+                    state_dtypes = Counter(
+                        str(v.dtype)
+                        for s in optimizer.state.values()
+                        for k, v in s.items()
+                        if torch.is_tensor(v) and k != "step"
+                    )
+                    logger.warning(f"[setup] rank={accelerator.process_index} optimizer_state_dtypes={dict(state_dtypes)}")
+                    if not state_dtypes:
+                        # No trainable parameter on this rank got a gradient, so this
+                        # rank updated nothing. Seen with the frozen-doc-encoder class
+                        # under FSDP (2026-09-25); train that class on 1 GPU.
+                        raise RuntimeError(
+                            f"rank {accelerator.process_index} has no optimizer state after the "
+                            f"first step: none of its trainable parameters received a gradient"
+                        )
+                    if set(state_dtypes) != {"torch.float32"}:
+                        raise RuntimeError(f"Expected fp32 optimizer state, got {dict(state_dtypes)}")
                 optimizer.zero_grad()
 
                 run_stats.update(iter_stats)
@@ -709,7 +790,9 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         log += f" | {k}: {v:.3f}"
 
                     log += f" | lr: {scheduler.get_last_lr()[0]:0.3g}"
-                    log += f" | Memory: {torch.cuda.max_memory_allocated()//1e9} GiB"
+                    # Decimal GB (1e9 bytes); this was mislabelled "GiB" before. H200 = 150 GB.
+                    log += f" | Memory: {torch.cuda.max_memory_allocated()//1e9} GB"
+                    log += f" | MemReserved: {torch.cuda.max_memory_reserved()//1e9} GB"
 
                     logger.info(log)
                     wandb_stats = {k: float(v) for k, v in avg.items()}
@@ -774,7 +857,13 @@ def main():
     options = Options()
     opt = options.parse()
 
+    # Seed every RNG identically on all ranks. Python `random` drives data
+    # sampling (gold shuffles, negatives, the eval subset); it used to be
+    # unseeded, so each rank drew different, non-reproducible samples.
+    random.seed(opt.seed)
+    np.random.seed(opt.seed)
     torch.manual_seed(opt.seed)
+    torch.cuda.manual_seed_all(opt.seed)
 
     # set up output directory
     directory_exists = os.path.isdir(opt.output_dir)        
@@ -810,6 +899,24 @@ def main():
     else:
         raise NotImplementedError
     tokenizer = model.tokenizer
+
+    # Mixed precision on every backend: fp32 master weights + fp32 AdamW state,
+    # bf16 autocast compute (Accelerator(mixed_precision="bf16") below). The
+    # model loads in bf16, so cast it here -- before the optimizer is built, so
+    # the AdamW moments are created in fp32 too. bf16 -> fp32 is exact.
+    # Without this cast, DDP/1-GPU silently trained in pure bf16 (most updates
+    # rounded away) while FSDP upcast to fp32 -- see RECIPE_FALLBACK_bf16_ddp.md.
+    model.to(torch.float32)
+    if hasattr(model, "doc_encoder"):
+        # The frozen doc-encoder copy is never updated, so bf16 is enough --
+        # except under FSDP, which requires one dtype per flattened parameter
+        # group and would mix it with fp32 trainable weights in the root group.
+        # NOTE: the frozen class is not supported under FSDP yet -- in a 2-GPU test
+        # (2026-09-25) rank 1 received no gradients; the optimizer-state check in
+        # finetuning() now stops such runs. Train the frozen class on 1 GPU.
+        use_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true"
+        if not use_fsdp:
+            model.doc_encoder.to(torch.bfloat16)
 
     # set up optimizers
     optimizer, scheduler = utils.set_optim(opt, model)

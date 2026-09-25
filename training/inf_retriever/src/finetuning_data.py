@@ -418,10 +418,16 @@ class GoldLengthGroupedBatchSampler:
     any padding or truncation.
     """
 
-    def __init__(self, gold_counts, batch_size, drop_last=False, shuffle=True):
+    def __init__(self, gold_counts, batch_size, drop_last=False, shuffle=True, seed=0):
         self.batch_size = batch_size
         self.drop_last = drop_last
         self.shuffle = shuffle
+        # Own RNG, seeded from (seed, epoch): every rank builds the identical
+        # batch order each epoch, so accelerate's BatchSamplerShard (rank r takes
+        # every num_processes-th batch) splits the data exactly once. Using the
+        # global `random` let ranks diverge, since __getitem__ also draws from it.
+        self.seed = seed
+        self.epoch = 0
         from collections import defaultdict
         self.groups = defaultdict(list)
         for idx, count in enumerate(gold_counts):
@@ -430,18 +436,20 @@ class GoldLengthGroupedBatchSampler:
         print(f"GoldLengthGroupedBatchSampler: {summary}", flush=True)
 
     def __iter__(self):
+        rng = random.Random(self.seed + self.epoch)
+        self.epoch += 1
         all_batches = []
-        for _count, indices in self.groups.items():
+        for _count, indices in sorted(self.groups.items()):
             if self.shuffle:
                 indices = indices.copy()
-                random.shuffle(indices)
+                rng.shuffle(indices)
             for start in range(0, len(indices), self.batch_size):
                 batch = indices[start:start + self.batch_size]
                 if self.drop_last and len(batch) < self.batch_size:
                     continue
                 all_batches.append(batch)
         if self.shuffle:
-            random.shuffle(all_batches)
+            rng.shuffle(all_batches)
         yield from all_batches
 
     def __len__(self):
