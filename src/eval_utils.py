@@ -310,7 +310,6 @@ def eval_retrieve_docs_id(retrieved_docs_path, data_path, has_gold_id=False, top
         return '%2.2f'%(100*mrecall_score), '%2.2f'%(100*recall_score), '%2.2f'%(100*precision_score), '%2.4f'%(MRR)
     
 
-from beir import LoggingHandler
 import logging
 import pytrec_eval
 from typing import Optional, List, Dict, Tuple
@@ -320,7 +319,7 @@ from typing import Optional, List, Dict, Tuple
 logging.basicConfig(format='%(asctime)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging.INFO,
-                    handlers=[LoggingHandler()])
+                    handlers=[logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 def mrr(

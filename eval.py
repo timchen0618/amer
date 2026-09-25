@@ -55,6 +55,7 @@ def main():
         print(f"Evaluating: {args.input_file}")
         print(f"Top-k: {topk}")
         print(f"Data path: {args.data_path}")
+        print("Has gold ID: ", not args.no_gold_id)
         
         # Main evaluation
         eval_retrieve_docs(

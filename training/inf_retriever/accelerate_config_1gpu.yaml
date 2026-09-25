@@ -1,0 +1,26 @@
+# Explicit single-process accelerate config, used to bypass this account's
+# global default at ~/.cache/huggingface/accelerate/default_config.yaml
+# (distributed_type: FSDP, fsdp_offload_params: true), which silently applies
+# FSDP's fp32-master-weight upcast to every wrapped parameter -- including a
+# frozen submodule that is never updated (see EmbeddingModelFrozenDocEnc) --
+# and caused an OOM at 64GB that a plain single-process run does not hit.
+#
+# See experiment_plan.md / debugging_plan.md for context. Used by
+# finetune_ambigqa_frozen_causal.sh and finetune_ambigqa_frozen_singlequery.sh
+# via `accelerate launch --config_file training/inf_retriever/accelerate_config_1gpu.yaml ...`
+compute_environment: LOCAL_MACHINE
+debug: false
+distributed_type: 'NO'
+downcast_bf16: 'no'
+enable_cpu_affinity: false
+machine_rank: 0
+main_training_function: main
+mixed_precision: bf16
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
