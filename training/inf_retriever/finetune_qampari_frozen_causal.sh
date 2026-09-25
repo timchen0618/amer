@@ -12,6 +12,13 @@
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:1
 
+# NOTE (2026-09-25, branch fsdp-clean-recipe): under the current code this script
+# trains in MIXED precision (fp32 weights + fp32 AdamW, bf16 autocast) with a
+# correctly-stepped LR scheduler and seeded, rank-consistent data order. It is a
+# TEMPLATE, not the fallback recipe. The fallback (pure bf16, 2x-compressed LR
+# schedule, unseeded shuffling) is only reproducible from git tag
+# fallback-bf16-ddp -- see RECIPE_FALLBACK_bf16_ddp.md.
+
 # QAMPARI variant of finetune_ambigqa_frozen_causal.sh (Phase 1 / Run A,
 # full fine-tuning, no LoRA). Fills the gap noted in experiment_plan.md:
 # QAMPARI previously only had a LoRA variant of Run A

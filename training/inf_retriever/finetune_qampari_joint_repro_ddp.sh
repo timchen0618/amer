@@ -12,6 +12,16 @@
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
 
+# NOTE (2026-09-25, branch fsdp-clean-recipe): under the current code this script
+# trains in MIXED precision (fp32 weights + fp32 AdamW, bf16 autocast) with a
+# correctly-stepped LR scheduler and seeded, rank-consistent data order. It is a
+# TEMPLATE, not the fallback recipe. The fallback (pure bf16, 2x-compressed LR
+# schedule, unseeded shuffling) is only reproducible from git tag
+# fallback-bf16-ddp -- see RECIPE_FALLBACK_bf16_ddp.md.
+# WARNING: under mixed precision, 50 examples/GPU runs out of memory on H200 with
+# DDP or 1 GPU (measured 2026-09-25); DDP fits at 40/GPU, FSDP fits at 50/GPU.
+# Decision (2026-09-25): QAMPARI joint training uses FSDP -> finetune_qampari_joint_fsdp.sh.
+
 # 2x H200, plain DDP (MULTI_GPU), no FSDP.
 # Tests the precision hypothesis (2026-09-23): the original with_detach
 # checkpoint has bf16 weights + bf16 AdamW states (no FSDP upcast), while the

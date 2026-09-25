@@ -30,7 +30,7 @@ accumulation_steps=1
 max_positive_documents=1
 num_workers=2
 
-accelerate launch --main_process_port 29501 training/inf_retriever/finetuning_multi.py --train_data $data_dir/train_data.jsonl \
+accelerate launch --config_file training/inf_retriever/accelerate_config_2gpu_ddp.yaml --main_process_port 29501 training/inf_retriever/finetuning_multi.py --train_data $data_dir/train_data.jsonl \
                                                  --eval_data $data_dir/dev_data.jsonl \
                                                  --temperature $temperature \
                                                  --total_steps $total_steps \

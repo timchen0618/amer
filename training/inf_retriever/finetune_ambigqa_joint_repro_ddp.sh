@@ -12,6 +12,16 @@
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
 
+# NOTE (2026-09-25, branch fsdp-clean-recipe): under the current code this script
+# trains in MIXED precision (fp32 weights + fp32 AdamW, bf16 autocast) with a
+# correctly-stepped LR scheduler and seeded, rank-consistent data order. It is a
+# TEMPLATE, not the fallback recipe. The fallback (pure bf16, 2x-compressed LR
+# schedule, unseeded shuffling) is only reproducible from git tag
+# fallback-bf16-ddp -- see RECIPE_FALLBACK_bf16_ddp.md.
+# NOTE: under mixed precision, QAMPARI (up to 8 golds -> 800 docs/batch) runs out of
+# memory at 50/GPU with DDP on H200 (measured 2026-09-25). AmbigQA has fewer golds
+# per example, so it should fit, but that has not been measured yet.
+
 # 2x H200, plain DDP (MULTI_GPU), no FSDP.
 # AmbigQA analogue of finetune_qampari_joint_repro_ddp.sh. Reproduces the
 # original enc_trained_ambigqa_infly_multi_finetuned_steps800_..._hungarian
