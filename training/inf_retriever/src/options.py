@@ -131,6 +131,16 @@ class Options:
         self.parser.add_argument("--sample_length", action="store_true")
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
         self.parser.add_argument("--not_save", action='store_true')
+        # Step 5 / phase C knobs (all off by default).
+        self.parser.add_argument("--freeze_norms", action="store_true",
+                                 help="Freeze all RMSNorm/LayerNorm weights of the trainable encoder.")
+        self.parser.add_argument("--freeze_embeddings", action="store_true",
+                                 help="Freeze the input token embeddings of the trainable encoder.")
+        self.parser.add_argument("--l2sp_decay", type=float, default=0.0,
+                                 help="Decoupled pull toward the starting weights after every optimizer step: "
+                                      "theta <- theta - lr_t * l2sp_decay * (theta - theta_0). 0 disables.")
+        self.parser.add_argument("--no_save_optimizer", action="store_true",
+                                 help="Save checkpoints without the AdamW state (~6 GB smaller in fp32).")
         self.parser.add_argument(
             "--save_every_eval",
             action="store_true",

@@ -72,7 +72,9 @@ def save_state_dict(state_dict, optimizer, scheduler, step, opt, dir_path, name)
     checkpoint = {
         "step": step,
         "model": state_dict,
-        "optimizer": optimizer.state_dict(),
+        # optimizer=None skips the AdamW state (~6 GB for the fp32 1.5B model); inference
+        # and param_drift only read "model"/"opt". See --no_save_optimizer.
+        "optimizer": optimizer.state_dict() if optimizer is not None else None,
         "scheduler": scheduler.state_dict(),
         "opt": opt,
     }

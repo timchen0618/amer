@@ -703,8 +703,19 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
             f"Expected fp32 trainable weights (mixed precision), got {dict(trainable_dtypes)}"
         )
 
+    # Phase C knob: decoupled L2-SP. Reference = the weights at step 0, captured after
+    # prepare() so they have the same (possibly FSDP-sharded) layout as the live params.
+    l2sp = getattr(opt, "l2sp_decay", 0.0)
+    if l2sp > 0:
+        l2sp_params = [p for p in model.parameters() if p.requires_grad]
+        l2sp_ref = [p.detach().clone() for p in l2sp_params]
+        logger.warning(f"[knobs] l2sp_decay={l2sp} over {sum(p.numel() for p in l2sp_params)} local weights")
+
     # get the state dict of the main model
     state_dict=accelerator.get_state_dict(model)
+
+    # --no_save_optimizer: checkpoints keep weights/opt/scheduler but not the AdamW state.
+    ckpt_optimizer = None if getattr(opt, "no_save_optimizer", False) else optimizer
 
     # Zero-shot ("untrained") baseline: eval the freshly-loaded model before any
     # optimizer step, and save it as a real checkpoint (step-0) so it can be
@@ -715,7 +726,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
         if not opt.not_save:
             utils.save_state_dict(
                 state_dict,
-                optimizer,
+                ckpt_optimizer,
                 scheduler,
                 step,
                 opt,
@@ -757,7 +768,12 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                     accelerator.backward(sam_loss)
                     optimizer.second_step(zero_grad=True)
                 else:
+                    cur_lr = scheduler.get_last_lr()[0]
                     optimizer.step()
+                    if l2sp > 0:
+                        with torch.no_grad():
+                            for p, p0 in zip(l2sp_params, l2sp_ref):
+                                p.sub_((p - p0) * (cur_lr * l2sp))
                 scheduler.step()
 
                 if step == 1:
@@ -814,7 +830,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                                 if (not opt.not_save) and accelerator.is_main_process:
                                     utils.save_state_dict(
                                         state_dict,
-                                        optimizer,
+                                        ckpt_optimizer,
                                         scheduler,
                                         step,
                                         opt,
@@ -832,7 +848,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                             if (not opt.not_save) and accelerator.is_main_process:
                                 utils.save_state_dict(
                                     state_dict,
-                                    optimizer,
+                                    ckpt_optimizer,
                                     scheduler,
                                     step,
                                     opt,
@@ -917,6 +933,18 @@ def main():
         use_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true"
         if not use_fsdp:
             model.doc_encoder.to(torch.bfloat16)
+
+    # Phase C knobs: freeze parts of the trainable encoder (before the optimizer is built).
+    if getattr(opt, "freeze_norms", False) or getattr(opt, "freeze_embeddings", False):
+        n_frozen = 0
+        for name, p in model.named_parameters():
+            if name.startswith("doc_encoder."):
+                continue
+            is_norm = name.endswith("norm.weight") or "layernorm" in name
+            is_emb = "embed_tokens" in name or name.startswith("embedding.")
+            if (opt.freeze_norms and is_norm) or (opt.freeze_embeddings and is_emb):
+                p.requires_grad_(False); n_frozen += p.numel()
+        logger.warning(f"[knobs] freeze_norms={opt.freeze_norms} freeze_embeddings={opt.freeze_embeddings}: froze {n_frozen} weights")
 
     # set up optimizers
     optimizer, scheduler = utils.set_optim(opt, model)
