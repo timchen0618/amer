@@ -7,6 +7,15 @@ import sys
 import numpy as np
 from src import normalize_text
 
+
+def format_passage(p):
+    """'<title> <text>', stripped so training passages tokenize exactly like the corpus
+    (gen_embed_new.py joins the TSV's title and text with one space). QAMPARI golds carry a
+    trailing space on the title and a leading space on the text that negatives and the corpus
+    never have, which the model can learn as a shortcut."""
+    title, text = p.get("title", "").strip(), p["text"].strip()
+    return title + " " + text if title else text
+
 def get_detailed_instruct(task_description: str, query: str) -> str:
     return f'Instruct: {task_description}\nQuery: {query}'
 
@@ -29,7 +38,7 @@ class Dataset(torch.utils.data.Dataset):
         self.negative_hard_ratio = negative_hard_ratio
         self.negative_hard_min_idx = negative_hard_min_idx
         self.training = training
-        self.normalize_fn = normalize_text.normalize if normalize_text else lambda x: x
+        self.normalize_fn = normalize_text.normalize if normalize else lambda x: x
         self._load_data(datapaths, global_rank, world_size, maxload)
         if not self.training:
             import random
@@ -120,12 +129,12 @@ class Dataset(torch.utils.data.Dataset):
         
         if self.training_mode == 'multi':
             gold = [
-                g["title"] + " " + g["text"] if ("title" in g and len(g["title"]) > 0) else g["text"] for g in gold
+                format_passage(g) for g in gold
             ]
         else:
-            gold = gold["title"] + " " + gold["text"] if ("title" in gold and len(gold["title"]) > 0) else gold["text"]
+            gold = format_passage(gold)
         negatives = [
-            n["title"] + " " + n["text"] if ("title" in n and len(n["title"]) > 0) else n["text"] for n in negatives
+            format_passage(n) for n in negatives
         ]
         
         gold_instances = [self.normalize_fn(g) for g in gold] if self.training_mode == 'multi' else self.normalize_fn(gold) 
@@ -224,7 +233,7 @@ class SampleDataset(torch.utils.data.Dataset):
         self.negative_hard_ratio = negative_hard_ratio
         self.negative_hard_min_idx = negative_hard_min_idx
         self.training = training
-        self.normalize_fn = normalize_text.normalize if normalize_text else lambda x: x
+        self.normalize_fn = normalize_text.normalize if normalize else lambda x: x
         self.tokenizer = tokenizer
         self._load_data(datapaths, global_rank, world_size, maxload)
         self.doc_lengths = [int(x) for x in doc_lengths]
@@ -314,9 +323,9 @@ class SampleDataset(torch.utils.data.Dataset):
                 negatives = []
         
 
-        gold = gold["title"] + " " + gold["text"] if ("title" in gold and len(gold["title"]) > 0) else gold["text"]
+        gold = format_passage(gold)
         negatives = [
-            n["title"] + " " + n["text"] if ("title" in n and len(n["title"]) > 0) else n["text"] for n in negatives
+            format_passage(n) for n in negatives
         ]
         
         example = {
