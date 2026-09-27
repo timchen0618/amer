@@ -8,12 +8,22 @@ import numpy as np
 from src import normalize_text
 
 
+def _csv_unquote(s):
+    """Undo CSV quoting ('"a ""b"" c"' -> 'a "b" c'). sample_negatives_and_split.py read the corpus
+    TSV with a plain split, so about 42% of random negatives kept the quoting that csv/pandas
+    readers (and therefore corpus embedding) remove."""
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+        return s[1:-1].replace('""', '"')
+    return s
+
+
 def format_passage(p):
-    """'<title> <text>', stripped so training passages tokenize exactly like the corpus
-    (gen_embed_new.py joins the TSV's title and text with one space). QAMPARI golds carry a
-    trailing space on the title and a leading space on the text that negatives and the corpus
-    never have, which the model can learn as a shortcut."""
-    title, text = p.get("title", "").strip(), p["text"].strip()
+    """'<title> <text>', normalized so training passages tokenize exactly like the corpus
+    (gen_embed_new.py joins the TSV's title and text with one space). Two artifacts in the
+    training files would otherwise act as label shortcuts: QAMPARI golds carry a trailing space
+    on the title and a leading space on the text, and random negatives keep raw CSV quoting."""
+    title = _csv_unquote(p.get("title", "").strip()).strip()
+    text = _csv_unquote(p["text"].strip()).strip()
     return title + " " + text if title else text
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
