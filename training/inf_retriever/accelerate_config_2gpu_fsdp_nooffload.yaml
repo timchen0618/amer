@@ -5,6 +5,12 @@ downcast_bf16: 'no'
 enable_cpu_affinity: false
 fsdp_config:
   fsdp_activation_checkpointing: false  # the model already enables HF gradient checkpointing (inbatch._load_retriever); FSDP AC on top recomputed every layer twice
+  # TRANSFORMER_BASED_WRAP finds no layer class here (the outer wrapper model defines no
+  # _no_split_modules), so the whole model is ONE FSDP unit: one all-gather / reduce-scatter per
+  # step. Keep it that way for multi-query training: the two ranks usually run different numbers
+  # of generation steps (different gold counts k), and per-layer wrapping then hangs in backward
+  # (reproduced with k=2 vs 5). Make both ranks draw the same k per step before changing this.
+  # See reports/code_data_audit_2026-09-27.md, T4.
   fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
   fsdp_cpu_ram_efficient_loading: true
   fsdp_offload_params: false
