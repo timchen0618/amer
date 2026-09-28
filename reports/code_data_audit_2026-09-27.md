@@ -76,6 +76,11 @@ The evaluation pipeline itself is sound: nothing found biases MRecall or Recall.
 - **Code robustness:** `zip(fin, mined)` would silently truncate if the mining file were short. A per-line question assert does guard the ordering.
 - **Random negatives are not clean either:** 1.8% of QAMPARI random negatives (12,726 of 725,575) and 0.8% of AmbigQA ones (981 of 118,600) contain an answer string. The random-negative sampler filters same-title passages but not answers.
 - **Fix:** in `phaseC_mine_hard_negatives.py`, reject candidates whose title matches a gold title or an answer entity, as the random-negative sampler already does for titles.
+- **Correction (2026-09-28): the answer filter looking at text only is not a weak spot.** It was flagged because `has_answer` checks only `text`, not `title`. But in the chunks_v5 corpus every passage's text already starts with its title: 740,704 of 740,704 QAMPARI and 116,131 of 116,131 AmbigQA hard negatives, and every random negative. The text check therefore already covers the title.
+  - Measured on `data/training/clean_hn`: 0 hard negatives have an answer in the title but not in the text.
+  - Checking `title + " " + text` instead would catch only 21 more (0.003%). Twenty are coincidences at the boundary where the title repeats, e.g. "Osborne Brothers Osborne Brothers…" matching the answer "Brothers Osborne". One is a real miss, "Zhang Ziyi" for the answer "Ziyi Zhang"; catching it would need name-order handling, not a title check.
+  - AmbigQA scoring (`src/eval_utils.py`) also checks text only, so mining and evaluation agree.
+  - This holds only while passage text begins with the title. A corpus without that convention would reopen the gap.
 
 ### D5. MEDIUM: dev500 does not look like the QAMPARI test set (verified)
 
@@ -224,3 +229,13 @@ The paper's QAMPARI and AmbigQA numbers may be affected.
 | FSDP wrapping (T4) | Document only. Do not enable per-layer wrapping for multi-query training without first making both ranks draw the same gold count per step. |
 | Re-scoring on clean AmbigQA test questions | Not done: everything will be re-run. |
 | Paper pipeline | Out of scope for now. |
+
+## 8. Fix candidates for the next round (after the 24-run grid)
+
+These change the training data, so they wait until the grid finishes. The grid (launched 2026-09-28) trains on the clean splits as built.
+
+| # | Candidate | Size | What it takes |
+| --- | --- | --- | --- |
+| N1 | **Filter answer-containing random negatives.** The random-negative sampler rejects same-title passages but never checks for answers. | 1.26% of QAMPARI and 0.88% of AmbigQA random negatives in `data/training/clean` contain an answer string (earlier, on the pre-audit data: 1.8% / 0.8%). | Apply the same `has_answer` check the hard-negative miner uses, and resample the rejected negatives. |
+| N2 | **Recover QAMPARI examples dropped by the raw 5–8 gold filter.** The filter counted raw gold slots. Rows with more than 8 slots but only 5–8 unique passages were excluded, although they qualify after deduplication. | 556 new training examples (+2.2%) under "5–8 unique golds"; 753 under 2–8 and 894 under 1–8. None overlaps test or the clean dev set. They skew to `wikidata_simple` (63% vs 46% overall), with about 1.6 answers per passage. | Sample random negatives for them, rebuild the QAMPARI train split (dev unchanged), and re-mine hard negatives. |
+| N3 | **QAMPARI training examples with fewer than 5 unique golds.** 1,421 examples, 143 of them with a single gold, remain in train after deduplication. They were kept by decision; the equivalent AmbigQA examples with one gold were dropped. | 5.7% of QAMPARI train. | Decide whether to apply a minimum (e.g. `--min_train_golds 2`), consistently with N2's rule. |
