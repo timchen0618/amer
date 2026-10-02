@@ -827,7 +827,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                             print('mrr', mrr, 'best eval metric', best_eval_metric)
                             best_eval_metric = mrr
                             if step % (opt.save_freq * opt.accumulation_steps) == 0 and dist_utils.get_rank() == 0:
-                                if (not opt.not_save) and accelerator.is_main_process:
+                                if (not opt.not_save) and (not getattr(opt, "no_save_best_model", False)) and accelerator.is_main_process:
                                     utils.save_state_dict(
                                         state_dict,
                                         ckpt_optimizer,

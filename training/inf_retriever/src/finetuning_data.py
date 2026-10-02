@@ -12,7 +12,11 @@ def _csv_unquote(s):
     """Undo CSV quoting ('"a ""b"" c"' -> 'a "b" c'). sample_negatives_and_split.py read the corpus
     TSV with a plain split, so about 42% of random negatives kept the quoting that csv/pandas
     readers (and therefore corpus embedding) remove."""
-    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+    # Only a real CSV-quoted field: wrapped in quotes, with at least one doubled inner quote and no
+    # single one (the corpus only quotes fields that contain a quote). A genuine passage or title
+    # that starts and ends with a quote, e.g. '"What Is This Heart?"', is left alone.
+    inner = s[1:-1]
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"' and '""' in inner and '"' not in inner.replace('""', ''):
         return s[1:-1].replace('""', '"')
     return s
 

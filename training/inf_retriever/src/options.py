@@ -141,6 +141,9 @@ class Options:
                                       "theta <- theta - lr_t * l2sp_decay * (theta - theta_0). 0 disables.")
         self.parser.add_argument("--no_save_optimizer", action="store_true",
                                  help="Save checkpoints without the AdamW state (~6 GB smaller in fp32).")
+        self.parser.add_argument("--no_save_best_model", action="store_true",
+                                 help="Skip the 'best_model' checkpoint (picked by the in-batch eval MRR, "
+                                      "which is saturated from step 0 and does not track retrieval quality).")
         self.parser.add_argument(
             "--save_every_eval",
             action="store_true",
