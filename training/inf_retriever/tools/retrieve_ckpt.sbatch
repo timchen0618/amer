@@ -2,14 +2,18 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --tasks-per-node=1
-#SBATCH --time=2:00:00
+#SBATCH --time=3:00:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_courant
-#SBATCH --constraint=h200
+#SBATCH --constraint=h200|l40s|b200
+#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,b200,h200
+#SBATCH --comment=preemption=yes;requeue=true
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=retrieve_ckpt
 #SBATCH --output=sbatch_outputs/retrieve_%x.out
 
+# GPU: H200, L40S or B200 (2026-09-29: widens the pool under low priority). Only the b200 and h200 partitions
+# in the list above are preemptible; a preempted job is requeued and reruns (retrieval takes <30 min). The nli environment works on B200.
 # Retrieve with one checkpoint over its own corpus embeddings, for the test queries of
 # DATA_NAME (default) or for DATA=<any eval jsonl> (e.g. the phase A dev sets).
 # K = number of query embeddings for multi-query checkpoints

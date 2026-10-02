@@ -31,7 +31,9 @@ def shard_and_get_embedding_files(embedding_files, shard_id, num_shards):
     return embedding_files[start_idx:end_idx]
 
 
-def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards):
+def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards, top_k=None):
+    """Merge per-shard results by score. top_k keeps only the overall top-k per query
+    (otherwise every shard's candidates are kept, num_shards times more than needed)."""
     if num_shards == 1:
         return all_sharded_ids_and_scores[0]
     
@@ -53,6 +55,9 @@ def aggregate_sharded_results(all_sharded_ids_and_scores, num_shards):
         indices = np.argsort(top_ids_and_scores[i][1])[::-1]
         top_ids_and_scores[i][1] = top_ids_and_scores[i][1][indices]
         top_ids_and_scores[i][0] = [top_ids_and_scores[i][0][j] for j in indices]
+        if top_k is not None:
+            top_ids_and_scores[i][0] = top_ids_and_scores[i][0][:top_k]
+            top_ids_and_scores[i][1] = top_ids_and_scores[i][1][:top_k]
             
     return top_ids_and_scores
 

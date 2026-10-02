@@ -114,7 +114,9 @@ def embed_queries_single(args, queries, model, tokenizer):
         outputs = model(**batch_dict)
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
+    # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
+    # base model's 'Given a web search query, ...' instruction, which training never used.
+    task = args.query_instruct_task
     model.eval()
     embeddings, batch_question = [], []
     max_length = 1024
@@ -228,7 +230,9 @@ def embed_queries_multi(args, queries, model, tokenizer):
     def get_detailed_instruct(task_description: str, query: str) -> str:
         return f'Instruct: {task_description}\nQuery: {query}'
 
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
+    # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
+    # base model's 'Given a web search query, ...' instruction, which training never used.
+    task = args.query_instruct_task
     max_length = 1024
     if args.max_new_tokens is None:
         raise ValueError("max_new_tokens must be set explicitly for multi-query embedding -- see retrieval_inf.py's --max_new_tokens help text.")
