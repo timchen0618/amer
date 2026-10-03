@@ -13,13 +13,16 @@
 #
 # Usage (repo root, run detached):
 #   WORKER=a bash training/inf_retriever/tools/full_eval_queue.sh <qampari|ambigqa>
+#   QUEUE=results/phaseC/full_queue_qampari_v2.txt DEV_TAG=cleanv2 WORKER=a bash .../full_eval_queue.sh qampari
 #   RESUME="<tag> <embed job> <dev job> <test job>" WORKER=a bash .../full_eval_queue.sh <ds>
 #     (adopt an eval that is already submitted: wait for its jobs, score it, then continue)
 set -u
 cd /scratch/hc3337/projects/autoregressive
 DS=$1; T=training/inf_retriever/tools
 WORKER=${WORKER:-a}; RESUME=${RESUME:-}
-Q=results/phaseC/full_queue_$DS.txt; touch $Q
+# QUEUE: the queue file, default results/phaseC/full_queue_<ds>.txt (the 24-run grid); other run
+# families get their own (grid_launch.sh PREFIX=...), started with the matching DEV_TAG.
+Q=${QUEUE:-results/phaseC/full_queue_$DS.txt}; touch $Q
 CLAIMS=results/phaseC/full/$DS/.claims; mkdir -p $CLAIMS
 LOG=results/phaseC/phaseC.log
 # Clean dev sets (500 each; data_creation/build_clean_splits.py). DEV_TAG="" = phase A dev sets.
@@ -40,8 +43,16 @@ active() {
 }
 ok_all() { [ "$(sacct -j "$1" -X -n -o State 2>/dev/null | tr -d ' ' | grep -vc '^COMPLETED$')" = 0 ]; }
 evalf() {  # $1 data $2 results jsonl $3 metrics out
-  srun --account=torch_pr_152_courant --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
-    bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python eval.py --data_path $1 --topk 100 10 $GOLD --input-file $2" > $3 2>&1
+  # Scoring only needs the retrieval output, which stays on disk, so a failed srun is retried here
+  # instead of redoing the 2-3 h embedding (code audit 2026-09-28, G11).
+  local try
+  for try in 1 2 3; do
+    srun --account=torch_pr_152_courant --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
+      bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python eval.py --data_path $1 --topk 100 10 $GOLD --input-file $2" > $3 2>&1
+    grep -q MRecall $3 && return 0
+    log "WARNING: scoring $2 failed (attempt $try of 3)"; sleep 60
+  done
+  return 1
 }
 # Wait for one submitted eval, score it, delete its embeddings. Returns 1 on failure (logged).
 finish() {  # $1 tag $2 embed job $3 dev job $4 test job
@@ -52,8 +63,8 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
   while active $rd || active $rt; do sleep 60; done
   if [ -s $base/dev/$DS.jsonl ] && [ -s $base/test/$DS.jsonl ]; then rm -rf $emb
   else log "ERROR: $tag retrieval missing output; embeddings kept at $emb"; return 1; fi
-  evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt
-  evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt
+  evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt || { log "ERROR: $tag dev scoring failed"; return 1; }
+  evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt || { log "ERROR: $tag test scoring failed"; return 1; }
   log "RESULT full $tag: DEV $(grep -m1 MRecall $base/dev/eval_metrics.txt | cut -d'|' -f1-2) | TEST $(grep -m1 MRecall $base/test/eval_metrics.txt | cut -d'|' -f1-2)"
 }
 
@@ -80,6 +91,9 @@ while true; do
   if [ "$line" = END ]; then log "worker $WORKER: queue END reached"; exit 0; fi
   read -r tag ck k <<< "$line"; [ "$k" = "-" ] && k=""
   base=results/phaseC/full/$DS/$tag; emb=wikipedia_embeddings/$DS/full_$tag
+  # Remove outputs of any earlier attempt, so finish() can only see this attempt's files (a
+  # stale retrieval output would otherwise pass its "-s" check, code audit 2026-09-28, R5).
+  rm -f $base/dev/$DS.jsonl $base/test/$DS.jsonl $base/dev/eval_metrics.txt $base/test/eval_metrics.txt
   ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
   rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k $T/retrieve_ckpt.sbatch)
   rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k $T/retrieve_ckpt.sbatch)

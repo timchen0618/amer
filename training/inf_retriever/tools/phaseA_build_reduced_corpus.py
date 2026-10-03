@@ -91,10 +91,21 @@ def main():
         missing = len(s["ids"] - found[s["name"]])
         print(f"{s['name']}: wrote {counts[s['name']]} passages "
               f"({len(found[s['name']])} candidates/golds + random; {missing} candidate ids not in corpus)", flush=True)
-    with open(os.path.join(args.out_dir, "build_info.json"), "w") as f:
-        json.dump({"topk": args.topk, "n_random": args.n_random, "seed": args.seed,
-                   "sets": {s["name"]: {"queries": s["nq"], "base_candidates": s["n_base"],
-                                        "gold_ids": s["n_gold"], "passages": counts[s["name"]]} for s in specs}}, f, indent=1)
+    # Merge into build_info.json (one record per set, with the settings it was built with), so
+    # building a new set does not erase the record of the existing ones.
+    info_path = os.path.join(args.out_dir, "build_info.json")
+    info = json.load(open(info_path)) if os.path.exists(info_path) else {}
+    sets = info.get("sets", {})
+    for name in sets:  # older records stored the settings once at the top level
+        for k in ("topk", "n_random", "seed"):
+            if k in info:
+                sets[name].setdefault(k, info[k])
+    for s in specs:
+        sets[s["name"]] = {"queries": s["nq"], "base_candidates": s["n_base"], "gold_ids": s["n_gold"],
+                           "passages": counts[s["name"]], "topk": args.topk, "n_random": args.n_random,
+                           "seed": args.seed, "spec": next(x for x in args.spec if x.split(":")[0] == s["name"])}
+    with open(info_path, "w") as f:
+        json.dump({"sets": sets}, f, indent=1)
 
 
 if __name__ == "__main__":

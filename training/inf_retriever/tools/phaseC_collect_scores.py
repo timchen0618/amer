@@ -8,13 +8,15 @@ Two sections per dataset:
 Every dev score is labelled with the dev set it was computed on, read from the "Data path" line
 of its eval_metrics.txt, since earlier runs used the phase A dev sets and the grid the clean ones.
 """
-import glob, os, re
+import collections, glob, os, re
 
 R = "results/phaseC"
 LOG = f"{R}/phaseC.log"
 DEV_SETS = {"qampari_dev500": "dev500", "ambigqa_dev300": "dev300",
             "qampari_cleandev500": "clean dev500", "ambigqa_cleandev500": "clean dev500"}
-GRID = re.compile(r"^grid_(qampari|ambigqa)_(single|multi)_(hn|nohn)_lr([0-9.e-]+)$")
+# <family>_<ds>_<mode>_<hn|nohn>_lr<LR>: "grid" = the 24-run grid; other prefixes (grid_launch.sh PREFIX=...)
+# are reported as their own run family.
+GRID = re.compile(r"^([a-z0-9]+)_(qampari|ambigqa)_(single|multi)_(hn|nohn)_lr([0-9.e-]+)$")
 
 
 def read(f):
@@ -55,7 +57,8 @@ def pruned_steps():
 
 def queued_tags(ds):
     """Tags listed in the full-eval queue (first field of each line), plus any evaluated dir."""
-    tags = {l.split()[0] for l in read(f"{R}/full_queue_{ds}.txt").splitlines() if l.split() and l.split()[0] != "END"}
+    lines = [l for f in glob.glob(f"{R}/full_queue_{ds}*.txt") if ".pre_audit" not in f for l in read(f).splitlines()]
+    tags = {l.split()[0] for l in lines if l.split() and l.split()[0] != "END"}
     return tags | {os.path.basename(d) for d in glob.glob(f"{R}/full/{ds}/*")}
 
 
@@ -89,48 +92,50 @@ out = ["# Phase C scores", "",
 for ds in ("qampari", "ambigqa"):
     out += [f"## {ds.upper()}", ""]
 
-    # ---- 24-run grid ------------------------------------------------------------------------
-    runs = []
-    for d in glob.glob(f"{R}/grid_{ds}_*"):
+    # ---- run families: the 24-run grid, then any later family (grid_launch.sh PREFIX=...) ------
+    families = collections.defaultdict(list)
+    for d in glob.glob(f"{R}/*_{ds}_*"):
         m = GRID.match(os.path.basename(d))
-        if m and os.path.isdir(d):
-            runs.append((m.group(2), m.group(3), m.group(4), os.path.basename(d)))
-    runs.sort(key=lambda r: (r[0], r[1], lr_key(r[2])))
-    steps = sorted({int(s[4:]) for *_, n in runs for s in os.listdir(f"{R}/{n}")
-                    if s.startswith("step") and s[4:].isdigit()})
-    devs = sorted({dev_set(f"{R}/{n}/step{s}/eval_metrics.txt") for *_, n in runs for s in steps
-                   if mrecall(f"{R}/{n}/step{s}/eval_metrics.txt")})
-    out += ["### Grid: cheap dev MRecall@100 by step", "",
-            f"Dev set: {', '.join(devs) or '?'}. Checkpoint of each step: **F** = full-corpus eval "
-            "(queued or done), **K** = kept, not full-evaluated, **P** = pruned by `KEEP_TOP` (QAMPARI "
-            "keeps the top 3 by cheap dev), **D** = deleted afterwards (AmbigQA: steps not queued for "
-            "full eval, removed 2026-09-28 to free disk).", "",
-            "| Mode | Data | LR | " + " | ".join(f"step {s}" for s in steps) + " |",
-            "| --- | --- | --- | " + " | ".join("---" for _ in steps) + " |"]
-    for mode, data, lr, n in runs:
-        cells = []
-        for s in steps:
-            v = mrecall(f"{R}/{n}/step{s}/eval_metrics.txt")
-            cells.append(f"{v[0]:.2f} {step_status(ds, n, s, pruned)}" if v else "")
-        out.append(f"| {mode} | {data} | {lr} | " + " | ".join(cells) + " |")
+        if m and m.group(2) == ds and os.path.isdir(d):
+            families[m.group(1)].append((m.group(3), m.group(4), m.group(5), os.path.basename(d)))
+    for fam in sorted(families, key=lambda f: (f != "grid", f)):
+      title = "Grid" if fam == "grid" else f"Run family `{fam}`"
+      runs = sorted(families[fam], key=lambda r: (r[0], r[1], lr_key(r[2])))
+      steps = sorted({int(s[4:]) for *_, n in runs for s in os.listdir(f"{R}/{n}")
+                      if s.startswith("step") and s[4:].isdigit()})
+      devs = sorted({dev_set(f"{R}/{n}/step{s}/eval_metrics.txt") for *_, n in runs for s in steps
+                     if mrecall(f"{R}/{n}/step{s}/eval_metrics.txt")})
+      out += [f"### {title}: cheap dev MRecall@100 by step", "",
+              f"Dev set: {', '.join(devs) or '?'}. Checkpoint of each step: **F** = full-corpus eval "
+              "(queued or done), **K** = kept, not full-evaluated, **P** = pruned by `KEEP_TOP` (QAMPARI "
+              "keeps the top 3 by cheap dev), **D** = deleted afterwards (AmbigQA: steps not queued for "
+              "full eval, removed 2026-09-28 to free disk).", "",
+              "| Mode | Data | LR | " + " | ".join(f"step {s}" for s in steps) + " |",
+              "| --- | --- | --- | " + " | ".join("---" for _ in steps) + " |"]
+      for mode, data, lr, n in runs:
+          cells = []
+          for s in steps:
+              v = mrecall(f"{R}/{n}/step{s}/eval_metrics.txt")
+              cells.append(f"{v[0]:.2f} {step_status(ds, n, s, pruned)}" if v else "")
+          out.append(f"| {mode} | {data} | {lr} | " + " | ".join(cells) + " |")
 
-    out += ["", "### Grid: full corpus", "",
-            "| Mode | Data | LR | Step | Dev set | Dev MRecall / Recall | Test MRecall / Recall |",
-            "| --- | --- | --- | --- | --- | --- | --- |"]
-    rows = []
-    for tag in QUEUED[ds]:
-        if not tag.startswith(f"grid_{ds}_") or "_s" not in tag:
-            continue
-        d = f"{R}/full/{ds}/{tag}"
-        n, s = tag.rsplit("_s", 1)
-        m = GRID.match(n)
-        if not m or not s.isdigit():
-            continue
-        dv, tv = mrecall(f"{d}/dev/eval_metrics.txt"), mrecall(f"{d}/test/eval_metrics.txt")
-        dset = dev_set(f"{d}/dev/eval_metrics.txt") if dv else "–"
-        key = (m.group(2), m.group(3), lr_key(m.group(4)), int(s))
-        rows.append((key, f"| {m.group(2)} | {m.group(3)} | {m.group(4)} | {s} | {dset} | {fmt(dv)} | {fmt(tv)} |"))
-    out += [r for _, r in sorted(rows)] + [""]
+      out += ["", f"### {title}: full corpus", "",
+              "| Mode | Data | LR | Step | Dev set | Dev MRecall / Recall | Test MRecall / Recall |",
+              "| --- | --- | --- | --- | --- | --- | --- |"]
+      rows = []
+      for tag in QUEUED[ds]:
+          if not tag.startswith(f"{fam}_{ds}_") or "_s" not in tag:
+              continue
+          d = f"{R}/full/{ds}/{tag}"
+          n, s = tag.rsplit("_s", 1)
+          m = GRID.match(n)
+          if not m or not s.isdigit():
+              continue
+          dv, tv = mrecall(f"{d}/dev/eval_metrics.txt"), mrecall(f"{d}/test/eval_metrics.txt")
+          dset = dev_set(f"{d}/dev/eval_metrics.txt") if dv else "–"
+          key = (m.group(3), m.group(4), lr_key(m.group(5)), int(s))
+          rows.append((key, f"| {m.group(3)} | {m.group(4)} | {m.group(5)} | {s} | {dset} | {fmt(dv)} | {fmt(tv)} |"))
+      out += [r for _, r in sorted(rows)] + [""]
 
     # ---- earlier phase C runs ---------------------------------------------------------------
     old = sorted(d for d in glob.glob(f"{R}/phaseC_{ds}_*") if os.path.isdir(d))

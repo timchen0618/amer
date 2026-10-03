@@ -13,6 +13,10 @@
 #               by cheap dev MRecall@100 and delete the rest; step-0 is deleted once all drift
 #               jobs are done. Checkpoints listed in results/phaseC/full_queue_*.txt are never
 #               deleted. Default 0 keeps everything.
+#   KEEP_STEPS="150 400"  after each cheap eval (and its drift) finishes, delete that step's
+#               checkpoint unless it is listed here or queued for full eval; step-0 is deleted once
+#               all drift jobs are done. For runs whose full-eval steps are fixed in advance
+#               (AmbigQA), where KEEP_TOP=0 used to keep every checkpoint (code audit 2026-09-28, G4).
 #   DEV_TAG     dev set for cheap evals: "clean" (default: data/phaseA/<ds>_cleandev500.jsonl and its
 #               reduced corpus) or "" (the phase A dev sets, as used before the 2026-09-27 audit).
 #               Training data comes from DATA_ROOT (see phaseC_train.sbatch; default data/training/clean).
@@ -23,7 +27,7 @@ T=training/inf_retriever/tools
 mkdir -p results/phaseC results/param_drift
 LOG=results/phaseC/phaseC.log
 log() { echo "[$(date '+%F %T')] [$RUN] $*" | tee -a "$LOG" >&2; }
-DENSE=${DENSE:-0}; KEEP_TOP=${KEEP_TOP:-0}
+DENSE=${DENSE:-0}; KEEP_TOP=${KEEP_TOP:-0}; KEEP_STEPS=${KEEP_STEPS:-}
 DEV_TAG=${DEV_TAG-clean}   # clean dev sets (500 each); DEV_TAG="" = the phase A dev sets
 case $DS in
   qampari) STEPS="250 500 1000 2500"; SET=qampari_${DEV_TAG}dev500; K_MULTI=5
@@ -55,7 +59,7 @@ if [ -s "$state" ]; then TJ=$(cat "$state"); else
   done
   TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$SAVE_AT_OVERRIDE" sbatch --parsable --export=ALL --job-name=phaseC_$RUN $T/phaseC_train.sbatch) \
     || { log "ERROR: training submit failed"; exit 1; }
-  echo "$TJ" > "$state"; log "submitted training job $TJ (ds=$DS mode=$MODE lr=$LR extra='$EXTRA' dense=$DENSE keep_top=$KEEP_TOP)"
+  echo "$TJ" > "$state"; log "submitted training job $TJ (ds=$DS mode=$MODE lr=$LR extra='$EXTRA' dense=$DENSE keep_top=$KEEP_TOP keep_steps='$KEEP_STEPS')"
 fi
 TLOG=sbatch_outputs/phaseC_$RUN.out
 
@@ -72,7 +76,7 @@ queued() {
 }
 # Keep only the KEEP_TOP best finished checkpoints (by cheap dev MRecall@100); see header.
 prune() {
-  [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || return 0
+  { [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || [ -n "$KEEP_STEPS" ]; } || return 0
   local s m ranked keep ck
   ranked=$(for s in $STEPS; do
       m=$(grep -m1 -o 'MRecall: [0-9.]*' results/phaseC/$RUN/step$s/eval_metrics.txt 2>/dev/null | cut -d' ' -f2)
@@ -80,6 +84,16 @@ prune() {
       { [ -n "${EJ[$s]:-}" ] && job_active "${EJ[$s]}"; } && continue
       { [ -n "${DJ[$s]:-}" ] && job_active "${DJ[$s]}"; } && continue
       echo "$s $m"; done | sort -k2,2nr -k1,1n)
+  if [ -n "$KEEP_STEPS" ]; then  # finished steps (cheap eval + drift done) that are not to be kept
+    for s in $(echo "$ranked" | cut -d' ' -f1); do
+      echo " $KEEP_STEPS " | grep -q " $s " && continue
+      ck=checkpoints/$DS/$RUN/checkpoint/step-$s
+      [ -d "$ck" ] || continue
+      queued "$ck" && continue
+      rm -rf -- "$ck" && log "deleted step $s (not in KEEP_STEPS: $KEEP_STEPS)"
+    done
+  fi
+  [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || return 0
   keep=$(echo "$ranked" | head -n "$KEEP_TOP" | cut -d' ' -f1)
   for s in $(echo "$ranked" | tail -n +$((KEEP_TOP+1)) | cut -d' ' -f1); do
     ck=checkpoints/$DS/$RUN/checkpoint/step-$s
@@ -124,7 +138,7 @@ for s in $STEPS; do
   log "RESULT step $s: dev(cheap) $m | drift: $d"
 done
 prune
-if [ "$KEEP_TOP" -gt 0 ] 2>/dev/null && [ -d checkpoints/$DS/$RUN/checkpoint/step-0 ]; then
+if { [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || [ -n "$KEEP_STEPS" ]; } && [ -d checkpoints/$DS/$RUN/checkpoint/step-0 ]; then
   rm -rf -- checkpoints/$DS/$RUN/checkpoint/step-0 && log "deleted step-0 (drift done)"
 fi
 log "RUN DONE"
