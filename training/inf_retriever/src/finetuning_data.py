@@ -102,10 +102,9 @@ class Dataset(torch.utils.data.Dataset):
                 gold = list(example[positive_string])
                 random.shuffle(gold)
 
-            n_hard_negatives, n_random_negatives = self.sample_n_hard_negatives(example)
-            if self.training_mode == 'multi':
-                n_hard_negatives = n_hard_negatives * len(gold)
-                n_random_negatives = n_random_negatives * len(gold)
+            # negative_ctxs negatives per gold in multi mode (one set of negative_ctxs in single mode).
+            n_slots = self.negative_ctxs * (len(gold) if self.training_mode == 'multi' else 1)
+            n_hard_negatives, n_random_negatives = self.sample_n_hard_negatives(example, n_slots)
 
             negatives = []
             if n_random_negatives > 0:
@@ -113,9 +112,9 @@ class Dataset(torch.utils.data.Dataset):
                 random_negatives = random.choices(pool, k=n_random_negatives) if n_random_negatives > len(pool) else random.sample(pool, n_random_negatives)
                 negatives += random_negatives
             if n_hard_negatives > 0:
+                # sample_n_hard_negatives caps the count at the pool size, so this never repeats.
                 pool = example["hard_negative_ctxs"][self.negative_hard_min_idx :]
-                hard_negatives = random.choices(pool, k=n_hard_negatives) if n_hard_negatives > len(pool) else random.sample(pool, n_hard_negatives)
-                negatives += hard_negatives
+                negatives += random.sample(pool, n_hard_negatives)
         else:
             ### Evaluation ###
             if self.training_mode == 'multi':
@@ -202,21 +201,25 @@ class Dataset(torch.utils.data.Dataset):
 
         return examples, counter
 
-    def sample_n_hard_negatives(self, ex):
+    def sample_n_hard_negatives(self, ex, n_slots=None):
+        """Split n_slots negatives (default negative_ctxs) into hard and random ones.
 
+        Each slot is hard with probability negative_hard_ratio, drawn independently per slot
+        (audit L1: drawing once per example and multiplying by k gave every example either all
+        hard or all random negatives). Hard negatives are capped at the example's pool size so
+        they are sampled without replacement (audit L2); the remaining slots are random ones."""
+        n_slots = self.negative_ctxs if n_slots is None else n_slots
         if "hard_negative_ctxs" in ex:
-            n_hard_negatives = sum([random.random() < self.negative_hard_ratio for _ in range(self.negative_ctxs)])
+            n_hard_negatives = sum([random.random() < self.negative_hard_ratio for _ in range(n_slots)])
             n_hard_negatives = min(n_hard_negatives, len(ex["hard_negative_ctxs"][self.negative_hard_min_idx :]))
         else:
             n_hard_negatives = 0
-        n_random_negatives = self.negative_ctxs - n_hard_negatives
-        if "negative_ctxs" in ex:
-            n_random_negatives = min(n_random_negatives, len(ex["negative_ctxs"]))
-        else:
+        n_random_negatives = n_slots - n_hard_negatives
+        if "negative_ctxs" not in ex:
             n_random_negatives = 0
         return n_hard_negatives, n_random_negatives
 
-        
+
 class SampleDataset(torch.utils.data.Dataset):
     """
         This dataset is used for training the model with different document lengths.

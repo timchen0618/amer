@@ -32,6 +32,12 @@ except ImportError:
 
 def normalize_np(x, p=2, dim=1, eps=1e-12):
     norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    # fp16 sums of squares overflow once a norm reaches ~256: the norm becomes inf and the vector
+    # all zeros, silently (code audit 2026-09-28, R2). Redo the whole array in fp32 in that case;
+    # otherwise the result is unchanged.
+    if not np.all(np.isfinite(norm)):
+        x = x.astype(np.float32)
+        norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
     norm = np.maximum(norm, eps)
     return x / norm
 
@@ -61,6 +67,11 @@ def load_model_and_tokenizer(args):
 
         print(f"Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever")
         model, tokenizer, _ = load_retriever(checkpoint_dir)
+        train_opt = getattr(model, "_train_opt", None)
+        if train_opt is not None and bool(getattr(train_opt, "eval_normalize_text", False)) != bool(args.normalize_text):
+            # Training text-normalizes queries iff --eval_normalize_text (code audit 2026-09-28, C4).
+            raise ValueError(f"checkpoint was trained with eval_normalize_text={train_opt.eval_normalize_text}, "
+                             f"but retrieval runs with --normalize_text={args.normalize_text}")
     elif (
         ("stella" in args.model_name_or_path)
         or ("inf-retriever" in args.model_name_or_path)
@@ -294,8 +305,7 @@ def embed_queries_multi(args, queries, model, tokenizer):
         all_embeddings.append(_process_batch(batch_question))
 
     embeddings = np.concatenate(all_embeddings, axis=0)  # (num_queries, k, hidden_dim)
-    norms = np.linalg.norm(embeddings, axis=-1, keepdims=True)
-    embeddings = embeddings / np.maximum(norms, 1e-12)
+    embeddings = normalize_np(embeddings, p=2, dim=-1)  # same fp16 overflow guard (audit R2)
     print(f"Multi-query embeddings shape: {embeddings.shape}")
     return embeddings
 

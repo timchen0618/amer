@@ -881,11 +881,21 @@ def main():
     torch.manual_seed(opt.seed)
     torch.cuda.manual_seed_all(opt.seed)
 
-    # set up output directory
-    directory_exists = os.path.isdir(opt.output_dir)        
+    # Flags that are parsed but have no effect in this script must not be set to anything else,
+    # or a run would silently do something other than what its command line says (audit L5).
+    if opt.continue_training:
+        raise ValueError("--continue_training is not implemented in finetuning_multi.py (there is no resume code)")
+    base_model = "infly/inf-retriever-v1-1.5b"
+    if opt.model_path not in ("none", base_model):
+        raise ValueError(f"--model_path {opt.model_path!r} is ignored: training always starts from {base_model}")
+    if opt.retriever_model_id not in (options.parser.get_default("retriever_model_id"), base_model):
+        raise ValueError(f"--retriever_model_id {opt.retriever_model_id!r} is ignored: the model is always {base_model}")
+
+    # set up output directory; log every option and write it to the run's own directory
+    # (output_dir is shared by all runs of a dataset, audit L11)
     os.makedirs(opt.output_dir, exist_ok=True)
-    if not directory_exists and dist_utils.is_main():
-        options.print_options(opt)
+    if int(os.environ.get("RANK", "0")) == 0:  # the process group does not exist yet
+        options.print_options(opt, out_dir=opt.output_dir + opt.run_name)
     
     # set up logging
     utils.init_logger(opt)

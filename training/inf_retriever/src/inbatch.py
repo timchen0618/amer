@@ -19,7 +19,8 @@ class ContrastiveLoss(nn.Module):
         self.normalize_embeddings = normalize_embeddings
         self.ce_loss = nn.CrossEntropyLoss(reduce=False)
 
-    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats={}):
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
         if self.normalize_embeddings:
             outputs = F.normalize(outputs, dim=-1)
             positive_embeddings = F.normalize(positive_embeddings, dim=-1)
@@ -148,7 +149,8 @@ class HungarianMaskedContrastiveLoss(nn.Module):
         self.temperature = temperature
         self.normalize_embeddings = normalize_embeddings
 
-    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats={}):
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
         if self.normalize_embeddings:
             outputs = F.normalize(outputs, dim=-1)
             positive_embeddings = F.normalize(positive_embeddings, dim=-1)
@@ -293,7 +295,8 @@ class InBatch(nn.Module):
     def get_encoder(self):
         return self.encoder
     
-    def forward(self, q_tokens, q_mask, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
+    def forward(self, q_tokens, q_mask, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats=None, **kwargs):
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
 
         bsz = len(q_tokens)
         if labels is not None:  # multiple positives
@@ -516,7 +519,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
 
         return torch.cat(all_outputs, dim=1)  # (bsz, max_new_tokens, hidden_size)
 
-    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
+    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats=None, **kwargs):
         """
         Args:
             q_tokens: (batch_size, seq_len)
@@ -531,6 +534,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         Returns:
             loss, iter_stats
         """
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
         assert k_tokens.dim() == 2 and k_mask.dim() == 2
         assert k_tokens.size(0) % 2 == 0
         bsz = q_tokens.size(0)
@@ -865,7 +869,7 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
         
 
 
-    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
+    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats=None, **kwargs):
         """
         Args:
             q_tokens: (batch_size, seq_len)
@@ -879,6 +883,7 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
         Returns:
             loss, iter_stats
         """
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
         bsz = q_tokens.size(0)
         nqe = 1
         
@@ -1030,9 +1035,10 @@ class EmbeddingModelFrozenDocEnc(EmbeddingModelDocEncNoProj):
 
         return torch.cat(all_outputs, dim=1)  # (bsz, max_new_tokens, hidden_size)
 
-    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats={}, **kwargs):
+    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats=None, **kwargs):
         """Copy of EmbeddingModelDocEncNoProj.forward with is_causal=self.force_causal
         added to the self.encoder(...) call. See class docstring."""
+        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
         assert k_tokens.dim() == 2 and k_mask.dim() == 2
         assert k_tokens.size(0) % 2 == 0
         bsz = q_tokens.size(0)

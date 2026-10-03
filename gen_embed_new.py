@@ -18,6 +18,12 @@ def normalize_np(x, p=2, dim=1, eps=1e-12):
     NumPy implementation of torch.nn.functional.normalize
     """
     norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    # fp16 sums of squares overflow once a norm reaches ~256: the norm becomes inf and the vector
+    # all zeros, silently (code audit 2026-09-28, R2). Redo the whole array in fp32 in that case;
+    # otherwise the result is unchanged.
+    if not np.all(np.isfinite(norm)):
+        x = x.astype(np.float32)
+        norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
     norm = np.maximum(norm, eps)  # Avoid division by zero
     return x / norm
 
@@ -97,7 +103,7 @@ def embed_passages_iterative_retrieval(args, passages, tokenizer, model):
             batch_size = last_hidden_states.shape[0]
             return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
-    max_length = 1024
+    max_length = args.passage_maxlength
     batch_size = args.per_gpu_batch_size
     allids = []
     batch_ids = []
@@ -166,6 +172,16 @@ def main(args):
         from src.inference_utils import load_retriever
         print(f'Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever')
         retriever, tokenizer, _ = load_retriever(checkpoint_dir)
+        train_opt = getattr(retriever, "_train_opt", None)
+        if train_opt is not None:
+            # Passages are never text-normalized here, so a checkpoint trained on normalized text
+            # would be embedded inconsistently (code audit 2026-09-28, C4).
+            if getattr(train_opt, "eval_normalize_text", False):
+                raise ValueError("checkpoint was trained with --eval_normalize_text, which gen_embed_new.py does not apply to passages")
+            chunk = getattr(train_opt, "chunk_length", None)
+            if chunk is not None and chunk != args.passage_maxlength:
+                print(f"WARNING: passages are truncated at {args.passage_maxlength} tokens, but this checkpoint "
+                      f"was trained with chunk_length {chunk}; pass --passage_maxlength {chunk} to match training")
         # Extract the underlying AutoModel (returns last_hidden_state, compatible with embed_passages_iterative_retrieval).
         # Documents must be embedded with the DOCUMENT encoder, which is only the same
         # object as the query encoder (.encoder) when the doc encoder was trained jointly.
@@ -251,7 +267,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--per_gpu_batch_size", type=int, default=512, help="Batch size for the passage encoder forward pass"
     )
-    parser.add_argument("--passage_maxlength", type=int, default=512, help="Maximum number of tokens in a passage")
+    # Default 1024 = the value every evaluation so far used (it was hard-coded and this flag ignored,
+    # code audit 2026-09-28, R3). Training truncates passages at --chunk_length (512); pass
+    # --passage_maxlength 512 to match it.
+    parser.add_argument("--passage_maxlength", type=int, default=1024, help="Maximum number of tokens in a passage")
     parser.add_argument(
         "--model_name_or_path", type=str, help="path to directory containing model weights and config file"
     )

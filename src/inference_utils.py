@@ -74,6 +74,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         else:
             retriever = model
         retriever._is_multi_query = (opt.training_mode != 'standard_org_q')
+        # Training options, so callers can check that inference matches training (code audit
+        # 2026-09-28, C4: chunk_length and eval_normalize_text used to be ignored at inference).
+        retriever._train_opt = opt
 
 
     else:
@@ -88,6 +91,12 @@ def normalize_np(x, p=2, dim=1, eps=1e-12):
     NumPy implementation of torch.nn.functional.normalize
     """
     norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    # fp16 sums of squares overflow once a norm reaches ~256: the norm becomes inf and the vector
+    # all zeros, silently (code audit 2026-09-28, R2). Redo the whole array in fp32 in that case;
+    # otherwise the result is unchanged.
+    if not np.all(np.isfinite(norm)):
+        x = x.astype(np.float32)
+        norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
     norm = np.maximum(norm, eps)  # Avoid division by zero
     return x / norm
 

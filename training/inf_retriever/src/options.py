@@ -219,7 +219,8 @@ class Options:
         self.parser.add_argument("--lora_alpha", type=int, default=16)
         self.parser.add_argument("--lora_dropout", type=float, default=0.1)
 
-    def print_options(self, opt):
+    def print_options(self, opt, out_dir=None):
+        """Print every option (non-defaults marked) and write it to <out_dir or output_dir>/opt.txt."""
         message = ""
         for k, v in sorted(vars(opt).items()):
             comment = ""
@@ -231,12 +232,13 @@ class Options:
         model_dir = os.path.join(opt.output_dir, "models")
         if not os.path.exists(model_dir):
             os.makedirs(os.path.join(opt.output_dir, "models"))
-        file_name = os.path.join(opt.output_dir, "opt.txt")
+        os.makedirs(out_dir or opt.output_dir, exist_ok=True)
+        file_name = os.path.join(out_dir or opt.output_dir, "opt.txt")
         with open(file_name, "wt") as opt_file:
             opt_file.write(message)
             opt_file.write("\n")
 
     def parse(self):
-        opt, _ = self.parser.parse_known_args()
-        # opt = self.parser.parse_args()
-        return opt
+        # parse_args, not parse_known_args: a mistyped flag must fail the run instead of being
+        # silently ignored (code audit 2026-09-28, L5).
+        return self.parser.parse_args()
