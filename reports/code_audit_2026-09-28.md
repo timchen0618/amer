@@ -12,6 +12,8 @@ Nothing here repeats `code_data_audit_2026-09-27.md` (D1–D6, T1–T10, E1–E5
 
 Scratch scripts and outputs: `.tmp_audit_model/`, `.tmp_audit_train/`, `.tmp_audit_infer/`, `.tmp_audit_consistency/`, `.tmp_audit_data/`, `.tmp_verify/`. Full examples for G1 and G2: `leak_examples_G1_G2.md`.
 
+**Implementation status (updated 2026-10-02): see section 9** — what was fixed, what was explicitly declined, and what is still open.
+
 ## 1. Summary
 
 Three problems change what current numbers mean:
@@ -127,7 +129,7 @@ The model and loss code, the training loop, and the sampler are otherwise sound:
 | L12 | Under FSDP, accelerate's bf16 policy sets `param_dtype=reduce_dtype=bf16`: forward uses bf16 weight copies and gradients are reduce-scattered in bf16, unlike 1-GPU/DDP. Master weights and AdamW state stay fp32; RoPE is unaffected. | accelerate 1.9.0 `state.py:983` | verified from source | all grid runs |
 | L7 | AdamW weight decay 0.01 applies to norms, biases and embeddings. Negligible at current LR (~1e-4 relative shrink). | `utils.py:143-146` | verified | negligible |
 | L8 | `lr_lambda(0)=0` (first step at LR 0); with `--lr_min_ratio > 0` warmup peaks below LR, then jumps. | `utils.py:118-125` | verified | first step only |
-| M3 | In-training `evaluate()` is not under `no_grad` for `model.encoder` / `encode_documents`; builds an unused graph (OOM risk only). | `finetuning_multi.py:~522-529` | verified by reading | memory only |
+| M3 | ~~In-training `evaluate()` is not under `no_grad` for `model.encoder` / `encode_documents`; builds an unused graph (OOM risk only).~~ **Not a bug (2026-10-02):** `evaluate()` is decorated with `@torch.no_grad()`, so no graph is built. | `finetuning_multi.py:485` | wrong | none |
 | L9 | In-training multi-query eval pads one negative to k by copying it, and resamples negatives from global `random` on every call, so its numbers aren't comparable across steps. | `finetuning_data.py:126-141` | suspected for dev | in-training eval only |
 | L4 | Rank 1 logs its own unaveraged metrics (`dist.reduce` to rank 0 only, both ranks log). | `dist_utils.py:191-199` | verified | logs |
 | M6 | Single-query forward prints shapes and loss every step on every rank (~20k lines/run, forces a GPU sync). | `inbatch.py:905-915` | verified | single runs |
@@ -239,21 +241,82 @@ The model and loss code, the training loop, and the sampler are otherwise sound:
 
 | # | Action | Addresses |
 | --- | --- | --- |
-| 1 | Rank QAMPARI checkpoints on the 373 clean dev queries; consider `KEEP_TOP=0` for runs still training so nothing else is pruned on the leaky ranking | G1 |
-| 2 | Decide inference numerics: fp32 weights under bf16 autocast (matches training; within ±0.4 of the current pipeline on the 3 checkpoints measured, so optional). Do **not** switch to plain fp32. Current numbers stay comparable to each other, since every checkpoint went through the same pipeline | R1, C1 |
-| 3 | Report QAMPARI test on the 487 non-near-duplicate queries alongside the full 531 | G2 |
+| 1 | ~~Rank QAMPARI checkpoints on the 373 clean dev queries; consider `KEEP_TOP=0` for runs still training so nothing else is pruned on the leaky ranking~~ **DON'T DO IT (user, 2026-10-02)** | G1 |
+| 2 | **No change (2026-10-02).** Decide inference numerics: fp32 weights under bf16 autocast (matches training; within ±0.4 of the current pipeline on the 3 checkpoints measured, so optional). Do **not** switch to plain fp32. Current numbers stay comparable to each other, since every checkpoint went through the same pipeline | R1, C1 |
+| 3 | ~~Report QAMPARI test on the 487 non-near-duplicate queries alongside the full 531~~ **DON'T DO IT (user, 2026-10-02)** | G2 |
 | 4 | ~~Free AmbigQA checkpoints not queued for full eval~~ **Done 2026-09-28:** steps 0/30/100/250 deleted from the 10 finished AmbigQA runs (~270 GB); the 2 not-yet-started runs still need it after they finish | G4 |
 
 **Before the next round:**
 
 | # | Action | Addresses |
 | --- | --- | --- |
-| 5 | Rebuild splits grouped by shared question OR shared gold set (Jaccard ≥ 0.8), strip articles in `norm_q`; drop train examples near-duplicating test | G1, G2, G5 |
-| 6 | Hard negatives per slot, without replacement, topped up with random negatives | L1, L2 |
-| 7 | Normalize in fp32 at inference; honor `--passage_maxlength` | R2, R3 |
-| 8 | `parse_args()` and log `opt`; fix `iter_stats` default; make `phaseC_collect_scores.py` understand grid runs | L5, M1, G3 |
-| 9 | Decide FSDP `reduce_dtype` (fp32) or document bf16 reduction | L12 |
-| 10 | Ablate inference k for multi-query (typical gold count, max trained k) | C2 |
-| 11 | Read `chunk_length`, `eval_normalize_text` and `pooling` from the checkpoint `opt` at inference | C4, R3 |
+| 5 | **Done 2026-10-02 (QAMPARI v2, section 9).** Rebuild splits grouped by shared question OR shared gold set (Jaccard ≥ 0.8), strip articles in `norm_q`; drop train examples near-duplicating test | G1, G2, G5 |
+| 6 | **Done 2026-10-02.** Hard negatives per slot, without replacement, topped up with random negatives | L1, L2 |
+| 7 | **Done 2026-10-02** (fp32 only on overflow; 512-token passages to be switched on after the grid queue drains). Normalize in fp32 at inference; honor `--passage_maxlength` | R2, R3 |
+| 8 | **Done 2026-10-02.** `parse_args()` and log `opt`; fix `iter_stats` default; make `phaseC_collect_scores.py` understand grid runs | L5, M1, G3 |
+| 9 | **Open.** Decide FSDP `reduce_dtype` (fp32) or document bf16 reduction | L12 |
+| 10 | **Open.** Ablate inference k for multi-query (typical gold count, max trained k) | C2 |
+| 11 | **Done 2026-10-02** (checks and warnings; see section 9). Read `chunk_length`, `eval_normalize_text` and `pooling` from the checkpoint `opt` at inference | C4, R3 |
 
 **Can wait:** everything else in section 4.
+
+## 9. Implementation status (2026-10-02)
+
+Status per finding. **Done** = fixed in the working tree on `fsdp-clean-recipe` (not yet committed as of 2026-10-02); **DON'T DO IT** = explicitly declined by the user; **No change** = decided against by analysis; **Open** = not implemented yet. Code state before these fixes: git tag `grid-clean-v1`.
+
+### Explicitly declined by the user (DON'T DO IT)
+
+| Finding | Declined action |
+| --- | --- |
+| G1, G2 | Re-scoring the grid's QAMPARI checkpoints on the 373 clean dev / 487 clean test queries (section 8, actions 1 and 3). The leaks are fixed in the data instead (v2, below). |
+| R6 | Making `eval.py` fail when `--selected-indices-file` is missing. |
+
+### Done
+
+| Finding | What was done | Where |
+| --- | --- | --- |
+| G1, G2, G5 | New QAMPARI splits, **v2**: split grouped by shared normalized question or gold-set Jaccard ≥ 0.8; train examples near-duplicating any test example removed; articles stripped in question normalization; gold-count rule on 1–8 *unique* golds (user's change: examples previously dropped for having more than 8 raw gold slots are now included). Test set unchanged; AmbigQA unchanged (links to v1). Verified by an independent checker. Full reproduction steps: `data_creation/CLEAN_V2.md`. | `data_creation/build_clean_v2.py`, `verify_clean_v2.py`, `build_clean_v2.sh`, `clean_v2_base_retrieval.sbatch`, `clean_v2_downstream.sbatch`; data in `data/training/clean_v2{,_hn}/`, `data/phaseA/*_cleanv2dev500.jsonl` |
+| G3 (+ pruning record) | Score collector reports grid runs (and any later run family), labels every dev score with its dev set, and marks each step's checkpoint F / K / P / D. | `tools/phaseC_collect_scores.py` |
+| G4 | AmbigQA checkpoints not queued for full eval deleted by hand (2026-09-28, ~270 GB); new `KEEP_STEPS` in the driver deletes them automatically after their cheap eval and drift (the launcher sets `KEEP_STEPS="150 400"` for AmbigQA). | `tools/phaseC_run.sh`, `tools/grid_launch.sh` |
+| L1, L2 | Hard vs random drawn independently per negative slot; hard negatives sampled without replacement (capped at the pool size), the rest filled with random negatives. On 300 `clean_hn` examples: QAMPARI multi 286 / 298 examples now mixed (was 0), hard fraction 0.49; AmbigQA hard fraction 0.49; all 193 QAMPARI examples with a hard pool smaller than k get k negatives with no repeats. | `src/finetuning_data.py` (`Dataset`) |
+| L5 | `parse_args()` (unknown flags fail the run; tested: a typo is rejected, every grid flag parses); `--continue_training`, a non-base `--model_path` or `--retriever_model_id` raise instead of being ignored; every option is printed at startup. | `src/options.py`, `finetuning_multi.py` |
+| L11 | `opt.txt` is written to each run's own directory (`<output_dir><run_name>/opt.txt`) by rank 0. | `finetuning_multi.py`, `src/options.py` |
+| M1 / L3 | `iter_stats=None` default with a fresh dict per call, in all six `forward()`s. | `src/inbatch.py` |
+| M3 | Not a bug: `evaluate()` already runs under `@torch.no_grad()` (entry corrected in section 4). | — |
+| R2 | Overflow guard: if any fp16 norm is non-finite, the array is normalized in fp32. Bit-identical otherwise, so evaluations still running are unaffected. | `gen_embed_new.py`, `retrieval_inf.py` (incl. the multi-query path), `src/inference_utils.py` |
+| R3, C4 | `--passage_maxlength` is honored (default 1024 = what every evaluation so far used; it warns when the checkpoint's `chunk_length` differs, 512 for all grid checkpoints). Retrieval fails if the checkpoint's `eval_normalize_text` differs from `--normalize_text`; corpus embedding fails if the checkpoint was trained with normalized text. `pooling` needs no check: training also always uses last-token pooling. | `gen_embed_new.py`, `retrieval_inf.py`, `src/inference_utils.py` |
+| R5 | The full-eval queue deletes earlier outputs of a tag before submitting it, so a stale file cannot pass the success check. | `tools/full_eval_queue.sh` |
+| G11 | Scoring is retried up to 3 times from the retrieval output on disk, instead of a failed score forcing a new 2–3 h embedding; a final failure is logged as ERROR. | `tools/full_eval_queue.sh` |
+| — | Tooling for v2: `grid_launch.sh` takes `DATA_ROOT`, `DEV_TAG`, `PREFIX` (own run names and full-eval queue file); `full_eval_queue.sh` takes `QUEUE`; `phaseA_build_reduced_corpus.py` merges `build_info.json` instead of overwriting it. Defaults reproduce the grid. | `tools/` |
+
+Shell scripts that may be running (`full_eval_queue.sh`) were replaced atomically (new file + rename), so the running workers kept executing the old version.
+
+**Not yet active, by design:** passages are still embedded at 1024 tokens (R3) so that the grid's remaining full-corpus evaluations match its first ones. For the next round, pass `--passage_maxlength 512` in `gen_embed_ckpt.sbatch` and `cheap_eval_ckpt.sbatch` once the grid's eval queue has drained (the scripts are shared with the running queue).
+
+### No change (by analysis)
+
+| Finding | Reason |
+| --- | --- |
+| R1, C1 | Current inference numerics are within 0–0.4 points of training's own (bf16 autocast) on the 3 checkpoints measured; plain fp32 loading would lose 3.4 points at LR 1e-6. Optional: fp32 weights under bf16 autocast, which matches training exactly. |
+
+### Open
+
+| Finding | Severity | Note |
+| --- | --- | --- |
+| C2 | MEDIUM | Inference k vs trained gold count — an experiment (ablate k), not a code fix. |
+| L12 | LOW | FSDP reduces gradients in bf16; set `reduce_dtype=fp32` or document. |
+| L7 | LOW | Weight decay on norms, biases and embeddings (negligible at current LR). |
+| L8 | LOW | First optimizer step at LR 0; `--lr_min_ratio` warmup quirk. |
+| L9 | LOW | In-training multi-query eval pads negatives by copying and resamples them each call. |
+| C3 | LOW | In-training eval acc/MRR scores only the first embedding (not used for selection). |
+| L4 | LOW | Rank 1 logs unaveraged metrics. |
+| M6 | LOW | Single-query forward prints every step on every rank. |
+| L6 | LOW | FSDP optimizer state would be rank 0's shard only (grid passes `--no_save_optimizer`). |
+| L10 | LOW | Broken `checkpoint/latest` symlink. |
+| L13 | LOW | `--negative_ctxs > 1` fails (loudly). |
+| M4, M5 | LOW | Broken legacy `InBatch`; `INFRetriever` pooling assumes right padding (unused paths). |
+| R4 | LOW | Header handling for shards > 0 in `gen_embed_new.py` (harmless with current ids). |
+| G6 | LOW | `END` in the full-eval queue can stop it before earlier items. |
+| G7 | LOW | Silent failure paths in the driver and follower. |
+| G9 | LOW | ~18 passages still CSV-quoted. |
+| G10 | LOW | Driver restarts duplicate drift records. |
