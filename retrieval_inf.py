@@ -371,6 +371,40 @@ def main(args):
             np.save(os.path.join(args.output_dir, f"questions_embeddings_{Path(path).stem}.npy"), questions_embedding)
             return
 
+        if use_finetuned and getattr(model, '_is_multi_query', False) and args.save_per_step:
+            # Search with all k embeddings in one pass over the index (exact IndexFlatIP, so each
+            # list equals a separate search) and save every embedding's own ranked list, plus the
+            # passages they contain, so any k' <= k and any aggregation can be scored offline
+            # (tools/kagg_eval.py). Step j's embedding does not depend on how many steps follow.
+            n_q, k_emb, dim = questions_embedding.shape
+            flat = retrieve(
+                questions_embedding.reshape(n_q * k_emb, dim),
+                args.num_shards,
+                args.passages_embeddings,
+                passage_id_map,
+                embedding_size=args.projection_size,
+                top_k_per_query=args.n_docs,
+                top_k=args.n_docs,
+                save_or_load_index=args.save_or_load_index,
+                use_gpu=args.use_gpu,
+                n_subquantizers=args.n_subquantizers,
+                n_bits=args.n_bits,
+            )
+            used = set()
+            with open(args.save_per_step, "w") as fout:
+                for qi, ex in enumerate(data):
+                    lists = []
+                    for ki in range(k_emb):
+                        ids, scores = flat[qi * k_emb + ki]
+                        lists.append({"ids": [str(i) for i in ids], "scores": [float(x) for x in scores]})
+                        used.update(str(i) for i in ids)
+                    fout.write(json.dumps({"question": queries[qi], "lists": lists}) + "\n")
+            with open(args.save_per_step + ".passages.jsonl", "w") as fout:
+                for pid in sorted(used):
+                    p = passage_id_map[pid]
+                    fout.write(json.dumps({"id": pid, "title": p.get("title", ""), "text": p.get("text", "")}) + "\n")
+            print(f"Saved per-step lists ({k_emb} per query) to {args.save_per_step}")
+            return
         if use_finetuned and getattr(model, '_is_multi_query', False):
             k_emb = questions_embedding.shape[1]
             all_results = []
@@ -477,6 +511,14 @@ if __name__ == "__main__":
         default="round_robin",
         choices=["round_robin", "rrf"],
         help="Aggregation function for multi-query results (multi-query mode only)",
+    )
+    parser.add_argument(
+        "--save_per_step",
+        type=str,
+        default=None,
+        help="Multi-query only: save each generated embedding's own top-n_docs list to this jsonl "
+             "(and the passages they contain to <path>.passages.jsonl) instead of an aggregated "
+             "result, for offline scoring of every k' <= max_new_tokens and aggregation.",
     )
     args = parser.parse_args()
     main(args)
