@@ -222,10 +222,72 @@ class HungarianMaskedContrastiveLoss(nn.Module):
         return loss, iter_stats
 
 
+class HungarianPlusSingleLoss(nn.Module):
+    """Multi-query and single-query objectives in the same step (2026-10-04):
+
+        loss = (1 - single_weight) * L_multi + single_weight * L_single
+
+    L_multi is HungarianContrastiveLoss over all k generated embeddings, unchanged.
+    L_single trains the first generated embedding (outputs[:, 0], the last-token embedding of the
+    query alone, i.e. what a single-query model is) like single-query training does: contrastive
+    against ONE gold of the example, drawn uniformly at random each step (single-query training
+    draws random.choice over the golds), over the same gathered pool of golds and negatives as
+    L_multi. The example's other golds are masked out of the denominator, since single-query
+    training never sees them. Both terms gather the pool across ranks in the same order on every
+    rank, so the collectives stay matched.
+    """
+
+    def __init__(self, temperature=0.05, single_weight=0.5, normalize_embeddings=True):
+        super().__init__()
+        assert 0.0 <= single_weight <= 1.0, single_weight
+        self.multi = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
+        self.temperature = temperature
+        self.single_weight = single_weight
+        self.normalize_embeddings = normalize_embeddings
+
+    def _single(self, query, positive_embeddings, negative_embeddings, k):
+        # positives / negatives arrive as (bsz, k, d) or flattened (bsz * k, d), as for L_multi
+        if self.normalize_embeddings:
+            query = F.normalize(query, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+        batch_size, d = query.shape
+        all_embeddings = torch.cat([positive_embeddings.reshape(batch_size * k, d),
+                                    negative_embeddings.reshape(batch_size * k, d)], dim=0)
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        start_idx = 0 if dist_utils.get_rank() == 0 else int(var_sizes[:dist_utils.get_rank()].sum())
+        gather_kemb = dist_utils.varsize_gather(all_embeddings)
+        similarity = torch.einsum("bd,cd->bc", query / self.temperature, gather_kemb)
+        rows = torch.arange(batch_size, device=query.device)
+        chosen = torch.randint(0, k, (batch_size,), device=query.device)
+        labels = start_idx + rows * k + chosen
+        # mask the example's other golds (columns start_idx + i*k + m, m != chosen)
+        own = start_idx + rows.unsqueeze(1) * k + torch.arange(k, device=query.device).unsqueeze(0)  # (b, k)
+        other = own[torch.arange(k, device=query.device).unsqueeze(0) != chosen.unsqueeze(1)].view(batch_size, k - 1)
+        if k > 1:
+            similarity = similarity.scatter(1, other, torch.finfo(similarity.dtype).min)
+        loss = F.cross_entropy(similarity, labels)
+        accuracy = 100 * (similarity.argmax(dim=-1) == labels).float().mean()
+        return loss, accuracy
+
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+        iter_stats = {} if iter_stats is None else iter_stats
+        loss_multi = self.multi._core_forward(outputs, positive_embeddings, negative_embeddings)
+        loss_single, acc_single = self._single(outputs[:, 0], positive_embeddings, negative_embeddings, outputs.shape[1])
+        loss = (1.0 - self.single_weight) * loss_multi + self.single_weight * loss_single
+        bsz = outputs.shape[0]
+        iter_stats[f"{stats_prefix}/loss_multi"] = (loss_multi.item(), bsz)
+        iter_stats[f"{stats_prefix}/loss_single"] = (loss_single.item(), bsz)
+        iter_stats[f"{stats_prefix}/accuracy_single"] = (acc_single.item(), bsz)
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
+        return loss, iter_stats
+
+
 LOSS_REGISTRY = {
     "contrastive": ContrastiveLoss,
     "hungarian_masked": HungarianMaskedContrastiveLoss,
     "hungarian": HungarianContrastiveLoss,
+    "hungarian_plus_single": HungarianPlusSingleLoss,
 }
 
 
@@ -241,6 +303,12 @@ def build_loss(opt):
     if name not in LOSS_REGISTRY:
         raise ValueError(f"Unknown loss_fn={name!r}; valid choices: {sorted(LOSS_REGISTRY)}")
     print(f"[build_loss] training_mode={getattr(opt, 'training_mode', None)!r} -> loss_fn={name!r}", flush=True)
+    if name == "hungarian_plus_single":
+        if getattr(opt, "training_mode", None) != "multi":
+            raise ValueError("loss_fn='hungarian_plus_single' requires training_mode='multi'")
+        w = getattr(opt, "single_loss_weight", 0.5)
+        print(f"[build_loss] single_loss_weight={w}", flush=True)
+        return HungarianPlusSingleLoss(temperature=opt.temperature, single_weight=w)
     return LOSS_REGISTRY[name](temperature=opt.temperature)
 
 

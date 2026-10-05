@@ -119,13 +119,19 @@ class Options:
             "--loss_fn",
             type=str,
             default="auto",
-            choices=["auto", "contrastive", "hungarian_masked", "hungarian"],
+            choices=["auto", "contrastive", "hungarian_masked", "hungarian", "hungarian_plus_single"],
             help=(
                 "Loss used by EmbeddingModelDocEncNoProj. 'auto' picks "
                 "hungarian_masked when training_mode=='multi' and contrastive "
                 "otherwise. 'hungarian' is the legacy HungarianContrastiveLoss "
-                "(kept for comparison; has the same-example false-negative issue)."
+                "(kept for comparison; has the same-example false-negative issue). "
+                "'hungarian_plus_single' (multi mode only) = (1 - w) * hungarian + "
+                "w * single-query contrastive on the first embedding, w = --single_loss_weight."
             ),
+        )
+        self.parser.add_argument(
+            "--single_loss_weight", type=float, default=0.5,
+            help="Weight w of the single-query term for --loss_fn hungarian_plus_single.",
         )
         self.parser.add_argument("--eval_recall", action="store_true")
         self.parser.add_argument("--sample_length", action="store_true")
