@@ -20,6 +20,9 @@ set -u
 cd /scratch/hc3337/projects/autoregressive
 DS=$1; T=training/inf_retriever/tools
 WORKER=${WORKER:-a}; RESUME=${RESUME:-}
+# PER_STEP=1: multi-query evals also save per-embedding lists and score every k <= K with
+# round-robin and RRF (tools/kagg_eval.py) into <base>/{dev,test}_kagg.json; the lists are then deleted.
+PER_STEP=${PER_STEP:-0}
 # QUEUE: the queue file, default results/phaseC/full_queue_<ds>.txt (the 24-run grid); other run
 # families get their own (grid_launch.sh PREFIX=...), started with the matching DEV_TAG.
 Q=${QUEUE:-results/phaseC/full_queue_$DS.txt}; touch $Q
@@ -66,6 +69,18 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
   evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt || { log "ERROR: $tag dev scoring failed"; return 1; }
   evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt || { log "ERROR: $tag test scoring failed"; return 1; }
   log "RESULT full $tag: DEV $(grep -m1 MRecall $base/dev/eval_metrics.txt | cut -d'|' -f1-2) | TEST $(grep -m1 MRecall $base/test/eval_metrics.txt | cut -d'|' -f1-2)"
+  if [ -s $base/dev_steps.jsonl ] && [ -s $base/test_steps.jsonl ]; then   # PER_STEP=1, multi-query
+    local kmax; kmax=$( [ $DS = qampari ] && echo 5 || echo 2 )
+    local ok=1
+    for set in dev test; do
+      local data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
+      srun --account=torch_pr_152_courant --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+        bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1 || ok=0
+    done
+    if [ $ok = 1 ] && [ -s $base/dev_kagg.json ] && [ -s $base/test_kagg.json ]; then
+      rm -f $base/dev_steps.jsonl $base/test_steps.jsonl; log "KAGG $tag: k=1..$kmax round-robin/RRF scores in $base/{dev,test}_kagg.json"
+    else log "ERROR: $tag k/aggregation scoring failed (per-step lists kept; see $base/*_kagg.log)"; fi
+  fi
 }
 
 if [ -n "$RESUME" ]; then
@@ -95,8 +110,9 @@ while true; do
   # stale retrieval output would otherwise pass its "-s" check, code audit 2026-09-28, R5).
   rm -f $base/dev/$DS.jsonl $base/test/$DS.jsonl $base/dev/eval_metrics.txt $base/test/eval_metrics.txt
   ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
-  rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k $T/retrieve_ckpt.sbatch)
-  rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k $T/retrieve_ckpt.sbatch)
+  ps_dev=""; ps_test=""; [ "$PER_STEP" = 1 ] && [ -n "$k" ] && { ps_dev=$base/dev_steps.jsonl; ps_test=$base/test_steps.jsonl; }
+  rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev $T/retrieve_ckpt.sbatch)
+  rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test $T/retrieve_ckpt.sbatch)
   echo "$ej $rd $rt worker=$WORKER" > $CLAIMS/$tag/jobs
   log "$tag: full-corpus eval submitted by worker $WORKER (embed $ej -> dev $rd, test $rt)"
   finish $tag $ej $rd $rt || exit 1
