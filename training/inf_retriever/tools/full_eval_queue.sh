@@ -23,6 +23,10 @@ WORKER=${WORKER:-a}; RESUME=${RESUME:-}
 # PER_STEP=1: multi-query evals also save per-embedding lists and score every k <= K with
 # round-robin and RRF (tools/kagg_eval.py) into <base>/{dev,test}_kagg.json; the lists are then deleted.
 PER_STEP=${PER_STEP:-0}
+# GEOM=1 (default): retrieval also saves the query embeddings, and before the corpus embeddings are
+# deleted tools/geometry_eval.py writes query/gold geometry (alignment, query and gold pairwise cosine,
+# nearest-sibling rank) to <base>/{dev,test}_geom.json. A failure is logged and does not stop the queue.
+GEOM=${GEOM:-1}
 # QUEUE: the queue file, default results/phaseC/full_queue_<ds>.txt (the 24-run grid); other run
 # families get their own (grid_launch.sh PREFIX=...), started with the matching DEV_TAG.
 Q=${QUEUE:-results/phaseC/full_queue_$DS.txt}; touch $Q
@@ -57,6 +61,17 @@ evalf() {  # $1 data $2 results jsonl $3 metrics out
   done
   return 1
 }
+geom() {  # $1 tag $2 base $3 corpus embedding dir; runs while the embeddings still exist
+  local tag=$1 base=$2 emb=$3 set data
+  for set in dev test; do
+    data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
+    [ -s $base/${set}_qemb.npy ] || { log "GEOM $tag $set: no query embeddings saved; skipped"; continue; }
+    srun --account=torch_pr_152_courant --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+      bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/geometry_eval.py --qemb $base/${set}_qemb.npy --emb_glob '$emb/passages_*' --data $data --out $base/${set}_geom.json" > $base/${set}_geom.log 2>&1 \
+      && log "GEOM $tag $set: $(tail -1 $base/${set}_geom.log)" \
+      || log "ERROR: $tag $set geometry failed (see $base/${set}_geom.log); continuing"
+  done
+}
 # Wait for one submitted eval, score it, delete its embeddings. Returns 1 on failure (logged).
 finish() {  # $1 tag $2 embed job $3 dev job $4 test job
   local tag=$1 ej=$2 rd=$3 rt=$4
@@ -64,7 +79,9 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
   while active $ej; do sleep 120; done
   ok_all $ej || { log "ERROR: $tag embedding failed; embeddings kept at $emb"; return 1; }
   while active $rd || active $rt; do sleep 60; done
-  if [ -s $base/dev/$DS.jsonl ] && [ -s $base/test/$DS.jsonl ]; then rm -rf $emb
+  if [ -s $base/dev/$DS.jsonl ] && [ -s $base/test/$DS.jsonl ]; then
+    [ "$GEOM" = 1 ] && geom $tag $base $emb
+    rm -rf $emb
   else log "ERROR: $tag retrieval missing output; embeddings kept at $emb"; return 1; fi
   evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt || { log "ERROR: $tag dev scoring failed"; return 1; }
   evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt || { log "ERROR: $tag test scoring failed"; return 1; }
@@ -111,8 +128,9 @@ while true; do
   rm -f $base/dev/$DS.jsonl $base/test/$DS.jsonl $base/dev/eval_metrics.txt $base/test/eval_metrics.txt
   ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
   ps_dev=""; ps_test=""; [ "$PER_STEP" = 1 ] && [ -n "$k" ] && { ps_dev=$base/dev_steps.jsonl; ps_test=$base/test_steps.jsonl; }
-  rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev $T/retrieve_ckpt.sbatch)
-  rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test $T/retrieve_ckpt.sbatch)
+  qe_dev=""; qe_test=""; [ "$GEOM" = 1 ] && { qe_dev=$base/dev_qemb.npy; qe_test=$base/test_qemb.npy; rm -f $qe_dev $qe_test $base/{dev,test}_geom.json; }
+  rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev,SAVE_QEMB=$qe_dev $T/retrieve_ckpt.sbatch)
+  rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test,SAVE_QEMB=$qe_test $T/retrieve_ckpt.sbatch)
   echo "$ej $rd $rt worker=$WORKER" > $CLAIMS/$tag/jobs
   log "$tag: full-corpus eval submitted by worker $WORKER (embed $ej -> dev $rd, test $rt)"
   finish $tag $ej $rd $rt || exit 1

@@ -12,6 +12,77 @@ from . import dist_utils, utils
 
 logger = logging.getLogger(__name__)
 
+
+@torch.no_grad()
+def geometry_stats(outputs, positive_embeddings, negative_embeddings):
+    """Diagnostics of query/gold geometry for one batch (no gradients, no collectives).
+
+    outputs: (bsz, k, d) query embeddings; positive_embeddings: (bsz, k, d) or (bsz * k, d),
+    row j of example i = its j-th gold; negative_embeddings: any (..., d), the local negatives.
+
+    Returns {name: (sum, count)} with sums over examples (per-step names count only examples with
+    k > j), so callers can accumulate across batches and divide:
+      align_cos / step_{j}_align_cos  cosine of each query embedding to the gold it is matched to by
+                                      a Hungarian assignment that maximizes total cosine. This is the
+                                      assignment every Hungarian loss here makes (log-softmax only
+                                      adds a per-row constant). For k=1, the cosine to the one gold.
+      align_margin                    matched-gold cosine minus the largest cosine to any other gold
+                                      of the same example (k > 1).
+      gold_pair_cos / _min            mean / min cosine between an example's golds (k > 1).
+      gold_neg_cos                    mean cosine between an example's golds and all local negatives.
+      gold_cohesion                   gold_pair_cos - gold_neg_cos (comparable across doc spaces).
+      query_pair_cos / _min           mean / min cosine between an example's k query embeddings (k > 1).
+    """
+    with torch.autocast(device_type=outputs.device.type, enabled=False):   # fp32 even inside bf16 autocast
+        return _geometry_stats(outputs, positive_embeddings, negative_embeddings)
+
+
+def _geometry_stats(outputs, positive_embeddings, negative_embeddings):
+    from scipy.optimize import linear_sum_assignment
+    bsz, k, d = outputs.shape
+    q = F.normalize(outputs.float(), dim=-1)
+    p = F.normalize(positive_embeddings.float().reshape(bsz, k, d), dim=-1)
+    n = F.normalize(negative_embeddings.float().reshape(-1, d), dim=-1)
+    qp = torch.bmm(q, p.transpose(1, 2))                                   # (bsz, k, k)
+    gold_neg = torch.einsum("bkd,nd->bkn", p, n).mean(dim=(1, 2))          # (bsz,)
+    if k > 1:
+        off = ~torch.eye(k, dtype=torch.bool, device=q.device)
+        pp = torch.bmm(p, p.transpose(1, 2))[:, off].view(bsz, -1)        # (bsz, k*(k-1))
+        qq = torch.bmm(q, q.transpose(1, 2))[:, off].view(bsz, -1)
+        packed = torch.cat([qp.reshape(bsz, -1), gold_neg[:, None], pp.mean(1, keepdim=True),
+                            pp.min(1, keepdim=True).values, qq.mean(1, keepdim=True), qq.min(1, keepdim=True).values], 1)
+    else:
+        packed = torch.cat([qp.reshape(bsz, -1), gold_neg[:, None]], 1)
+    packed = packed.float().cpu().numpy()                                   # one device sync
+    qp_np = packed[:, : k * k].reshape(bsz, k, k)
+    matched = np.empty((bsz, k)); margin = np.empty((bsz, k))
+    for i in range(bsz):
+        rows, cols = linear_sum_assignment(qp_np[i], maximize=True)
+        matched[i, rows] = qp_np[i, rows, cols]
+        if k > 1:
+            others = qp_np[i].copy(); others[rows, cols] = -np.inf
+            margin[i, rows] = qp_np[i, rows, cols] - others[rows].max(1)
+    stats = {"align_cos": (matched.mean(1).sum(), bsz), "gold_neg_cos": (packed[:, k * k].sum(), bsz)}
+    for j in range(k):
+        stats[f"step_{j}_align_cos"] = (matched[:, j].sum(), bsz)
+    if k > 1:
+        gp, gmin, qm, qmin = (packed[:, k * k + 1 + c] for c in range(4))
+        stats.update({
+            "align_margin": (margin.mean(1).sum(), bsz),
+            "gold_pair_cos": (gp.sum(), bsz), "gold_pair_cos_min": (gmin.sum(), bsz),
+            "gold_cohesion": ((gp - packed[:, k * k]).sum(), bsz),
+            "query_pair_cos": (qm.sum(), bsz), "query_pair_cos_min": (qmin.sum(), bsz),
+        })
+    return {name: (float(s), c) for name, (s, c) in stats.items()}
+
+
+def add_geometry_stats(iter_stats, stats_prefix, outputs, positive_embeddings, negative_embeddings):
+    """Log geometry_stats as batch means (iter_stats convention: (value, weight))."""
+    for name, (s, c) in geometry_stats(outputs, positive_embeddings, negative_embeddings).items():
+        iter_stats[f"{stats_prefix}/{name}"] = (s / c, c)
+    return iter_stats
+
+
 class ContrastiveLoss(nn.Module):
     def __init__(self, temperature=0.05, normalize_embeddings=True):
         super().__init__()
@@ -672,6 +743,8 @@ class EmbeddingModelDocEncNoProj(nn.Module):
                 pairwise_sim = sim_mat.masked_fill(eye_mask, 0.0).sum() / (bsz * output_len * (output_len - 1))
                 iter_stats[f"{stats_prefix}/pairwise_cos_sim"] = (pairwise_sim.item(), bsz)
 
+        add_geometry_stats(iter_stats, stats_prefix, selected_outputs_embeddings, positive_embeddings, negative_embeddings)
+
         loss, iter_stats = self.loss_fct(
             selected_outputs_embeddings,
             positive_embeddings,
@@ -981,6 +1054,7 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
         selected_outputs_embeddings = self.last_token_pool(outputs.last_hidden_state, q_mask)
         selected_outputs_embeddings = selected_outputs_embeddings.unsqueeze(1)
         # Step 6: Contrastive loss (all in hidden_size space)
+        add_geometry_stats(iter_stats, stats_prefix, selected_outputs_embeddings, positive_embeddings, negative_embeddings)
         loss, iter_stats = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings, stats_prefix=stats_prefix, iter_stats=iter_stats)
         return loss, iter_stats
 
@@ -1169,6 +1243,8 @@ class EmbeddingModelFrozenDocEnc(EmbeddingModelDocEncNoProj):
                 eye_mask = torch.eye(output_len, dtype=torch.bool, device=device).unsqueeze(0)
                 pairwise_sim = sim_mat.masked_fill(eye_mask, 0.0).sum() / (bsz * output_len * (output_len - 1))
                 iter_stats[f"{stats_prefix}/pairwise_cos_sim"] = (pairwise_sim.item(), bsz)
+
+        add_geometry_stats(iter_stats, stats_prefix, selected_outputs_embeddings, positive_embeddings, negative_embeddings)
 
         loss, iter_stats = self.loss_fct(
             selected_outputs_embeddings,

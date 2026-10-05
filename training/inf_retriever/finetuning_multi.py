@@ -513,6 +513,12 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     total_pairwise_count = 0
     total_same_top1 = 0       # queries where all k embeddings retrieve the same top-1 doc
     total_top1_agree_frac = 0.0  # sum of (mode_count / k) per query
+    # Query/gold geometry (inbatch.geometry_stats): name -> [sum, count] over eval examples
+    geom = {}
+    def _add_geom(stats):
+        for name, (v, c) in stats.items():
+            acc_ = geom.setdefault(name, [0.0, 0])
+            acc_[0] += v; acc_[1] += c
 
     for i, batch in tqdm(enumerate(eval_loader)):
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
@@ -556,6 +562,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             )  # (bsz, nqe, hidden_dim)
             if opt.norm_query:
                 multi_embs = F.normalize(multi_embs, dim=-1)
+            _add_geom(inbatch.geometry_stats(multi_embs, g_emb.reshape(bsz, nqe, -1), n_emb))
 
             # Pairwise cosine similarity within each query's k embeddings
             if nqe > 1:
@@ -594,6 +601,8 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             multi_step_total += bsz
 
         else:
+            # one gold per example in single-query eval, so only alignment (cosine to that gold) and gold_neg_cos
+            _add_geom(inbatch.geometry_stats(q_emb.unsqueeze(1), g_emb, n_emb))
             labels = torch.arange(0, bsz, device=q_emb.device, dtype=torch.long)
             argmax_idx = torch.argmax(scores, dim=1)
             total_correct += (argmax_idx == labels).sum().item()
@@ -627,6 +636,12 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             step_acc = 100.0 * multi_step_correct[j] / multi_step_total
             log_dict[f"eval_step_{j}_acc"] = step_acc
             message.append(f"step_{j}_acc: {step_acc:.2f}%")
+
+    for name in sorted(geom):
+        v = geom[name][0] / max(geom[name][1], 1)
+        log_dict[f"eval_{name}"] = v
+        if not name.startswith("step_"):
+            message.append(f"{name}: {v:.4f}")
 
     logger.info(" | ".join(message))
     accelerator.log(log_dict, step=step)

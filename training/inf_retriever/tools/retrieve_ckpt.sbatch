@@ -27,6 +27,8 @@ DATA=${DATA:-data/amer_data/eval_data/${DATA_NAME}.jsonl}
 # Optional: SAVE_PER_STEP=<jsonl> also saves each query embedding's own top list (multi-query only),
 # for offline scoring of every k and aggregation with tools/kagg_eval.py.
 PS_ARG=""; [ -n "${SAVE_PER_STEP:-}" ] && [ -n "${K:-}" ] && PS_ARG="--save_per_step ${SAVE_PER_STEP}"
+# Optional: SAVE_QEMB=<npy> also saves the query embeddings (for tools/geometry_eval.py).
+QE_ARG=""; [ -n "${SAVE_QEMB:-}" ] && QE_ARG="--save_query_embeddings ${SAVE_QEMB}"
 
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/nli.ext3:ro \
@@ -43,4 +45,4 @@ singularity exec --nv \
                 --num_shards 16 \
                 --use_gpu \
                 --output_file ${DATA_NAME}.jsonl \
-                $K_ARG $PS_ARG"
+                $K_ARG $PS_ARG $QE_ARG"

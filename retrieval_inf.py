@@ -371,6 +371,12 @@ def main(args):
             np.save(os.path.join(args.output_dir, f"questions_embeddings_{Path(path).stem}.npy"), questions_embedding)
             return
 
+        if args.save_query_embeddings:
+            # same embeddings retrieval uses below: (n, k, d) multi-query, (n, d) otherwise; L2-normalized
+            os.makedirs(os.path.dirname(args.save_query_embeddings) or ".", exist_ok=True)
+            np.save(args.save_query_embeddings, np.asarray(questions_embedding, dtype=np.float32))
+            print(f"Saved query embeddings {questions_embedding.shape} to {args.save_query_embeddings}")
+
         if use_finetuned and getattr(model, '_is_multi_query', False) and args.save_per_step:
             # Search with all k embeddings in one pass over the index (exact IndexFlatIP, so each
             # list equals a separate search) and save every embedding's own ranked list, plus the
@@ -519,6 +525,13 @@ if __name__ == "__main__":
         help="Multi-query only: save each generated embedding's own top-n_docs list to this jsonl "
              "(and the passages they contain to <path>.passages.jsonl) instead of an aggregated "
              "result, for offline scoring of every k' <= max_new_tokens and aggregation.",
+    )
+    parser.add_argument(
+        "--save_query_embeddings",
+        type=str,
+        default=None,
+        help="Also save the query embeddings (.npy, float32) and continue with retrieval as usual; "
+             "read by training/inf_retriever/tools/geometry_eval.py.",
     )
     args = parser.parse_args()
     main(args)
