@@ -254,8 +254,8 @@ The model and loss code, the training loop, and the sampler are otherwise sound:
 | 6 | **Done 2026-10-02.** Hard negatives per slot, without replacement, topped up with random negatives | L1, L2 |
 | 7 | **Done 2026-10-02** (fp32 only on overflow; 512-token passages to be switched on after the grid queue drains). Normalize in fp32 at inference; honor `--passage_maxlength` | R2, R3 |
 | 8 | **Done 2026-10-02.** `parse_args()` and log `opt`; fix `iter_stats` default; make `phaseC_collect_scores.py` understand grid runs | L5, M1, G3 |
-| 9 | **Open.** Decide FSDP `reduce_dtype` (fp32) or document bf16 reduction | L12 |
-| 10 | **Open.** Ablate inference k for multi-query (typical gold count, max trained k) | C2 |
+| 9 | **Done 2026-10-03** (fp32 reduce). Decide FSDP `reduce_dtype` (fp32) or document bf16 reduction | L12 |
+| 10 | **Done 2026-10-03** (see C2 in section 9). Ablate inference k for multi-query (typical gold count, max trained k) | C2 |
 | 11 | **Done 2026-10-02** (checks and warnings; see section 9). Read `chunk_length`, `eval_normalize_text` and `pooling` from the checkpoint `opt` at inference | C4, R3 |
 
 **Can wait:** everything else in section 4.
@@ -287,11 +287,16 @@ Status per finding. **Done** = fixed in the working tree on `fsdp-clean-recipe` 
 | R3, C4 | `--passage_maxlength` is honored (default 1024 = what every evaluation so far used; it warns when the checkpoint's `chunk_length` differs, 512 for all grid checkpoints). Retrieval fails if the checkpoint's `eval_normalize_text` differs from `--normalize_text`; corpus embedding fails if the checkpoint was trained with normalized text. `pooling` needs no check: training also always uses last-token pooling. | `gen_embed_new.py`, `retrieval_inf.py`, `src/inference_utils.py` |
 | R5 | The full-eval queue deletes earlier outputs of a tag before submitting it, so a stale file cannot pass the success check. | `tools/full_eval_queue.sh` |
 | G11 | Scoring is retried up to 3 times from the retrieval output on disk, instead of a failed score forcing a new 2–3 h embedding; a final failure is logged as ERROR. | `tools/full_eval_queue.sh` |
+| R3 (activation) | Corpus embedding now truncates passages at 512 tokens (training's `chunk_length`) for every checkpoint except the grid's (`grid_*`), which keep the 1024 they were all evaluated at; `PASSAGE_MAXLEN` overrides. Note: re-evaluating a pre-grid `phaseC_*` checkpoint would now use 512, not its original 1024. | `tools/gen_embed_ckpt.sbatch`, `tools/cheap_eval_ckpt.sbatch` |
+| G7 | The driver logs `RUN FAILED (exit N)` on any non-zero exit (exit trap); the follower warns once when a run's driver failed (and still queues it if a restarted driver finishes), warns about steps without cheap-dev metrics, and warns instead of silently queuing nothing. | `tools/phaseC_run.sh`, `tools/grid_launch.sh` |
+| M6 | The four per-step `print`s in the single-query forward (shapes and the loss, which forced a GPU sync) removed. | `src/inbatch.py` |
+| L12 | FSDP gets an explicit `MixedPrecision(param_dtype=bf16, reduce_dtype=fp32, buffer_dtype=bf16)` policy, so gradients are reduce-scattered in fp32 like DDP and 1-GPU; training fails at startup if the policy is not fp32-reduce, and logs the plugin's settings. Verified 2026-10-03 with a 15-minute 2-GPU FSDP smoke run on `clean_v2_hn` (job 19106614): the logged policy is `MixedPrecision(param_dtype=bfloat16, reduce_dtype=float32, buffer_dtype=bfloat16)`, the other FSDP settings still come from the config (version 1, FULL_SHARD, single-unit wrap, SHARDED_STATE_DICT, use_orig_params, sync_module_states), loss falls normally (3.98 → 0.50 over 100 steps), and the run's own `opt.txt` records the hard-negative data and ratio. | `finetuning_multi.py` (`build_accelerator`), `accelerate_config_2gpu_fsdp_nooffload.yaml` (comment) |
+| C2 | Studied 2026-10-03 (one checkpoint per dataset, full corpus; tables in `grid_results_2026-10-02.md`): QAMPARI is best at k = 5 with **RRF** (+6.0 test MRecall@100 over round-robin); AmbigQA is best at k = 1–2 with round-robin, and RRF hurts at k ≥ 3. A design choice per dataset, not a code fix; the default aggregation is unchanged. Offline scoring of any k and aggregation from one retrieval: `retrieval_inf.py --save_per_step`, `tools/kagg_*`. | `retrieval_inf.py`, `tools/kagg_study.sh`, `kagg_retrieve.sbatch`, `kagg_eval.py`, `kagg_eval.sbatch` |
 | — | Tooling for v2: `grid_launch.sh` takes `DATA_ROOT`, `DEV_TAG`, `PREFIX` (own run names and full-eval queue file); `full_eval_queue.sh` takes `QUEUE`; `phaseA_build_reduced_corpus.py` merges `build_info.json` instead of overwriting it. Defaults reproduce the grid. | `tools/` |
 
 Shell scripts that may be running (`full_eval_queue.sh`) were replaced atomically (new file + rename), so the running workers kept executing the old version.
 
-**Not yet active, by design:** passages are still embedded at 1024 tokens (R3) so that the grid's remaining full-corpus evaluations match its first ones. For the next round, pass `--passage_maxlength 512` in `gen_embed_ckpt.sbatch` and `cheap_eval_ckpt.sbatch` once the grid's eval queue has drained (the scripts are shared with the running queue).
+R3 is now active for new checkpoints (see "R3 (activation)" above); the grid's checkpoints keep 1024 so the grid's evaluations stay consistent.
 
 ### No change (by analysis)
 
@@ -301,22 +306,20 @@ Shell scripts that may be running (`full_eval_queue.sh`) were replaced atomicall
 
 ### Open
 
+Not planned, by decision of 2026-10-03 (negligible, unused paths, or failing loudly): L7, L8, L9, C3, L4, L6, L10, L13, M4, M5, R4, G6, G9, G10.
+
 | Finding | Severity | Note |
 | --- | --- | --- |
-| C2 | MEDIUM | Inference k vs trained gold count — an experiment (ablate k), not a code fix. |
-| L12 | LOW | FSDP reduces gradients in bf16; set `reduce_dtype=fp32` or document. |
 | L7 | LOW | Weight decay on norms, biases and embeddings (negligible at current LR). |
 | L8 | LOW | First optimizer step at LR 0; `--lr_min_ratio` warmup quirk. |
 | L9 | LOW | In-training multi-query eval pads negatives by copying and resamples them each call. |
 | C3 | LOW | In-training eval acc/MRR scores only the first embedding (not used for selection). |
 | L4 | LOW | Rank 1 logs unaveraged metrics. |
-| M6 | LOW | Single-query forward prints every step on every rank. |
 | L6 | LOW | FSDP optimizer state would be rank 0's shard only (grid passes `--no_save_optimizer`). |
 | L10 | LOW | Broken `checkpoint/latest` symlink. |
 | L13 | LOW | `--negative_ctxs > 1` fails (loudly). |
 | M4, M5 | LOW | Broken legacy `InBatch`; `INFRetriever` pooling assumes right padding (unused paths). |
 | R4 | LOW | Header handling for shards > 0 in `gen_embed_new.py` (harmless with current ids). |
 | G6 | LOW | `END` in the full-eval queue can stop it before earlier items. |
-| G7 | LOW | Silent failure paths in the driver and follower. |
 | G9 | LOW | ~18 passages still CSV-quoted. |
 | G10 | LOW | Driver restarts duplicate drift records. |
