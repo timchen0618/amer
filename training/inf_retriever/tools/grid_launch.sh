@@ -61,9 +61,21 @@ done
       echo "$run" | grep -q -- "$FILTER" || continue
       marker=results/phaseC/$run.queued
       [ -e "$marker" ] && continue
-      if ! grep -q "\[$run\] RUN DONE" "$LOG"; then pending=1; continue; fi
+      last=$(grep -E "\[$run\] RUN (DONE|FAILED)" "$LOG" | tail -1)
+      if ! echo "$last" | grep -q "RUN DONE"; then
+        pending=1
+        # A failed driver never writes RUN DONE: say so once, then keep waiting for a restart (G7).
+        if echo "$last" | grep -q "RUN FAILED" && [ ! -e results/phaseC/$run.failed_noted ]; then
+          touch results/phaseC/$run.failed_noted
+          log "WARNING: $run driver failed; its full evals are not queued until it is restarted and finishes"
+        fi
+        continue
+      fi
+      rm -f results/phaseC/$run.failed_noted
       k=-; [ "$mode" = multi ] && { [ "$ds" = qampari ] && k=5 || k=2; }
       if [ "$ds" = qampari ]; then
+        missing=$(for d in results/phaseC/$run/step*; do grep -q MRecall $d/eval_metrics.txt 2>/dev/null || echo -n "${d##*step} "; done)
+        [ -n "$missing" ] && log "WARNING: $run has no cheap-dev metrics for steps $missing; they are not candidates for full eval"
         steps=$(for d in results/phaseC/$run/step*; do
                   m=$(grep -m1 -o 'MRecall: [0-9.]*' $d/eval_metrics.txt 2>/dev/null | cut -d' ' -f2)
                   [ -n "$m" ] && echo "${d##*step} $m"; done | sort -k2,2nr -k1,1n | head -2 | cut -d' ' -f1)
@@ -73,7 +85,9 @@ done
       for s in $steps; do
         echo "${run}_s$s checkpoints/$ds/$run/checkpoint/step-$s $k" >> results/phaseC/full_queue_$ds$QSUF.txt
       done
-      touch "$marker"; log "queued full evals for $run: steps $(echo $steps)"
+      if [ -z "$steps" ]; then log "WARNING: $run has no cheap-dev metrics at all; nothing queued for full eval"
+      else log "queued full evals for $run: steps $(echo $steps)"; fi
+      touch "$marker"
     done
     [ $pending = 0 ] && { log "all grid runs done and queued"; break; }
     sleep 300

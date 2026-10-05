@@ -25,11 +25,17 @@ EMB=wikipedia_embeddings/phaseA/${SLURM_JOB_NAME}_${SLURM_JOB_ID}
 DS=${SET%%_*}                      # qampari | ambigqa
 GOLD_ARG=""; [ "$DS" = "ambigqa" ] && GOLD_ARG="--no-gold-id"
 K_ARG="";    [ -n "${K:-}" ] && K_ARG="--max_new_tokens ${K}"
+# Passage truncation (code audit 2026-09-28, R3): 512 tokens = training's --chunk_length. The 24-run
+# grid's checkpoints (grid_*) were all evaluated at 1024, the old hard-coded value, and keep it so
+# their results stay comparable. PASSAGE_MAXLEN overrides both.
+case "$CKPT" in */grid_*|grid_*) PML_DEFAULT=1024 ;; *) PML_DEFAULT=512 ;; esac
+PML=${PASSAGE_MAXLEN:-$PML_DEFAULT}
+echo "passage max length $PML tokens"
 mkdir -p "$EMB" "$OUT_DIR"
 trap 'rm -rf "$EMB"' EXIT
 
 singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; \
-    python gen_embed_new.py --passages $CORPUS --output_dir $EMB --shard_id 0 --num_shards 1 --model_name_or_path $CKPT --per_gpu_batch_size 512" || exit 1
+    python gen_embed_new.py --passages $CORPUS --output_dir $EMB --shard_id 0 --num_shards 1 --model_name_or_path $CKPT --per_gpu_batch_size 512 --passage_maxlength $PML" || exit 1
 
 if [[ "$CKPT" == */* && ! -e "$CKPT" ]]; then RETRIEVER=retrieval_base.py; K_ARG=""; else RETRIEVER=retrieval_inf.py; fi
 singularity exec --nv --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; \

@@ -27,6 +27,9 @@ T=training/inf_retriever/tools
 mkdir -p results/phaseC results/param_drift
 LOG=results/phaseC/phaseC.log
 log() { echo "[$(date '+%F %T')] [$RUN] $*" | tee -a "$LOG" >&2; }
+# Any non-zero exit is logged as "RUN FAILED", so the grid follower (grid_launch.sh) can report it
+# instead of waiting silently for a "RUN DONE" that never comes (code audit 2026-09-28, G7).
+trap 'rc=$?; [ $rc -ne 0 ] && log "RUN FAILED (exit $rc); restart this driver to resume"' EXIT
 DENSE=${DENSE:-0}; KEEP_TOP=${KEEP_TOP:-0}; KEEP_STEPS=${KEEP_STEPS:-}
 DEV_TAG=${DEV_TAG-clean}   # clean dev sets (500 each); DEV_TAG="" = the phase A dev sets
 case $DS in
@@ -134,7 +137,7 @@ for s in $STEPS; do
   m=$(grep -m1 MRecall $out/eval_metrics.txt 2>/dev/null | cut -d'|' -f1-2)
   d=$(grep "\"run\": \"$RUN\", \"step\": $s," results/param_drift/phaseC_$DS.jsonl 2>/dev/null | tail -1 | \
       python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print("changed %.3f%%, rel. distance %.2e" % (100*r["frac_changed"], r["rel_l2"]))' 2>/dev/null)
-  [ -z "$m" ] && { log "ERROR: cheap dev eval for step $s produced no metrics (see sbatch_outputs/cheap_eval_phaseC_eval_${RUN}_s$s.out)"; continue; }
+  [ -z "$m" ] && { log "ERROR: cheap dev eval for step $s produced no metrics (see sbatch_outputs/cheap_eval_phaseC_eval_${RUN}_s$s.out); this step is neither pruned nor considered for full eval"; continue; }
   log "RESULT step $s: dev(cheap) $m | drift: $d"
 done
 prune

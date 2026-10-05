@@ -907,17 +907,13 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
         assert (q_mask[:, -1] == 1).all(), ("Left-padding expected: last position should always be a real token", q_mask[:, -1])
 
         initial_embeds = self.embedding(q_tokens)
-        print('initial_embeds', initial_embeds.shape)
         # current_input = initial_embeds[:, :input_start_for_output, :] 
         outputs = self.encoder(inputs_embeds=initial_embeds, attention_mask=q_mask, position_ids=q_position_ids,)
-        print('outputs.last_hidden_state', outputs.last_hidden_state.shape)
         # last_token_pool handles left-padding: simply take the last position
         selected_outputs_embeddings = self.last_token_pool(outputs.last_hidden_state, q_mask)
-        print('selected_outputs_embeddings', selected_outputs_embeddings.shape)
         selected_outputs_embeddings = selected_outputs_embeddings.unsqueeze(1)
         # Step 6: Contrastive loss (all in hidden_size space)
         loss, iter_stats = self.loss_fct(selected_outputs_embeddings, positive_embeddings, negative_embeddings, stats_prefix=stats_prefix, iter_stats=iter_stats)
-        print('loss', loss.shape, loss)
         return loss, iter_stats
 
 

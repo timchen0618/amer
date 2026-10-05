@@ -20,6 +20,8 @@ fsdp_config:
 machine_rank: 0
 main_training_function: main
 mixed_precision: bf16  # must match finetuning_multi.py: Accelerator(mixed_precision="bf16") (bf16 autocast over fp32 weights)
+# FSDP gradient reduction runs in fp32: finetuning_multi.build_accelerator passes an explicit
+# MixedPrecision(param/buffer bf16, reduce fp32) policy (accelerate's bf16 default reduces in bf16).
 num_machines: 1
 num_processes: 2
 rdzv_backend: static

@@ -39,7 +39,7 @@ from tqdm import tqdm
 
 # add accelerator
 from accelerate import Accelerator, InitProcessGroupKwargs, DistributedDataParallelKwargs
-from accelerate.utils import LoggerType
+from accelerate.utils import LoggerType, DistributedType
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -651,11 +651,23 @@ def build_accelerator(opt, log_with="wandb"):
     which on 2 GPUs halved warmup and hit lr=0 at total_steps/2.
     gradient_as_bucket_view=True (DDP only): gradients live directly in DDP's
     all-reduce buckets instead of a second fp32 copy (~7 GB saved). Same math.
+    FSDP: an explicit MixedPrecision policy keeps bf16 parameters and buffers for the
+    forward/backward but reduce-scatters gradients in fp32. accelerate's default for
+    mixed_precision="bf16" also reduces in bf16, unlike DDP and 1-GPU, which reduce the
+    fp32 gradients (code audit 2026-09-28, L12). The other FSDP settings still come from
+    the accelerate config (the plugin reads them from the launcher's environment).
     """
+    fsdp_plugin = None
+    if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
+        from accelerate import FullyShardedDataParallelPlugin
+        from torch.distributed.fsdp import MixedPrecision
+        fsdp_plugin = FullyShardedDataParallelPlugin(mixed_precision_policy=MixedPrecision(
+            param_dtype=torch.bfloat16, reduce_dtype=torch.float32, buffer_dtype=torch.bfloat16))
     return Accelerator(
         gradient_accumulation_steps=opt.accumulation_steps,
         mixed_precision="bf16",
         step_scheduler_with_optimizer=False,
+        fsdp_plugin=fsdp_plugin,
         log_with=log_with,
         kwargs_handlers=[
             InitProcessGroupKwargs(timeout=timedelta(seconds=3000)),
@@ -698,6 +710,15 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
         f"num_processes={accelerator.num_processes} mixed_precision={accelerator.mixed_precision} "
         f"trainable_param_dtypes={dict(trainable_dtypes)} frozen_param_dtypes={dict(frozen_dtypes)}"
     )
+    if accelerator.distributed_type == DistributedType.FSDP:
+        fp = accelerator.state.fsdp_plugin
+        mp = fp.mixed_precision_policy
+        logger.warning(f"[setup] FSDP mixed precision policy: {mp}; version={fp.fsdp_version} "
+                       f"sharding={fp.sharding_strategy} wrap={fp.auto_wrap_policy} state_dict={fp.state_dict_type} "
+                       f"use_orig_params={fp.use_orig_params} sync_module_states={fp.sync_module_states} "
+                       f"cpu_ram_efficient_loading={fp.cpu_ram_efficient_loading}")
+        if getattr(mp, "reduce_dtype", None) != torch.float32:
+            raise RuntimeError(f"FSDP must reduce gradients in fp32 (see build_accelerator); got {mp}")
     if set(trainable_dtypes) != {"torch.float32"}:
         raise RuntimeError(
             f"Expected fp32 trainable weights (mixed precision), got {dict(trainable_dtypes)}"

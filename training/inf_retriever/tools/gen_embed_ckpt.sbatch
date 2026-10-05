@@ -24,6 +24,12 @@
 # Batch size by GPU memory: 512 on H200 (141 GB, as before); 128 on smaller GPUs, since a batch of
 # 512 long passages ran out of memory on an L40S (44 GB). Per-passage embeddings do not depend on
 # the batch (right padding + attention mask), up to floating-point noise.
+# Passage truncation (code audit 2026-09-28, R3): 512 tokens = training's --chunk_length. The 24-run
+# grid's checkpoints (grid_*) were all evaluated at 1024, the old hard-coded value, and keep it so
+# their results stay comparable. PASSAGE_MAXLEN overrides both.
+case "$CKPT" in */grid_*|grid_*) PML_DEFAULT=1024 ;; *) PML_DEFAULT=512 ;; esac
+PML=${PASSAGE_MAXLEN:-$PML_DEFAULT}
+echo "passage max length $PML tokens"
 GPU_MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
 BS=128; [ -n "$GPU_MEM_MB" ] && [ "$GPU_MEM_MB" -ge 80000 ] && BS=512
 echo "GPU memory ${GPU_MEM_MB:-unknown} MiB -> per_gpu_batch_size $BS"
@@ -44,4 +50,4 @@ echo "GPU $GPU_NAME -> environment $OVERLAY"
 singularity exec --nv \
             --overlay $OVERLAY:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-            /bin/bash -c "source /ext3/env.sh; $ACTIVATE cd /scratch/hc3337/projects/autoregressive; python gen_embed_new.py --passages $PASSAGES --output_dir $EMB_DIR --shard_id ${SLURM_ARRAY_TASK_ID} --num_shards 32 --model_name_or_path $CKPT --per_gpu_batch_size $BS"
+            /bin/bash -c "source /ext3/env.sh; $ACTIVATE cd /scratch/hc3337/projects/autoregressive; python gen_embed_new.py --passages $PASSAGES --output_dir $EMB_DIR --shard_id ${SLURM_ARRAY_TASK_ID} --num_shards 32 --model_name_or_path $CKPT --per_gpu_batch_size $BS --passage_maxlength $PML"
