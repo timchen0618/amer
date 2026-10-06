@@ -410,8 +410,11 @@ def main(args):
                     p = passage_id_map[pid]
                     fout.write(json.dumps({"id": pid, "title": p.get("title", ""), "text": p.get("text", "")}) + "\n")
             print(f"Saved per-step lists ({k_emb} per query) to {args.save_per_step}")
-            return
-        if use_finetuned and getattr(model, '_is_multi_query', False):
+            # Also write the usual aggregated output, merged from the same lists (no second search).
+            all_results = [[flat[qi * k_emb + ki] for qi in range(n_q)] for ki in range(k_emb)]
+            agg_fn = aggregate_rrf if args.agg_func == "rrf" else aggregate_round_robin
+            top_ids_and_scores = agg_fn(all_results, args.n_docs)
+        elif use_finetuned and getattr(model, '_is_multi_query', False):
             k_emb = questions_embedding.shape[1]
             all_results = []
             for ki in range(k_emb):
@@ -523,8 +526,8 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Multi-query only: save each generated embedding's own top-n_docs list to this jsonl "
-             "(and the passages they contain to <path>.passages.jsonl) instead of an aggregated "
-             "result, for offline scoring of every k' <= max_new_tokens and aggregation.",
+             "(and the passages they contain to <path>.passages.jsonl) in addition to the aggregated "
+             "output, for offline scoring of every k' <= max_new_tokens and aggregation.",
     )
     parser.add_argument(
         "--save_query_embeddings",

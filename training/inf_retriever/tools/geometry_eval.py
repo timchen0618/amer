@@ -71,7 +71,7 @@ def main(a):
     for f in files:
         ids, emb = load_shard(f)
         for i, x in enumerate(ids):
-            if x in need: gv[x] = emb[i]
+            if x in need: gv[x] = emb[i].clone()  # a view would keep the whole shard alive (OOM)
         rand.append(emb[rng.choice(len(ids), min(len(ids), a.n_random // len(files) + 1), replace=False)])
         log(f"pass 1 {f.split('/')[-1]}: {len(gv)} / {len(need)} gold ids found")
     rand = torch.cat(rand)
