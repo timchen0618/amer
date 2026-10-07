@@ -38,11 +38,26 @@ singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "s
     python gen_embed_new.py --passages $CORPUS --output_dir $EMB --shard_id 0 --num_shards 1 --model_name_or_path $CKPT --per_gpu_batch_size 512 --passage_maxlength $PML" || exit 1
 
 if [[ "$CKPT" == */* && ! -e "$CKPT" ]]; then RETRIEVER=retrieval_base.py; K_ARG=""; else RETRIEVER=retrieval_inf.py; fi
+# Multi-query (K set): also save each embedding's own list, so the checkpoint is ranked by the same
+# metric as the full-eval headline, RRF over the K embeddings (2026-10-07; round-robin, in
+# eval_metrics.txt, was a weaker proxy: reports/cheap_eval_validity_2026-10-07.md).
+PS_ARG=""; [ -n "$K_ARG" ] && PS_ARG="--save_per_step $OUT_DIR/steps.jsonl"
 singularity exec --nv --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; \
     python $RETRIEVER --model_name_or_path $CKPT --passages $CORPUS --passages_embeddings '$EMB/*' --data $DATA \
         --output_dir $OUT_DIR --projection_size 1536 --per_gpu_batch_size 4 --n_docs 500 --num_shards 1 --use_gpu \
-        --output_file results.jsonl $K_ARG" || exit 1
+        --output_file results.jsonl $K_ARG $PS_ARG" || exit 1
 
 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; \
     python eval.py --data_path $DATA --topk 100 10 $GOLD_ARG --input-file $OUT_DIR/results.jsonl" > $OUT_DIR/eval_metrics.txt 2>&1
 grep MRecall $OUT_DIR/eval_metrics.txt
+# select_metrics.txt: the number checkpoint selection ranks by (phaseC_run.sh, launchers): RRF at k = K
+# for multi-query, the eval_metrics.txt MRecall@100 otherwise. kagg.json has round-robin and RRF for k <= K.
+if [ -n "$PS_ARG" ] && [ -s $OUT_DIR/steps.jsonl ]; then
+  singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; \
+      python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $OUT_DIR/steps.jsonl --data $DATA --ks $(seq -s ' ' 1 $K) --aggs round_robin rrf --out $OUT_DIR/kagg.json" > $OUT_DIR/kagg.log 2>&1 \
+    && python3 -c "import json; r=[x for x in json.load(open('$OUT_DIR/kagg.json'))['results'] if x['agg']=='rrf' and x['k']==$K][0]; print('MRecall: %.2f | Recall: %.2f  (RRF, k=$K)' % (r['mrecall@100'], r['recall@100']))" > $OUT_DIR/select_metrics.txt \
+    && rm -f $OUT_DIR/steps.jsonl.passages.jsonl
+  cat $OUT_DIR/select_metrics.txt 2>/dev/null || echo "WARNING: RRF scoring failed (see $OUT_DIR/kagg.log); selection falls back to round-robin"
+else
+  grep -m1 'MRecall' $OUT_DIR/eval_metrics.txt | sed 's/^/ /' > $OUT_DIR/select_metrics.txt
+fi

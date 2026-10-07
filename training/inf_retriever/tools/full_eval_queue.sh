@@ -21,7 +21,9 @@ cd /scratch/hc3337/projects/autoregressive
 DS=$1; T=training/inf_retriever/tools
 WORKER=${WORKER:-a}; RESUME=${RESUME:-}
 # PER_STEP=1: multi-query evals also save per-embedding lists and score every k <= K with
-# round-robin and RRF (tools/kagg_eval.py) into <base>/{dev,test}_kagg.json; the lists are then deleted.
+# round-robin and RRF (tools/kagg_eval.py) into <base>/{dev,test}_kagg.json. The id lists are kept (small, and
+# only recoverable by re-embedding the corpus) for later rescoring, e.g. on a question subset; the passage-text
+# files next to them are deleted (large, rebuildable from the corpus by id).
 PER_STEP=${PER_STEP:-0}
 # GEOM=1 (default): retrieval also saves the query embeddings, and before the corpus embeddings are
 # deleted tools/geometry_eval.py writes query/gold geometry (alignment, query and gold pairwise cosine,
@@ -95,7 +97,7 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
         bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1 || ok=0
     done
     if [ $ok = 1 ] && [ -s $base/dev_kagg.json ] && [ -s $base/test_kagg.json ]; then
-      rm -f $base/dev_steps.jsonl $base/test_steps.jsonl; log "KAGG $tag: k=1..$kmax round-robin/RRF scores in $base/{dev,test}_kagg.json"
+      rm -f $base/dev_steps.jsonl.passages.jsonl $base/test_steps.jsonl.passages.jsonl; log "KAGG $tag: k=1..$kmax round-robin/RRF scores in $base/{dev,test}_kagg.json"
     else log "ERROR: $tag k/aggregation scoring failed (per-step lists kept; see $base/*_kagg.log)"; fi
   fi
 }

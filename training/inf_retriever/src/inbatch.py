@@ -251,6 +251,7 @@ class HungarianMaskedContrastiveLoss(nn.Module):
         # Hungarian assignment per example, using the (k, k) block of similarity
         # between this example's k predicted embeddings and its k local positives.
         assigned_targets = torch.empty(bk, dtype=torch.long, device=outputs.device)
+        assigned_gold = torch.empty(batch_size, k, dtype=torch.long)  # [i, j] = gold matched to output j
         sim_detached = similarity.detach().float().cpu().numpy()
         for i in range(batch_size):
             pos_start = local_pos_start + k * i
@@ -258,6 +259,8 @@ class HungarianMaskedContrastiveLoss(nn.Module):
             row_ind, col_ind = self.linear_sum_assignment(cost, maximize=True)
             for ri, ci in zip(row_ind, col_ind):
                 assigned_targets[k * i + ri] = pos_start + ci
+                assigned_gold[i, ri] = int(ci)
+        self.last_assignment = assigned_gold.to(outputs.device)  # read by HungarianMaskedDivLoss
 
         # Mask out same-example positives except the Hungarian-assigned target.
         q_example = torch.arange(bk, device=outputs.device) // k   # (bk,)
@@ -354,11 +357,54 @@ class HungarianPlusSingleLoss(nn.Module):
         return loss, iter_stats
 
 
+class HungarianMaskedDivLoss(HungarianMaskedContrastiveLoss):
+    """hungarian_masked plus a penalty on query embeddings that are more alike than their golds (2026-10-07):
+
+        loss = L_masked + div_weight * mean_{i != j} relu(cos(q_i, q_j) - cos(g_a(i), g_a(j)))
+
+    a(.) is L_masked's own Hungarian assignment; the gold-gold cosines are detached. Masking the other
+    golds removes the only force that kept the k embeddings apart (in the clean_v3_abl round, masked's
+    query embeddings had pairwise cosine 0.94 against 0.57 for their golds). The target is the golds'
+    own similarity, not a fixed threshold, because sibling golds are often close; pairs already less
+    alike than their golds are not pulled together.
+    """
+
+    def __init__(self, temperature=0.05, div_weight=0.5, normalize_embeddings=True):
+        super().__init__(temperature=temperature, normalize_embeddings=normalize_embeddings)
+        assert div_weight >= 0.0, div_weight
+        self.div_weight = div_weight
+
+    def diversity_penalty(self, outputs, positive_embeddings, assignment):
+        """outputs (b, k, d); positives (b, k, d) or (b * k, d); assignment (b, k) gold index per output."""
+        b, k, d = outputs.shape
+        if k < 2:
+            return outputs.new_zeros((), dtype=torch.float32)
+        q = F.normalize(outputs.float(), dim=-1)
+        g = F.normalize(positive_embeddings.detach().float().reshape(b, k, d), dim=-1)
+        g = torch.gather(g, 1, assignment.unsqueeze(-1).expand(b, k, d))  # g[:, j] = gold matched to q[:, j]
+        qq = q @ q.transpose(1, 2)
+        gg = g @ g.transpose(1, 2)
+        off = ~torch.eye(k, dtype=torch.bool, device=outputs.device)
+        return F.relu(qq - gg)[:, off].mean()
+
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+        loss_masked, iter_stats = super().forward(outputs, positive_embeddings, negative_embeddings,
+                                                  stats_prefix=stats_prefix, iter_stats=iter_stats)
+        penalty = self.diversity_penalty(outputs, positive_embeddings, self.last_assignment)
+        loss = loss_masked + self.div_weight * penalty
+        bsz = outputs.shape[0]
+        iter_stats[f"{stats_prefix}/loss_masked"] = (loss_masked.item(), bsz)
+        iter_stats[f"{stats_prefix}/div_penalty"] = (penalty.item(), bsz)
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
+        return loss, iter_stats
+
+
 LOSS_REGISTRY = {
     "contrastive": ContrastiveLoss,
     "hungarian_masked": HungarianMaskedContrastiveLoss,
     "hungarian": HungarianContrastiveLoss,
     "hungarian_plus_single": HungarianPlusSingleLoss,
+    "hungarian_masked_div": HungarianMaskedDivLoss,
 }
 
 
@@ -380,6 +426,12 @@ def build_loss(opt):
         w = getattr(opt, "single_loss_weight", 0.5)
         print(f"[build_loss] single_loss_weight={w}", flush=True)
         return HungarianPlusSingleLoss(temperature=opt.temperature, single_weight=w)
+    if name == "hungarian_masked_div":
+        if getattr(opt, "training_mode", None) != "multi":
+            raise ValueError("loss_fn='hungarian_masked_div' requires training_mode='multi'")
+        w = getattr(opt, "div_weight", 0.5)
+        print(f"[build_loss] div_weight={w}", flush=True)
+        return HungarianMaskedDivLoss(temperature=opt.temperature, div_weight=w)
     return LOSS_REGISTRY[name](temperature=opt.temperature)
 
 

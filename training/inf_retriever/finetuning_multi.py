@@ -794,7 +794,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         
                 # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-                _sampling_rate = 1.0 if opt.full_sampling else step / opt.total_steps
+                _sampling_rate = 1.0 if opt.full_sampling else min(1.0, step / (opt.sampling_saturate_frac * opt.total_steps))
                 train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate)
                 accelerator.backward(train_loss)
                 if opt.optim == "sam" or opt.optim == "asam":

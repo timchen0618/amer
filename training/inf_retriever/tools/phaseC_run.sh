@@ -17,6 +17,8 @@
 #               checkpoint unless it is listed here or queued for full eval; step-0 is deleted once
 #               all drift jobs are done. For runs whose full-eval steps are fixed in advance
 #               (AmbigQA), where KEEP_TOP=0 used to keep every checkpoint (code audit 2026-09-28, G4).
+#   KEEP_FINAL=1  never delete the last saved step (the end of training), whatever KEEP_TOP /
+#               KEEP_STEPS say, so the final checkpoint can always be fully evaluated (2026-10-07).
 #   DEV_TAG     dev set for cheap evals: "clean" (default: data/phaseA/<ds>_cleandev500.jsonl and its
 #               reduced corpus) or "" (the phase A dev sets, as used before the 2026-09-27 audit).
 #               Training data comes from DATA_ROOT (see phaseC_train.sbatch; default data/training/clean).
@@ -30,7 +32,7 @@ log() { echo "[$(date '+%F %T')] [$RUN] $*" | tee -a "$LOG" >&2; }
 # Any non-zero exit is logged as "RUN FAILED", so the grid follower (grid_launch.sh) can report it
 # instead of waiting silently for a "RUN DONE" that never comes (code audit 2026-09-28, G7).
 trap 'rc=$?; [ $rc -ne 0 ] && log "RUN FAILED (exit $rc); restart this driver to resume"' EXIT
-DENSE=${DENSE:-0}; KEEP_TOP=${KEEP_TOP:-0}; KEEP_STEPS=${KEEP_STEPS:-}
+DENSE=${DENSE:-0}; KEEP_TOP=${KEEP_TOP:-0}; KEEP_STEPS=${KEEP_STEPS:-}; KEEP_FINAL=${KEEP_FINAL:-0}
 DEV_TAG=${DEV_TAG-clean}   # clean dev sets (500 each); DEV_TAG="" = the phase A dev sets
 case $DS in
   qampari) STEPS="250 500 1000 2500"; SET=qampari_${DEV_TAG}dev500; K_MULTI=5
@@ -40,6 +42,7 @@ case $DS in
            [ "$DENSE" = 1 ] && STEPS=$(seq -s ' ' 50 50 400) ;;
 esac
 SAVE_AT_OVERRIDE=""; [ "$DENSE" = 1 ] && SAVE_AT_OVERRIDE="$STEPS"
+FINAL_STEP=${STEPS##* }   # last saved step = end of training (KEEP_FINAL)
 K=""; [ "$MODE" = multi ] && K=$K_MULTI
 # squeue can come back empty while the controller is busy, so confirm with sacct before calling a
 # job finished; an unknown state counts as active (worst case: one more poll).
@@ -77,12 +80,18 @@ queued() {
   done
   return 1
 }
+# Selection metric of a cheap eval: select_metrics.txt (RRF at k = K for multi-query, written by
+# cheap_eval_ckpt.sbatch since 2026-10-07), else the round-robin MRecall@100 in eval_metrics.txt.
+sel_metric() {
+  local f=$1/select_metrics.txt; [ -s $f ] || f=$1/eval_metrics.txt
+  grep -m1 -o 'MRecall: [0-9.]*' $f 2>/dev/null | cut -d' ' -f2
+}
 # Keep only the KEEP_TOP best finished checkpoints (by cheap dev MRecall@100); see header.
 prune() {
   { [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || [ -n "$KEEP_STEPS" ]; } || return 0
   local s m ranked keep ck
   ranked=$(for s in $STEPS; do
-      m=$(grep -m1 -o 'MRecall: [0-9.]*' results/phaseC/$RUN/step$s/eval_metrics.txt 2>/dev/null | cut -d' ' -f2)
+      m=$(sel_metric results/phaseC/$RUN/step$s)
       [ -z "$m" ] && continue
       { [ -n "${EJ[$s]:-}" ] && job_active "${EJ[$s]}"; } && continue
       { [ -n "${DJ[$s]:-}" ] && job_active "${DJ[$s]}"; } && continue
@@ -90,6 +99,7 @@ prune() {
   if [ -n "$KEEP_STEPS" ]; then  # finished steps (cheap eval + drift done) that are not to be kept
     for s in $(echo "$ranked" | cut -d' ' -f1); do
       echo " $KEEP_STEPS " | grep -q " $s " && continue
+      [ "$KEEP_FINAL" = 1 ] && [ "$s" = "$FINAL_STEP" ] && continue
       ck=checkpoints/$DS/$RUN/checkpoint/step-$s
       [ -d "$ck" ] || continue
       queued "$ck" && continue
@@ -99,6 +109,7 @@ prune() {
   [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || return 0
   keep=$(echo "$ranked" | head -n "$KEEP_TOP" | cut -d' ' -f1)
   for s in $(echo "$ranked" | tail -n +$((KEEP_TOP+1)) | cut -d' ' -f1); do
+    [ "$KEEP_FINAL" = 1 ] && [ "$s" = "$FINAL_STEP" ] && continue
     ck=checkpoints/$DS/$RUN/checkpoint/step-$s
     [ -d "$ck" ] || continue
     queued "$ck" && continue
@@ -138,7 +149,8 @@ for s in $STEPS; do
   d=$(grep "\"run\": \"$RUN\", \"step\": $s," results/param_drift/phaseC_$DS.jsonl 2>/dev/null | tail -1 | \
       python3 -c 'import json,sys; r=json.loads(sys.stdin.read()); print("changed %.3f%%, rel. distance %.2e" % (100*r["frac_changed"], r["rel_l2"]))' 2>/dev/null)
   [ -z "$m" ] && { log "ERROR: cheap dev eval for step $s produced no metrics (see sbatch_outputs/cheap_eval_phaseC_eval_${RUN}_s$s.out); this step is neither pruned nor considered for full eval"; continue; }
-  log "RESULT step $s: dev(cheap) $m | drift: $d"
+  sm=$(grep -m1 -o 'MRecall: [0-9.]*.*' $out/select_metrics.txt 2>/dev/null | grep RRF)
+  log "RESULT step $s: dev(cheap) $m${sm:+| select: $sm }| drift: $d"
 done
 prune
 if { [ "$KEEP_TOP" -gt 0 ] 2>/dev/null || [ -n "$KEEP_STEPS" ]; } && [ -d checkpoints/$DS/$RUN/checkpoint/step-0 ]; then

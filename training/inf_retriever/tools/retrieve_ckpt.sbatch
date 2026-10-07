@@ -5,13 +5,15 @@
 #SBATCH --time=3:00:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_courant
-#SBATCH --constraint=h200|l40s|b200
-#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,b200,h200
+#SBATCH --constraint=h200|l40s
+#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200
 #SBATCH --comment=preemption=yes;requeue=true
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=retrieve_ckpt
 #SBATCH --output=sbatch_outputs/retrieve_%x.out
 
+# 2026-10-07: b200 dropped: nodes gb006, gb011 and gb012 failed shards with "CUDA-capable device(s) is/are busy
+# or unavailable" (the cluster rejects --exclude). Before that:
 # GPU: H200, L40S or B200 (2026-09-29: widens the pool under low priority). Only the b200 and h200 partitions
 # in the list above are preemptible; a preempted job is requeued and reruns (retrieval takes <30 min). The nli environment works on B200.
 # Retrieve with one checkpoint over its own corpus embeddings, for the test queries of

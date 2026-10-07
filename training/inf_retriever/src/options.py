@@ -119,15 +119,23 @@ class Options:
             "--loss_fn",
             type=str,
             default="auto",
-            choices=["auto", "contrastive", "hungarian_masked", "hungarian", "hungarian_plus_single"],
+            choices=["auto", "contrastive", "hungarian_masked", "hungarian", "hungarian_plus_single",
+                     "hungarian_masked_div"],
             help=(
                 "Loss used by EmbeddingModelDocEncNoProj. 'auto' picks "
                 "hungarian_masked when training_mode=='multi' and contrastive "
                 "otherwise. 'hungarian' is the legacy HungarianContrastiveLoss "
                 "(kept for comparison; has the same-example false-negative issue). "
                 "'hungarian_plus_single' (multi mode only) = (1 - w) * hungarian + "
-                "w * single-query contrastive on the first embedding, w = --single_loss_weight."
+                "w * single-query contrastive on the first embedding, w = --single_loss_weight. "
+                "'hungarian_masked_div' (multi mode only) = hungarian_masked + div_weight * "
+                "mean over i != j of relu(cos(q_i, q_j) - cos(g_a(i), g_a(j))), a(.) = the Hungarian "
+                "assignment: query embeddings may not be more alike than the golds they are matched to."
             ),
+        )
+        self.parser.add_argument(
+            "--div_weight", type=float, default=0.5,
+            help="Weight of the diversity penalty for --loss_fn hungarian_masked_div.",
         )
         self.parser.add_argument(
             "--single_loss_weight", type=float, default=0.5,
@@ -185,6 +193,16 @@ class Options:
             help=(
                 "If set, sampling_rate=1.0 always (fully autoregressive, no teacher forcing). "
                 "Default is the linear ramp sampling_rate=step/total_steps."
+            ),
+        )
+        self.parser.add_argument(
+            "--sampling_saturate_frac",
+            type=float,
+            default=1.0,
+            help=(
+                "Scheduled sampling reaches sampling_rate=1.0 at this fraction of total_steps: "
+                "sampling_rate = min(1, step / (frac * total_steps)). 1.0 = the default linear ramp "
+                "over the whole run; --full_sampling overrides it (rate 1.0 from step 0)."
             ),
         )
         self.parser.add_argument(
@@ -247,4 +265,7 @@ class Options:
     def parse(self):
         # parse_args, not parse_known_args: a mistyped flag must fail the run instead of being
         # silently ignored (code audit 2026-09-28, L5).
-        return self.parser.parse_args()
+        opt = self.parser.parse_args()
+        if not 0.0 < opt.sampling_saturate_frac <= 1.0:
+            self.parser.error(f"--sampling_saturate_frac must be in (0, 1], got {opt.sampling_saturate_frac}")
+        return opt

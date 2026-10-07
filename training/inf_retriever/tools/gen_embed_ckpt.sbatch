@@ -5,14 +5,16 @@
 #SBATCH --time=6:00:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_courant
-#SBATCH --constraint=h200|l40s|b200
-#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,b200,h200
+#SBATCH --constraint=h200|l40s
+#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200
 #SBATCH --comment=preemption=yes;requeue=true
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-31
 #SBATCH --job-name=gen_embed_ckpt
 #SBATCH --output=sbatch_outputs/gen_embed_%x_%a.out
 
+# 2026-10-07: b200 dropped: nodes gb006, gb011 and gb012 failed shards with "CUDA-capable device(s) is/are busy
+# or unavailable" (the cluster rejects --exclude). Before that:
 # GPU: H200, L40S or B200 (2026-09-29: widens the pool under low priority). Only the b200 and h200 partitions
 # in the list above are preemptible (the others are the group's own/public non-preemptible ones);
 # a preempted task is requeued and simply re-embeds its shard. Preemptible L40S is left out (a shard
