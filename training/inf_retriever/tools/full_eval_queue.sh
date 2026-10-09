@@ -29,6 +29,12 @@ PER_STEP=${PER_STEP:-0}
 # deleted tools/geometry_eval.py writes query/gold geometry (alignment, query and gold pairwise cosine,
 # nearest-sibling rank) to <base>/{dev,test}_geom.json. A failure is logged and does not stop the queue.
 GEOM=${GEOM:-1}
+# SHARED_EMB=<dir>: frozen-doc-encoder checkpoints (wave 3, cells A/C) all embed the corpus with the
+# same frozen base retriever, so one corpus embedding (gen_embed_ckpt.sbatch with the base model at
+# 512 tokens) serves every eval of the queue: no per-checkpoint embedding job, retrieval starts at
+# once, and the shared embedding is never deleted. Only for queues whose checkpoints all have a
+# frozen doc encoder.
+SHARED_EMB=${SHARED_EMB:-}
 # QUEUE: the queue file, default results/phaseC/full_queue_<ds>.txt (the 24-run grid); other run
 # families get their own (grid_launch.sh PREFIX=...), started with the matching DEV_TAG.
 Q=${QUEUE:-results/phaseC/full_queue_$DS.txt}; touch $Q
@@ -78,12 +84,15 @@ geom() {  # $1 tag $2 base $3 corpus embedding dir; runs while the embeddings st
 finish() {  # $1 tag $2 embed job $3 dev job $4 test job
   local tag=$1 ej=$2 rd=$3 rt=$4
   local base=results/phaseC/full/$DS/$tag emb=wikipedia_embeddings/$DS/full_$tag
-  while active $ej; do sleep 120; done
-  ok_all $ej || { log "ERROR: $tag embedding failed; embeddings kept at $emb"; return 1; }
+  [ -n "$SHARED_EMB" ] && emb=$SHARED_EMB
+  if [ "$ej" != shared ]; then
+    while active $ej; do sleep 120; done
+    ok_all $ej || { log "ERROR: $tag embedding failed; embeddings kept at $emb"; return 1; }
+  fi
   while active $rd || active $rt; do sleep 60; done
   if [ -s $base/dev/$DS.jsonl ] && [ -s $base/test/$DS.jsonl ]; then
     [ "$GEOM" = 1 ] && geom $tag $base $emb
-    rm -rf $emb
+    [ -n "$SHARED_EMB" ] || rm -rf $emb   # a shared corpus embedding is kept for the next eval
   else log "ERROR: $tag retrieval missing output; embeddings kept at $emb"; return 1; fi
   evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt || { log "ERROR: $tag dev scoring failed"; return 1; }
   evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt || { log "ERROR: $tag test scoring failed"; return 1; }
@@ -128,11 +137,17 @@ while true; do
   # Remove outputs of any earlier attempt, so finish() can only see this attempt's files (a
   # stale retrieval output would otherwise pass its "-s" check, code audit 2026-09-28, R5).
   rm -f $base/dev/$DS.jsonl $base/test/$DS.jsonl $base/dev/eval_metrics.txt $base/test/eval_metrics.txt
-  ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
+  if [ -n "$SHARED_EMB" ]; then
+    emb=$SHARED_EMB; ej=shared; dep=""
+    [ -n "$(ls $emb/passages_* 2>/dev/null)" ] || { log "ERROR: SHARED_EMB $emb has no passages_* shards"; exit 1; }
+  else
+    ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
+    dep="--dependency=afterok:$ej"
+  fi
   ps_dev=""; ps_test=""; [ "$PER_STEP" = 1 ] && [ -n "$k" ] && { ps_dev=$base/dev_steps.jsonl; ps_test=$base/test_steps.jsonl; }
   qe_dev=""; qe_test=""; [ "$GEOM" = 1 ] && { qe_dev=$base/dev_qemb.npy; qe_test=$base/test_qemb.npy; rm -f $qe_dev $qe_test $base/{dev,test}_geom.json; }
-  rd=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev,SAVE_QEMB=$qe_dev $T/retrieve_ckpt.sbatch)
-  rt=$(sbatch --parsable --dependency=afterok:$ej --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test,SAVE_QEMB=$qe_test $T/retrieve_ckpt.sbatch)
+  rd=$(sbatch --parsable $dep --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev,SAVE_QEMB=$qe_dev $T/retrieve_ckpt.sbatch)
+  rt=$(sbatch --parsable $dep --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test,SAVE_QEMB=$qe_test $T/retrieve_ckpt.sbatch)
   echo "$ej $rd $rt worker=$WORKER" > $CLAIMS/$tag/jobs
   log "$tag: full-corpus eval submitted by worker $WORKER (embed $ej -> dev $rd, test $rt)"
   finish $tag $ej $rd $rt || exit 1

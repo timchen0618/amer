@@ -60,7 +60,8 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
 
         model = model_class(opt, None, None)
         print(f"Using model = {model_class}", flush=True)
-        model.load_state_dict(pretrained_dict, strict=True)
+        # strict, except that frozen-doc-encoder checkpoints omit the frozen copy (rebuilt from the base model)
+        inbatch.load_model_state(model, pretrained_dict)
         model.eval()
         print('Finished loading model')
         if opt.training_mode == 'standard_org_q':
@@ -77,6 +78,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         # Training options, so callers can check that inference matches training (code audit
         # 2026-09-28, C4: chunk_length and eval_normalize_text used to be ignored at inference).
         retriever._train_opt = opt
+        # --force_causal (query encoder only): multi-query generate() reads it from the model; the
+        # single-query path calls the bare encoder, so retrieval_inf.embed_queries_single reads this.
+        retriever._force_causal = getattr(opt, "force_causal", False)
 
 
     else:

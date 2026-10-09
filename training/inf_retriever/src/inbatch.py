@@ -555,6 +555,35 @@ class InBatch(nn.Module):
 
 
 
+FROZEN_DOC_PREFIX = "doc_encoder."
+
+
+def load_model_state(model, state_dict):
+    """load_state_dict that tolerates a missing frozen doc-encoder copy, and nothing else.
+
+    Frozen-doc-encoder checkpoints (EmbeddingModelFrozenDocEnc*) are saved without their
+    doc_encoder.* weights (utils.save_state_dict drops them, 2026-10-09): they are the base
+    retriever's, which the class constructor loads anyway. Every other key must match exactly.
+    """
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    bad = [k for k in missing if not k.startswith(FROZEN_DOC_PREFIX)] + list(unexpected)
+    if bad:
+        raise RuntimeError(f"state_dict mismatch (missing/unexpected keys other than the frozen "
+                           f"doc encoder): {bad[:10]}{' ...' if len(bad) > 10 else ''}")
+    if missing and not hasattr(model, "doc_encoder"):
+        raise RuntimeError("doc_encoder.* keys missing but the model has no doc_encoder")
+    return missing
+
+def query_attention_kwargs(model):
+    """Extra kwargs for the query encoder's forward: is_causal=True under --force_causal, else none.
+
+    The backbone's Qwen2Model.forward (infly modeling_qwen.py) defaults is_causal to False and only
+    builds a causal 4-D mask when the caller passes is_causal=True; config.is_causal is not read.
+    Passing nothing in the default case keeps the bidirectional runs' calls unchanged.
+    """
+    return {"is_causal": True} if getattr(model, "force_causal", False) else {}
+
+
 class EmbeddingModelDocEncNoProj(nn.Module):
     """
     Autoregressive multi-query encoder: one left-padded query sequence produces
@@ -587,6 +616,9 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         # Loss module is selected via --loss_fn (with 'auto' -> hungarian_masked
         # for multi mode, contrastive otherwise). See build_loss above.
         self.loss_fct = build_loss(opt)
+        # --force_causal: causal self-attention in the QUERY encoder (training and generate());
+        # documents stay bidirectional. See query_attention_kwargs.
+        self.force_causal = getattr(opt, "force_causal", False)
 
     def _load_retriever(self, model_id):
         tokenizer = utils.load_hf(transformers.AutoTokenizer, model_id, trust_remote_code=True)
@@ -693,6 +725,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
                 inputs_embeds=current_input,
                 attention_mask=attn,
                 position_ids=pos,
+                **query_attention_kwargs(self),
             )
             next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
             all_outputs.append(next_hidden.unsqueeze(1))
@@ -755,6 +788,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
                 inputs_embeds=current_input,
                 attention_mask=attn,
                 position_ids=pos,
+                **query_attention_kwargs(self),
             )
             next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
             all_outputs.append(next_hidden.unsqueeze(1))
@@ -1004,6 +1038,7 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
         self.loss_fct = ContrastiveLoss(
             temperature=opt.temperature,
         )
+        self.force_causal = getattr(opt, "force_causal", False)  # query encoder only; see query_attention_kwargs
 
     def _load_retriever(self, model_id):
         tokenizer = utils.load_hf(transformers.AutoTokenizer, model_id, trust_remote_code=True)
@@ -1101,7 +1136,8 @@ class EmbeddingModelDocEncNoProjSingleQuery(nn.Module):
 
         initial_embeds = self.embedding(q_tokens)
         # current_input = initial_embeds[:, :input_start_for_output, :] 
-        outputs = self.encoder(inputs_embeds=initial_embeds, attention_mask=q_mask, position_ids=q_position_ids,)
+        outputs = self.encoder(inputs_embeds=initial_embeds, attention_mask=q_mask, position_ids=q_position_ids,
+                               **query_attention_kwargs(self))
         # last_token_pool handles left-padding: simply take the last position
         selected_outputs_embeddings = self.last_token_pool(outputs.last_hidden_state, q_mask)
         selected_outputs_embeddings = selected_outputs_embeddings.unsqueeze(1)
@@ -1143,11 +1179,9 @@ class EmbeddingModelFrozenDocEnc(EmbeddingModelDocEncNoProj):
     of the trainable query-encoder weights. The query encoder's self-attention
     can optionally be forced causal via opt.force_causal.
 
-    This class does not modify EmbeddingModelDocEncNoProj at all: it only
-    overrides __init__, encode_documents, forward, and generate. forward/
-    generate are full copies of the base class's versions (Python can't
-    patch a single line of an inherited method), with `is_causal=self.force_causal`
-    added to every self.encoder(...) call.
+    It overrides only __init__ and encode_documents; forward() and generate() are inherited from
+    EmbeddingModelDocEncNoProj (2026-10-09; they used to be copies), including --force_causal,
+    which the base class now applies to every query-encoder call (query_attention_kwargs).
 
     NOTE on is_causal: the base retriever's modeling code
     (Qwen2Model.forward) defaults `is_causal` to False and only builds a
@@ -1166,7 +1200,6 @@ class EmbeddingModelFrozenDocEnc(EmbeddingModelDocEncNoProj):
         for p in doc_encoder.parameters():
             p.requires_grad_(False)
         self.doc_encoder = doc_encoder
-        self.force_causal = getattr(opt, "force_causal", False)
 
     def encode_documents(self, input_document_ids, attention_mask_document):
         """Same as EmbeddingModelDocEncNoProj.encode_documents, but routed
@@ -1187,127 +1220,6 @@ class EmbeddingModelFrozenDocEnc(EmbeddingModelDocEncNoProj):
         assert negative_embeddings.size(0) == batch_size
         return positive_embeddings, negative_embeddings
 
-    @torch.no_grad()
-    def generate(self, q_tokens, q_mask, q_position_ids, max_new_tokens=5):
-        """Copy of EmbeddingModelDocEncNoProj.generate with is_causal=self.force_causal
-        added to the self.encoder(...) call. See class docstring."""
-        bsz = q_tokens.size(0)
-        device = q_tokens.device
-
-        assert (q_mask[:, -1] == 1).all(), \
-            "Left-padding expected: last token position must always be a real token"
-
-        current_input = self.embedding(q_tokens)
-        attn = q_mask
-        pos = q_position_ids
-        all_outputs = []
-
-        for j in range(max_new_tokens):
-            outputs = self.encoder(
-                inputs_embeds=current_input,
-                attention_mask=attn,
-                position_ids=pos,
-                is_causal=self.force_causal,
-            )
-            next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
-            all_outputs.append(next_hidden.unsqueeze(1))
-
-            if j == max_new_tokens - 1:
-                break
-
-            next_tok = next_hidden.unsqueeze(1)
-            current_input = torch.cat((current_input, next_tok), dim=1)
-            attn = torch.cat(
-                (attn, torch.ones(bsz, 1, dtype=attn.dtype, device=device)),
-                dim=1,
-            )
-            pos = torch.cat((pos, pos[:, -1:] + 1), dim=1)
-
-        return torch.cat(all_outputs, dim=1)  # (bsz, max_new_tokens, hidden_size)
-
-    def forward(self, q_tokens, q_mask, q_position_ids, k_tokens, k_mask, labels=None, stats_prefix="", iter_stats=None, **kwargs):
-        """Copy of EmbeddingModelDocEncNoProj.forward with is_causal=self.force_causal
-        added to the self.encoder(...) call. See class docstring."""
-        iter_stats = {} if iter_stats is None else iter_stats  # fresh dict per call (audit M1)
-        assert k_tokens.dim() == 2 and k_mask.dim() == 2
-        assert k_tokens.size(0) % 2 == 0
-        bsz = q_tokens.size(0)
-
-        sampling_rate = kwargs.get("sampling_rate", 1.0)
-        iter_stats[f"{stats_prefix}/sampling_rate"] = (sampling_rate, bsz)
-
-        positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
-        teacher_embeddings = positive_embeddings.reshape(bsz, -1, positive_embeddings.size(-1))
-        negative_embeddings = negative_embeddings.reshape(bsz, -1, negative_embeddings.size(-1))
-        output_len = teacher_embeddings.size(1)
-
-        assert (q_mask[:, -1] == 1).all(), (
-            "Left-padding expected: last position should always be a real token",
-            q_mask[:, -1],
-        )
-
-        current_input = self.embedding(q_tokens)
-        attn = q_mask
-        pos = q_position_ids
-        device = q_tokens.device
-        all_outputs = []
-
-        for j in range(output_len):
-            outputs = self.encoder(
-                inputs_embeds=current_input,
-                attention_mask=attn,
-                position_ids=pos,
-                is_causal=self.force_causal,
-            )
-            next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
-            all_outputs.append(next_hidden.unsqueeze(1))
-
-            with torch.no_grad():
-                teacher_j = teacher_embeddings[:, j, :].to(dtype=next_hidden.dtype)
-                cos_sim_j = F.cosine_similarity(
-                    F.normalize(next_hidden, dim=-1),
-                    F.normalize(teacher_j, dim=-1),
-                    dim=-1,
-                ).mean().item()
-                iter_stats[f"{stats_prefix}/step_{j}_teacher_cos_sim"] = (cos_sim_j, bsz)
-
-            if j == output_len - 1:
-                break
-
-            use_predicted = (torch.rand(bsz, 1, 1, device=device) < sampling_rate)
-            predicted = next_hidden.unsqueeze(1)
-            teacher = teacher_embeddings[:, j, :].unsqueeze(1).to(dtype=next_hidden.dtype).detach()
-            next_tok = torch.where(use_predicted, predicted, teacher)
-
-            current_input = torch.cat((current_input, next_tok), dim=1)
-            attn = torch.cat(
-                (attn, torch.ones(bsz, 1, dtype=attn.dtype, device=device)),
-                dim=1,
-            )
-            pos = torch.cat((pos, pos[:, -1:] + 1), dim=1)
-
-        selected_outputs_embeddings = torch.cat(all_outputs, dim=1)  # (bsz, k, d)
-
-        with torch.no_grad():
-            if output_len > 1:
-                outputs_norm = F.normalize(selected_outputs_embeddings.float(), dim=-1)
-                sim_mat = torch.bmm(outputs_norm, outputs_norm.transpose(1, 2))
-                eye_mask = torch.eye(output_len, dtype=torch.bool, device=device).unsqueeze(0)
-                pairwise_sim = sim_mat.masked_fill(eye_mask, 0.0).sum() / (bsz * output_len * (output_len - 1))
-                iter_stats[f"{stats_prefix}/pairwise_cos_sim"] = (pairwise_sim.item(), bsz)
-
-        add_geometry_stats(iter_stats, stats_prefix, selected_outputs_embeddings, positive_embeddings, negative_embeddings)
-
-        loss, iter_stats = self.loss_fct(
-            selected_outputs_embeddings,
-            positive_embeddings,
-            negative_embeddings,
-            stats_prefix=stats_prefix,
-            iter_stats=iter_stats,
-        )
-        return loss, iter_stats
-
-
 class EmbeddingModelFrozenDocEncSingleQuery(EmbeddingModelDocEncNoProjSingleQuery):
     """
     Single-query baseline reference for Phase 1: same as
@@ -1315,13 +1227,8 @@ class EmbeddingModelFrozenDocEncSingleQuery(EmbeddingModelDocEncNoProjSingleQuer
     second, separate, frozen copy of the backbone instead of the trainable
     query-encoder weights.
 
-    No causal-mask handling here: this class does one static forward pass
-    over the complete query sequence (no autoregressive loop), which is
-    exactly the backbone's normal bidirectional embedding-model usage (the
-    same mode it uses as a document encoder elsewhere). Forcing causal
-    masking is only a variable of interest for the autoregressive multi-step
-    mechanism in EmbeddingModelFrozenDocEnc, not for this single-embedding
-    baseline.
+    --force_causal applies to its single query-encoder pass as well (inherited forward(), 2026-10-09),
+    so a causal multi-query run has a causal single-query partner.
     """
 
     def __init__(self, opt, retriever=None, tokenizer=None):
@@ -1351,4 +1258,3 @@ class EmbeddingModelFrozenDocEncSingleQuery(EmbeddingModelDocEncNoProjSingleQuer
         assert positive_embeddings.size(0) == batch_size
         assert negative_embeddings.size(0) == batch_size
         return positive_embeddings, negative_embeddings
-        return loss, iter_stats

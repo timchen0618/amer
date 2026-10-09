@@ -496,7 +496,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
     else:
         raise NotImplementedError
-    model.load_state_dict(state_dict, strict=True)
+    inbatch.load_model_state(model, state_dict)  # strict, except a frozen doc-encoder copy may be absent
     model.eval()
     model = model.to(device)
     print('finish getting model')
@@ -657,7 +657,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     return acc, mrr
 
 
-def build_accelerator(opt, log_with="wandb"):
+def build_accelerator(opt, log_with="wandb", ignored_modules=None):
     """The training Accelerator (also used by tests/test_scheduler_stepping.py).
 
     mixed_precision="bf16": bf16 autocast compute over the fp32 weights cast in main().
@@ -671,13 +671,16 @@ def build_accelerator(opt, log_with="wandb"):
     mixed_precision="bf16" also reduces in bf16, unlike DDP and 1-GPU, which reduce the
     fp32 gradients (code audit 2026-09-28, L12). The other FSDP settings still come from
     the accelerate config (the plugin reads them from the launcher's environment).
+    ignored_modules (FSDP only): modules kept out of FSDP, i.e. replicated on every rank and
+    never sharded. Used for the frozen doc-encoder copy (see finetuning()).
     """
     fsdp_plugin = None
     if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
         from accelerate import FullyShardedDataParallelPlugin
         from torch.distributed.fsdp import MixedPrecision
+        kw = {"ignored_modules": ignored_modules} if ignored_modules else {}
         fsdp_plugin = FullyShardedDataParallelPlugin(mixed_precision_policy=MixedPrecision(
-            param_dtype=torch.bfloat16, reduce_dtype=torch.float32, buffer_dtype=torch.bfloat16))
+            param_dtype=torch.bfloat16, reduce_dtype=torch.float32, buffer_dtype=torch.bfloat16), **kw)
     return Accelerator(
         gradient_accumulation_steps=opt.accumulation_steps,
         mixed_precision="bf16",
@@ -702,8 +705,18 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     #########
     # accelerate: multi-gpu training
     #########
-    accelerator = build_accelerator(opt)
+    # Frozen doc-encoder copy (EmbeddingModelFrozenDocEnc*): kept out of FSDP. The model is one FSDP
+    # unit (accelerate config), so the copy used to be flattened together with the trainable encoder
+    # and split in half across the 2 ranks; being the second, equal-sized half, it made up nearly all
+    # of rank 1's shard, so rank 1 owned no trainable weights and got no gradients (2026-09-25). As an
+    # ignored module it is replicated on each rank in bf16 (it is never updated; under bf16 autocast
+    # the compute is the same), and FSDP shards only the trainable encoder, exactly as for the
+    # joint-doc-encoder runs.
+    frozen_doc = getattr(model, "doc_encoder", None)
+    accelerator = build_accelerator(opt, ignored_modules=[frozen_doc] if frozen_doc is not None else None)
     device = accelerator.device
+    if frozen_doc is not None:
+        frozen_doc.to(device=device, dtype=torch.bfloat16)
     
     wandb_config = {
         "tags": ['finetuning', opt.training_mode],
@@ -970,15 +983,9 @@ def main():
     # rounded away) while FSDP upcast to fp32 -- see RECIPE_FALLBACK_bf16_ddp.md.
     model.to(torch.float32)
     if hasattr(model, "doc_encoder"):
-        # The frozen doc-encoder copy is never updated, so bf16 is enough --
-        # except under FSDP, which requires one dtype per flattened parameter
-        # group and would mix it with fp32 trainable weights in the root group.
-        # NOTE: the frozen class is not supported under FSDP yet -- in a 2-GPU test
-        # (2026-09-25) rank 1 received no gradients; the optimizer-state check in
-        # finetuning() now stops such runs. Train the frozen class on 1 GPU.
-        use_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "false").lower() == "true"
-        if not use_fsdp:
-            model.doc_encoder.to(torch.bfloat16)
+        # The frozen doc-encoder copy is never updated, so bf16 is enough. Under FSDP it is an
+        # ignored module (not sharded, see finetuning()), cast to bf16 and moved to the GPU there.
+        model.doc_encoder.to(torch.bfloat16)
 
     # Phase C knobs: freeze parts of the trainable encoder (before the optimizer is built).
     if getattr(opt, "freeze_norms", False) or getattr(opt, "freeze_embeddings", False):

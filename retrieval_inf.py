@@ -122,7 +122,9 @@ def embed_queries_single(args, queries, model, tokenizer):
         batch_dict = tokenizer(batch, max_length=max_length, padding=True, truncation=True, return_tensors='pt')
         for k, v in batch_dict.items():
             batch_dict[k] = v.to(model.device)
-        outputs = model(**batch_dict)
+        # checkpoints trained with --force_causal embed queries with causal attention, as in training
+        causal_kw = {"is_causal": True} if getattr(model, "_force_causal", False) else {}
+        outputs = model(**batch_dict, **causal_kw)
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
     # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the

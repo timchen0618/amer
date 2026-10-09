@@ -20,7 +20,15 @@
 # to results/phaseC/full_queue_qampari_clean_v3_abl2.txt; run two workers with
 #   QUEUE=results/phaseC/full_queue_qampari_clean_v3_abl2.txt DEV_TAG=cleanv2 PER_STEP=1 WORKER=a \
 #       bash training/inf_retriever/tools/full_eval_queue.sh qampari
-# Usage (repo root, run detached): bash training/inf_retriever/tools/abl2_launch.sh wave1|wave2 [W]
+# wave 3: the doc-encoder x query-attention 2x2 on this recipe (D = joint, bidirectional = round 1's
+# single / multi), each cell a single- and multi-query pair (reports/wave3_prep_2026-10-09.md):
+#   C_single, C_multi   frozen doc encoder (--freeze_doc_encoder), bidirectional
+#   A_single, A_multi   frozen doc encoder, causal query attention (--force_causal)
+#   B_single, B_multi   joint doc encoder, causal query attention
+# Frozen runs (C, A) queue their full evals in full_queue_qampari_clean_v3_abl2_frozen.txt, served by
+# workers with SHARED_EMB=<one corpus embedding made with a frozen checkpoint> (full_eval_queue.sh);
+# B uses the regular queue. "wave3 C", "wave3 A" or "wave3 B" launches one cell.
+# Usage (repo root, run detached): bash training/inf_retriever/tools/abl2_launch.sh wave1|wave2 [W]|wave3 [C|A|B]
 # RESUME=1 restarts the drivers (and the follower) of runs already submitted, e.g. after failed cheap evals.
 set -u
 cd /scratch/hc3337/projects/autoregressive
@@ -47,6 +55,18 @@ elif [ "$WAVE" = wave2 ]; then
   W=${2:?wave2 needs the winning hps weight}
   runs+=("multi 1e-5 ${P}_qampari_hps_fullsamp|$HPS $W --full_sampling")
   runs+=("multi 1e-5 ${P}_qampari_hps_sat50|$HPS $W --sampling_saturate_frac 0.5")
+elif [ "$WAVE" = wave3 ]; then
+  CELLS=${2:-C A B}
+  for c in $CELLS; do
+    case $c in
+      C) f="--freeze_doc_encoder" ;;
+      A) f="--freeze_doc_encoder --force_causal" ;;
+      B) f="--force_causal" ;;
+      *) echo "unknown wave-3 cell $c" >&2; exit 1 ;;
+    esac
+    runs+=("single 1e-5 ${P}_qampari_${c}_single|$f")
+    runs+=("multi 1e-5 ${P}_qampari_${c}_multi|$f")
+  done
 else
   echo "unknown wave $WAVE" >&2; exit 1
 fi
@@ -94,8 +114,10 @@ START_LINE=$(wc -l < "$LOG")
               m=$(grep -m1 -o 'MRecall: [0-9.]*' $f 2>/dev/null | cut -d' ' -f2)
               [ -n "$m" ] && echo "${d##*step} $m"; done | sort -k2,2nr -k1,1n | head -2 | cut -d' ' -f1)
       steps=$(echo $top 2500 | tr ' ' '\n' | awk '!seen[$0]++' | xargs)
+      qf=results/phaseC/full_queue_qampari_${P}.txt
+      case "$r" in *--freeze_doc_encoder*) qf=results/phaseC/full_queue_qampari_${P}_frozen.txt ;; esac
       for s in $steps; do
-        echo "${run}_s$s checkpoints/qampari/$run/checkpoint/step-$s $k" >> results/phaseC/full_queue_qampari_${P}.txt
+        echo "${run}_s$s checkpoints/qampari/$run/checkpoint/step-$s $k" >> $qf
       done
       log "queued full evals for $run: steps $steps (top 2 by cheap dev: $(echo $top); final: 2500)"
       touch "$marker"

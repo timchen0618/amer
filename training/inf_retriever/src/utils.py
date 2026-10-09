@@ -69,6 +69,11 @@ def save_state_dict(state_dict, optimizer, scheduler, step, opt, dir_path, name)
     os.makedirs(epoch_path, exist_ok=True)
     cp = os.path.join(path, "latest")
     fp = os.path.join(epoch_path, "checkpoint.pth")
+    # The frozen doc-encoder copy (EmbeddingModelFrozenDocEnc*, keys doc_encoder.*) is the unchanged
+    # base retriever: not saved (it would double the checkpoint to ~13 GB); inbatch.load_model_state
+    # accepts its absence and the class constructor rebuilds it from the base model. No effect on
+    # joint-doc-encoder models, which have no doc_encoder.* keys.
+    state_dict = {k: v for k, v in state_dict.items() if not k.startswith("doc_encoder.")}
     checkpoint = {
         "step": step,
         "model": state_dict,
@@ -140,9 +145,12 @@ class CosineScheduler(torch.optim.lr_scheduler.LambdaLR):
 
 
 def set_optim(opt, model):
+    # The frozen doc-encoder copy (doc_encoder.*) is never updated and, under FSDP, is not part of the
+    # sharded model (an ignored module), so it stays out of the optimizer. Unchanged for joint models.
+    params = [p for n, p in model.named_parameters() if not n.startswith("doc_encoder.")]
     if opt.optim == "adamw":
         optimizer = torch.optim.AdamW(
-            model.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2), eps=opt.eps, weight_decay=opt.weight_decay
+            params, lr=opt.lr, betas=(opt.beta1, opt.beta2), eps=opt.eps, weight_decay=opt.weight_decay
         )
     else:
         raise NotImplementedError("optimizer class not implemented")
