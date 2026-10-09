@@ -5,16 +5,17 @@
 #SBATCH --time=6:00:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_courant
-#SBATCH --constraint=h200|l40s
-#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200
+#SBATCH --constraint=h200|l40s|b200
+#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200,b200
 #SBATCH --comment=preemption=yes;requeue=true
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-31
 #SBATCH --job-name=gen_embed_ckpt
 #SBATCH --output=sbatch_outputs/gen_embed_%x_%a.out
 
-# 2026-10-07: b200 dropped: nodes gb006, gb011 and gb012 failed shards with "CUDA-capable device(s) is/are busy
-# or unavailable" (the cluster rejects --exclude). Before that:
+# 2026-10-08: b200 back (dropped 2026-10-07). 345 of 352 B200 tasks since 2026-09-29 succeeded; the 7 failures were
+# "CUDA-capable device(s) is/are busy or unavailable" at start-up, on nodes (gb006, gb011, gb012) that also ran 18-40
+# tasks fine. Such a start-up failure now requeues the task (at most twice) instead of failing it.
 # GPU: H200, L40S or B200 (2026-09-29: widens the pool under low priority). Only the b200 and h200 partitions
 # in the list above are preemptible (the others are the group's own/public non-preemptible ones);
 # a preempted task is requeued and simply re-embeds its shard. Preemptible L40S is left out (a shard
@@ -49,7 +50,15 @@ OVERLAY=/scratch/hc3337/envs/div.ext3; ACTIVATE=""
 case "$GPU_NAME" in *B200*) OVERLAY=/scratch/hc3337/envs/nli.ext3; ACTIVATE="conda activate nli;" ;; esac
 echo "GPU $GPU_NAME -> environment $OVERLAY"
 
+ELOG=sbatch_outputs/gen_embed_${SLURM_JOB_NAME}_${SLURM_ARRAY_TASK_ID}.busycheck.log
 singularity exec --nv \
             --overlay $OVERLAY:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-            /bin/bash -c "source /ext3/env.sh; $ACTIVATE cd /scratch/hc3337/projects/autoregressive; python gen_embed_new.py --passages $PASSAGES --output_dir $EMB_DIR --shard_id ${SLURM_ARRAY_TASK_ID} --num_shards 32 --model_name_or_path $CKPT --per_gpu_batch_size $BS --passage_maxlength $PML"
+            /bin/bash -c "source /ext3/env.sh; $ACTIVATE cd /scratch/hc3337/projects/autoregressive; python gen_embed_new.py --passages $PASSAGES --output_dir $EMB_DIR --shard_id ${SLURM_ARRAY_TASK_ID} --num_shards 32 --model_name_or_path $CKPT --per_gpu_batch_size $BS --passage_maxlength $PML" 2>&1 | tee $ELOG
+rc=${PIPESTATUS[0]}
+if [ $rc -ne 0 ] && grep -q "busy or unavailable" $ELOG && [ "${SLURM_RESTART_COUNT:-0}" -lt 2 ]; then
+  echo "CUDA device busy on $(hostname); requeueing (restart ${SLURM_RESTART_COUNT:-0})"; rm -f $ELOG
+  scontrol requeue $SLURM_JOB_ID; sleep 60
+fi
+rm -f $ELOG
+exit $rc

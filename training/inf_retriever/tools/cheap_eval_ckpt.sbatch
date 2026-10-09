@@ -2,14 +2,23 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --tasks-per-node=1
-#SBATCH --time=2:00:00
+#SBATCH --time=00:40:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_courant
-#SBATCH --constraint=h200
+#SBATCH --constraint=h200|b200
+#SBATCH --partition=h200_courant,h200_public,h200,b200
+#SBATCH --comment=preemption=yes;requeue=true
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=cheap_eval
 #SBATCH --output=sbatch_outputs/cheap_eval_%x.out
 
+# Scheduling (2026-10-08): 86 cheap evals on h200_courant took 19-23 min (median 19.4) but asked for 2 h
+# and waited a median 2.5 h (p90 6 h) to start. Now 40 min, and H200 or B200 on the group, public and
+# preemptible (h200, b200) partitions; preemptible jobs are protected for their first 30 min, and a
+# preempted job is requeued. On B200 the embedding step uses the nli environment (the div environment's
+# PyTorch has no sm_100 kernels), as gen_embed_ckpt.sbatch does. A start-up failure with "CUDA-capable
+# device(s) is/are busy or unavailable" (2% of B200 tasks, on otherwise healthy nodes) requeues the job
+# up to twice instead of failing it.
 # Phase A cheap eval: the same embed -> retrieve -> eval pipeline as the full-corpus
 # evaluation, but over a reduced corpus (data/phaseA/corpora/<SET>.tsv: base top-1000
 # candidates + golds + 100k random passages). Embeddings (~3 GB) are deleted at the end.
@@ -34,8 +43,19 @@ echo "passage max length $PML tokens"
 mkdir -p "$EMB" "$OUT_DIR"
 trap 'rm -rf "$EMB"' EXIT
 
-singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; \
-    python gen_embed_new.py --passages $CORPUS --output_dir $EMB --shard_id 0 --num_shards 1 --model_name_or_path $CKPT --per_gpu_batch_size 512 --passage_maxlength $PML" || exit 1
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+OVERLAY=/scratch/hc3337/envs/div.ext3; ACTIVATE=""
+case "$GPU_NAME" in *B200*) OVERLAY=/scratch/hc3337/envs/nli.ext3; ACTIVATE="conda activate nli;" ;; esac
+echo "GPU $GPU_NAME -> embedding environment $OVERLAY"
+ELOG=$OUT_DIR/embed.log
+singularity exec --nv --overlay $OVERLAY:ro $IMG bash -c "source /ext3/env.sh; $ACTIVATE cd /scratch/hc3337/projects/autoregressive; \
+    python gen_embed_new.py --passages $CORPUS --output_dir $EMB --shard_id 0 --num_shards 1 --model_name_or_path $CKPT --per_gpu_batch_size 512 --passage_maxlength $PML" 2>&1 | tee $ELOG
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+  if grep -q "busy or unavailable" $ELOG && [ "${SLURM_RESTART_COUNT:-0}" -lt 2 ]; then
+    echo "CUDA device busy on $(hostname); requeueing (restart ${SLURM_RESTART_COUNT:-0})"; scontrol requeue $SLURM_JOB_ID; sleep 60
+  fi
+  exit 1
+fi
 
 if [[ "$CKPT" == */* && ! -e "$CKPT" ]]; then RETRIEVER=retrieval_base.py; K_ARG=""; else RETRIEVER=retrieval_inf.py; fi
 # Multi-query (K set): also save each embedding's own list, so the checkpoint is ranked by the same

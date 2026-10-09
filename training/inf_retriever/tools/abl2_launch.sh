@@ -21,6 +21,7 @@
 #   QUEUE=results/phaseC/full_queue_qampari_clean_v3_abl2.txt DEV_TAG=cleanv2 PER_STEP=1 WORKER=a \
 #       bash training/inf_retriever/tools/full_eval_queue.sh qampari
 # Usage (repo root, run detached): bash training/inf_retriever/tools/abl2_launch.sh wave1|wave2 [W]
+# RESUME=1 restarts the drivers (and the follower) of runs already submitted, e.g. after failed cheap evals.
 set -u
 cd /scratch/hc3337/projects/autoregressive
 T=training/inf_retriever/tools
@@ -53,7 +54,12 @@ fi
 for r in "${runs[@]}"; do
   spec=${r%%|*}; variant=${r#*|}
   set -- $spec; mode=$1; lr=$2; run=$3
-  [ -e results/phaseC/$run.trainjob ] && { log "$run already submitted; skipping"; continue; }
+  if [ -e results/phaseC/$run.trainjob ]; then
+    # RESUME=1: restart the driver of an already submitted run (it reuses the training job id and
+    # only submits the cheap evals that have no metrics yet, then prunes); otherwise skip it.
+    [ "${RESUME:-0}" = 1 ] || { log "$run already submitted; skipping"; continue; }
+    pgrep -f "phaseC_run.sh .* $run( |$)" >/dev/null && { log "$run driver still running; not resumed"; continue; }
+  fi
   extra="--train_data ${DATA_ROOT}_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 $variant"
   DENSE=1 KEEP_TOP=3 KEEP_FINAL=1 setsid nohup bash $T/phaseC_run.sh qampari $mode $lr $run "$extra" \
       > results/phaseC/$run.driver.out 2>&1 < /dev/null &
@@ -61,7 +67,10 @@ for r in "${runs[@]}"; do
   sleep 2
 done
 
-# Follower: queue each finished run's top 2 by cheap dev plus its final step.
+# Follower: queue each finished run's top 2 by cheap dev plus its final step. Only RUN DONE / RUN FAILED
+# lines logged after the follower starts count, so a resumed driver's old "RUN DONE" (from a run whose cheap
+# evals failed) cannot trigger queuing before the resubmitted cheap evals finish.
+START_LINE=$(wc -l < "$LOG")
 (
   while true; do
     pending=0
@@ -69,7 +78,7 @@ done
       spec=${r%%|*}; set -- $spec; mode=$1; run=$3
       marker=results/phaseC/$run.queued
       [ -e "$marker" ] && continue
-      last=$(grep -E "\[$run\] RUN (DONE|FAILED)" "$LOG" | tail -1)
+      last=$(tail -n +$((START_LINE+1)) "$LOG" | grep -E "\[$run\] RUN (DONE|FAILED)" | tail -1)
       if ! echo "$last" | grep -q "RUN DONE"; then
         pending=1
         if echo "$last" | grep -q "RUN FAILED" && [ ! -e results/phaseC/$run.failed_noted ]; then
