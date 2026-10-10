@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --tasks-per-node=1
 #SBATCH --time=6:00:00
-#SBATCH --mem=64GB
+#SBATCH --mem=96GB
 #SBATCH --account=torch_pr_152_courant
 #SBATCH --constraint=h200|l40s|b200
 #SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200,b200
@@ -13,6 +13,7 @@
 #SBATCH --job-name=gen_embed_ckpt
 #SBATCH --output=sbatch_outputs/gen_embed_%x_%a.out
 
+# 2026-10-10: --mem 64GB -> 96GB: shard jobs peaked at 63 GB host RAM on L40S and 4 were OOM-killed.
 # 2026-10-08: b200 back (dropped 2026-10-07). 345 of 352 B200 tasks since 2026-09-29 succeeded; the 7 failures were
 # "CUDA-capable device(s) is/are busy or unavailable" at start-up, on nodes (gb006, gb011, gb012) that also ran 18-40
 # tasks fine. Such a start-up failure now requeues the task (at most twice) instead of failing it.
