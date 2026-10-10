@@ -657,6 +657,35 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     return acc, mrr
 
 
+# GRAD_DIAG_STEPS=N (environment, default 0 = off): for the first N steps, every rank logs one
+# "[graddiag]" JSON line before and after optimizer.step(): its local trainable tensors, how many
+# have a gradient, the local and global gradient L2 norm, the loss, and how many local trainable
+# tensors have optimizer state. Used to check that every rank trains its share of the weights under
+# FSDP (frozen doc-encoder classes, 2026-10-09) and to compare backends step by step.
+GRAD_DIAG_STEPS = int(os.environ.get("GRAD_DIAG_STEPS", "0"))
+
+
+def _grad_diag(accelerator, model, optimizer, step, loss, phase):
+    import json
+    import torch.distributed as dist
+    trainable = [p for p in model.parameters() if p.requires_grad and p.numel() > 0]
+    with_grad = [p for p in trainable if p.grad is not None]
+    local_sq = torch.zeros((), device=accelerator.device, dtype=torch.float64)
+    for p in with_grad:
+        local_sq += p.grad.detach().double().pow(2).sum()
+    global_sq = local_sq.clone()
+    sharded = accelerator.distributed_type == DistributedType.FSDP
+    if sharded and dist.is_initialized():
+        dist.all_reduce(global_sq)  # FSDP: each rank holds a disjoint shard of the gradient
+    with_state = sum(1 for p in trainable if len(optimizer.state.get(p, {})) > 0) if hasattr(optimizer, "state") else -1
+    rec = {"rank": accelerator.process_index, "step": step, "phase": phase,
+           "backend": str(accelerator.distributed_type), "loss": float(loss.detach()),
+           "trainable_tensors": len(trainable), "trainable_numel": sum(p.numel() for p in trainable),
+           "with_grad": len(with_grad), "local_grad_norm": float(local_sq.sqrt()),
+           "global_grad_norm": float(global_sq.sqrt()), "with_opt_state": with_state}
+    print("[graddiag] " + json.dumps(rec), flush=True)
+
+
 def build_accelerator(opt, log_with="wandb", ignored_modules=None):
     """The training Accelerator (also used by tests/test_scheduler_stepping.py).
 
@@ -818,7 +847,11 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                     optimizer.second_step(zero_grad=True)
                 else:
                     cur_lr = scheduler.get_last_lr()[0]
+                    if step <= GRAD_DIAG_STEPS:
+                        _grad_diag(accelerator, model, optimizer, step, train_loss, "pre_step")
                     optimizer.step()
+                    if step <= GRAD_DIAG_STEPS:
+                        _grad_diag(accelerator, model, optimizer, step, train_loss, "post_step")
                     if l2sp > 0:
                         with torch.no_grad():
                             for p, p0 in zip(l2sp_params, l2sp_ref):
