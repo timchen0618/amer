@@ -2363,7 +2363,7 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "multi",
   "desc": "frozen doc encoder, bidirectional",
-  "status": "cheap evals",
+  "status": "full evals",
   "planned": [],
   "missing": [],
   "evals": [],

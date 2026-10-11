@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 18:12; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 19:34; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
 
 ## Summary
 
@@ -48,7 +48,7 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 | combination (wave 2) | hps + full sampling |  |  |  |  |  |  |  | starts after hps 0.1 |
 |  | hps + saturate 50% |  |  |  |  |  |  |  | starts after hps 0.1 |
 | doc encoder × attention (wave 3) | C single |  |  |  |  |  |  |  | full evals |
-|  | C multi |  |  |  |  |  |  |  | cheap evals |
+|  | C multi |  |  |  |  |  |  |  | full evals |
 |  | A single |  |  |  |  |  |  |  | cheap evals |
 |  | A multi |  |  |  |  |  |  |  | waiting for GPUs |
 |  | B single |  |  |  |  |  |  |  | waiting for GPUs |
@@ -193,7 +193,7 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | work | runs | status |
 | --- | --- | --- |
 | Wave 2: best hps weight combined with sampling | `hps + full sampling`, `hps + saturate 50%` | launches automatically once `hps 0.1` is evaluated (weight = best full dev of 0.5 / 0.25 / 0.1) and the disk projection allows |
-| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: full evals; C multi: cheap evals; A single: cheap evals; A multi: waiting for GPUs; B single: waiting for GPUs; B multi: waiting for GPUs |
+| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: full evals; C multi: full evals; A single: cheap evals; A multi: waiting for GPUs; B single: waiting for GPUs; B multi: waiting for GPUs |
 
 Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`. An earlier frozen-encoder run scored similarly (37.6, older dev set), and the code path checks out, so freezing the document encoder probably costs a lot. Cheap dev favours models whose document encoder was trained with hard negatives, so only the full evals compare fairly.
 
