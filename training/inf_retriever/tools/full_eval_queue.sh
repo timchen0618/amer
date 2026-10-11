@@ -103,9 +103,13 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
     for set in dev test; do
       local data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
       srun --account=torch_pr_152_courant --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
-        bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1 || ok=0
+        bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1
+      local rc=$?; [ $rc = 0 ] || echo "srun returned $rc (output is validated below)" >> $base/${set}_kagg.log
+      # judge by the output, not srun's return code: srun has returned nonzero for steps that COMPLETED 0:0
+      # with full output (2026-10-10/11, three times)
+      python3 -c "import json,sys; sys.exit(len(json.load(open('$base/${set}_kagg.json'))['results']) != 2*$kmax)" 2>/dev/null || ok=0
     done
-    if [ $ok = 1 ] && [ -s $base/dev_kagg.json ] && [ -s $base/test_kagg.json ]; then
+    if [ $ok = 1 ]; then
       rm -f $base/dev_steps.jsonl.passages.jsonl $base/test_steps.jsonl.passages.jsonl; log "KAGG $tag: k=1..$kmax round-robin/RRF scores in $base/{dev,test}_kagg.json"
     else log "ERROR: $tag k/aggregation scoring failed (per-step lists kept; see $base/*_kagg.log)"; fi
   fi
