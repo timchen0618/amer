@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 17:50; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 18:12; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
 
 ## Summary
 

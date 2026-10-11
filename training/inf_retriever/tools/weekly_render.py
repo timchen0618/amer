@@ -15,6 +15,8 @@ HTML = f"{ROOT}/reports/weekly_summary_2026-10-12.html"
 
 runs = json.load(open(DATA))
 R = {r["label"]: r for r in runs}
+COLOR = {"multi": "c1", "masked": "c2", "hps 0.5": "c3", "full sampling": "c4", "saturate 50%": "c5",
+         "masked + div 2": "c6", "hps 0.25": "c7"}   # one colour per run in every figure
 
 
 def ev(label, step=None):
@@ -126,8 +128,7 @@ def perstep_table(key):
     return head, rows
 
 
-PS_RUNS = [("multi", "c1"), ("masked", "c2"), ("hps 0.5", "c3"), ("saturate 50%", "c5"), ("masked + div 2", "c6"),
-           ("hps 0.25", "c4")]
+PS_RUNS = list(COLOR.items())
 
 
 def svg_perstep():
@@ -168,8 +169,7 @@ def svg_perstep():
 
 
 # ---------------------------------------------------------------- figures (SVG, theme tokens)
-CURVE_RUNS = [("multi", "c1"), ("masked", "c2"), ("hps 0.5", "c3"), ("full sampling", "c4"),
-              ("saturate 50%", "c5"), ("masked + div 2", "c6")]
+CURVE_RUNS = [(k, v) for k, v in COLOR.items()]
 
 
 def svg_kcurve():
@@ -465,7 +465,7 @@ CSS = """
   /* layout: one reading column; wide tables scroll inside their own frame */
   --bg:#f6f7f9; --panel:#ffffff; --fg:#17202b; --muted:#5b6675; --rule:#d9dee5;
   --accent:#1f6f8b; --accent-soft:#e3eff4; --warn:#9a5b00; --warn-soft:#fbf0dc; --ok:#2f7a4b;
-  --c1:#1f6f8b; --c2:#b5482f; --c3:#6b4fa3; --c4:#7a7f87; --c5:#c08a12; --c6:#2f8a6a;
+  --c1:#1f6f8b; --c2:#b5482f; --c3:#6b4fa3; --c4:#7a7f87; --c5:#c08a12; --c6:#2f8a6a; --c7:#c2407e;
   --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
@@ -473,11 +473,11 @@ CSS = """
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#11161c; --panel:#171e26; --fg:#e4e9ef; --muted:#9aa6b4; --rule:#2c3642;
   --accent:#6fb6d0; --accent-soft:#1b2d36; --warn:#e5b25a; --warn-soft:#2e2615; --ok:#79c495;
-  --c1:#6fb6d0; --c2:#e58a72; --c3:#b39ce6; --c4:#a5abb3; --c5:#e5b84a; --c6:#6fcfa9; color-scheme:dark}}
+  --c1:#6fb6d0; --c2:#e58a72; --c3:#b39ce6; --c4:#a5abb3; --c5:#e5b84a; --c6:#6fcfa9; --c7:#ee8ab8; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#11161c; --panel:#171e26; --fg:#e4e9ef; --muted:#9aa6b4; --rule:#2c3642;
   --accent:#6fb6d0; --accent-soft:#1b2d36; --warn:#e5b25a; --warn-soft:#2e2615; --ok:#79c495;
-  --c1:#6fb6d0; --c2:#e58a72; --c3:#b39ce6; --c4:#a5abb3; --c5:#e5b84a; --c6:#6fcfa9; color-scheme:dark}
+  --c1:#6fb6d0; --c2:#e58a72; --c3:#b39ce6; --c4:#a5abb3; --c5:#e5b84a; --c6:#6fcfa9; --c7:#ee8ab8; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--body);margin:0}
 .wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
 .prose{max-width:68ch}
@@ -523,6 +523,7 @@ svg .ln.c3{stroke:var(--c3)} svg .pt.c3{fill:var(--c3)} svg .tc3{fill:var(--c3)}
 svg .ln.c4{stroke:var(--c4)} svg .pt.c4{fill:var(--c4)} svg .tc4{fill:var(--c4)}
 svg .ln.c5{stroke:var(--c5)} svg .pt.c5{fill:var(--c5)} svg .tc5{fill:var(--c5)}
 svg .ln.c6{stroke:var(--c6)} svg .pt.c6{fill:var(--c6)} svg .tc6{fill:var(--c6)}
+svg .ln.c7{stroke:var(--c7)} svg .pt.c7{fill:var(--c7)} svg .tc7{fill:var(--c7)}
 svg .sc{stroke-width:1.8}
 svg .sc.single{fill:var(--c2);stroke:var(--c2)}
 svg .sc.multi{fill:var(--panel);stroke:var(--c1)}
