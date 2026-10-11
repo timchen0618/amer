@@ -86,6 +86,12 @@ def step_result(run, step, mode):
                 return None
             r[split] = merged
         r[split + "_geom"] = geom(f"{d}/{split}_geom.json")
+        try:  # each embedding alone (tools/perstep_eval.py)
+            ps = json.load(open(f"{d}/{split}_perstep.json"))["results"]
+            r[split + "_perstep"] = [x["mrecall@100"] for x in ps]
+            r[split + "_perstep_recall"] = [x["recall@100"] for x in ps]
+        except (OSError, ValueError, KeyError):
+            pass
     return r
 
 

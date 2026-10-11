@@ -97,6 +97,76 @@ def drift_table():
     return head, rows
 
 
+def perstep_ev(label):
+    """Selected checkpoint if its per-embedding lists exist, else the evaluated checkpoint nearest it on full dev."""
+    r = R[label]
+    sel = ev(label)
+    if sel and sel.get("test_perstep"):
+        return sel
+    cands = [e for e in r["evals"] if e.get("test_perstep") and e["step"] != 2500]
+    return min(cands, key=lambda e: abs(e["dev"] - sel["dev"])) if (cands and sel) else None
+
+
+def perstep_table(key):
+    head = ["run", "step", "emb 1", "emb 2", "emb 3", "emb 4", "emb 5", "all 5, RRF"]
+    rows = []
+    for r in runs:
+        if r["mode"] != "multi":
+            continue
+        e = perstep_ev(r["label"])
+        if e is None:
+            continue
+        step = str(e["step"]) + ("" if e["step"] == r["selected"] else f" (selected {r['selected']})")
+        allk = f1(e["test"]) if key == "test_perstep" else "–"
+        rows.append([r["label"], step] + [f1(v) for v in e[key]] + [allk])
+    s = ev("single")
+    if s:
+        rows.append(["single (reference)", str(R["single"]["selected"]), f1(s["test"]) if key == "test_perstep" else "–",
+                     "", "", "", "", ""])
+    return head, rows
+
+
+PS_RUNS = [("multi", "c1"), ("masked", "c2"), ("hps 0.5", "c3"), ("saturate 50%", "c5"), ("masked + div 2", "c6"),
+           ("hps 0.25", "c4")]
+
+
+def svg_perstep():
+    W, H, L, Rm, T, B = 640, 340, 52, 170, 16, 44
+    x = lambda k: L + (k - 1) * (W - L - Rm) / 4
+    y = lambda v: T + (60 - v) * (H - T - B) / 60
+    s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Test MRecall@100 of each query embedding used alone">']
+    for v in range(0, 61, 10):
+        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
+                 f'<text x="{L - 8}" y="{y(v) + 4:.1f}" class="tick" text-anchor="end">{v}</text>')
+    for k in range(1, 6):
+        s.append(f'<text x="{x(k):.1f}" y="{H - B + 18}" class="tick" text-anchor="middle">{k}</text>')
+    s.append(f'<text x="{(L + W - Rm) / 2:.1f}" y="{H - 6}" class="axis" text-anchor="middle">query embedding used alone (generation order)</text>')
+    s.append(f'<text x="14" y="{(T + H - B) / 2:.1f}" class="axis" text-anchor="middle" transform="rotate(-90 14 {(T + H - B) / 2:.1f})">test MRecall@100</text>')
+    single = ev("single")
+    if single:
+        yy = y(single["test"])
+        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{yy:.1f}" y2="{yy:.1f}" class="ref"/>'
+                 f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab ref-t">single {single["test"]:.2f}</text>')
+    ends = []
+    for label, c in PS_RUNS:
+        e = perstep_ev(label)
+        if not e:
+            continue
+        vals = e["test_perstep"]
+        pts = " ".join(f"{x(k + 1):.1f},{y(v):.1f}" for k, v in enumerate(vals))
+        s.append(f'<polyline points="{pts}" class="ln {c}"/>')
+        for k, v in enumerate(vals):
+            s.append(f'<circle cx="{x(k + 1):.1f}" cy="{y(v):.1f}" r="3" class="pt {c}"><title>{html.escape(label)}, embedding {k + 1}: {v:.2f}</title></circle>')
+        ends.append([y(vals[-1]), f"{label} (step {e['step']})", c])
+    ends.sort()
+    for i in range(1, len(ends)):
+        ends[i][0] = max(ends[i][0], ends[i - 1][0] + 13)
+    for yy, label, c in ends:
+        s.append(f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab t{c}">{html.escape(label)}</text>')
+    s.append("</svg>")
+    return "".join(s)
+
+
 # ---------------------------------------------------------------- figures (SVG, theme tokens)
 CURVE_RUNS = [("multi", "c1"), ("masked", "c2"), ("hps 0.5", "c3"), ("full sampling", "c4"),
               ("saturate 50%", "c5"), ("masked + div 2", "c6")]
@@ -174,6 +244,19 @@ def nums():
                 masked_test=g("masked"), hps_k1=g("hps 0.5", "test_k1"))
 
 
+PERSTEP_NOTES = [
+    "**Runs with diverse queries (`multi`, sampling, LR 3e-5): every embedding is weak alone, and they are complementary.** "
+    "Each finds 27–43% of a question's golds and scores 1.3–11.7 MRecall on its own; fused, they reach 38–43. "
+    "For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).",
+    "**`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.",
+    "**`hps`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
+    "and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused).",
+    "**Diversity penalty: the later embeddings get weaker, not complementary.** Embedding 1 is best (45–49), the rest decline (34–43), "
+    "and fusion does not beat embedding 1 alone.",
+    "No run has embeddings that are both strong alone and complementary. The diverse runs get the complementarity; the others get the strength.",
+]
+
+
 def content():
     n = nums()
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -190,6 +273,9 @@ def content():
         "**Every objective that helped made the model behave more like a single-query retriever.** `masked`'s five queries are almost "
         f"the same vector (cosine 0.94). `hps 0.5` is best with its first query alone: {n['hps_k1']:.2f} test at k = 1, "
         "the only multi-query number above `single`. Adding its other four queries lowers the score.",
+        "**Scored one at a time, the embeddings of the diverse runs are weak but complementary.** Each finds 27–43% of a "
+        "question's golds (`single`'s one query: 77.6%); fused, they reach 38–43 test. `masked`'s five embeddings are each as good "
+        "as the fused result, and `hps` has one strong embedding plus weak ones. No run has embeddings that are both.",
         "**Forcing the queries apart does not help recall.** The diversity penalty lowers the query–query cosine from 0.94 to 0.63, "
         "as intended, but test falls from 47.65 to 44.63 (λ = 2).",
         "**Hungarian multi-query training pulls a question's golds apart in document space.** Gold–gold cosine is 0.50–0.53 "
@@ -231,6 +317,19 @@ def content():
     B.append(("figure", svg_kcurve(), "Test MRecall@100 at k = 1–5 (RRF over the first k queries), selected checkpoints. "
               "Runs whose queries differ (`multi`, the sampling runs) need all five queries; runs that act like a single "
               "query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5."))
+
+    B.append(("h3", "Each query embedding on its own"))
+    B.append(("p", "The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the first generated). "
+                   "Round 1 deleted the per-embedding lists of most selected checkpoints, so `multi`, `masked` and `hps 0.5` use "
+                   "their other evaluated checkpoint (marked); it is within 2 dev points of the selected one."))
+    B.append(("figure", svg_perstep(), "Test MRecall@100 of each query embedding used alone. MRecall needs every gold of a question "
+              "in the top 100, so an embedding that targets one gold scores low by design; Recall@100 (second table) shows how much each one covers."))
+    h, rows = perstep_table("test_perstep")
+    B.append(("table", h, rows, {"num": [2, 3, 4, 5, 6, 7]}))
+    B.append(("p", "Recall@100 (share of a question's golds found) of each embedding alone, test:"))
+    h, rows = perstep_table("test_perstep_recall")
+    B.append(("table", h[:-1], [r[:-1] for r in rows if not r[0].startswith("single")], {"num": [2, 3, 4, 5, 6]}))
+    B.append(("ul", PERSTEP_NOTES))
 
     B.append(("h2", "Findings by question"))
     B.append(("h3", "Training objective"))

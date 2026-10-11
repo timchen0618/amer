@@ -1,11 +1,12 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 17:42; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 17:50; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
 
 ## Summary
 
 - **Single-query is still the best QAMPARI retriever on test.** `single` scores 53.30 test (64.80 dev). The best multi-query run is round 1's `masked`: 47.65 test, 65.8 dev (k = 5, RRF). It is higher on dev but 5.65 points lower on test. None of the 12 finished runs closes that gap.
 - **Every objective that helped made the model behave more like a single-query retriever.** `masked`'s five queries are almost the same vector (cosine 0.94). `hps 0.5` is best with its first query alone: 54.05 test at k = 1, the only multi-query number above `single`. Adding its other four queries lowers the score.
+- **Scored one at a time, the embeddings of the diverse runs are weak but complementary.** Each finds 27–43% of a question's golds (`single`'s one query: 77.6%); fused, they reach 38–43 test. `masked`'s five embeddings are each as good as the fused result, and `hps` has one strong embedding plus weak ones. No run has embeddings that are both.
 - **Forcing the queries apart does not help recall.** The diversity penalty lowers the query–query cosine from 0.94 to 0.63, as intended, but test falls from 47.65 to 44.63 (λ = 2).
 - **Hungarian multi-query training pulls a question's golds apart in document space.** Gold–gold cosine is 0.50–0.53 against 0.59 for `single`, and the late checkpoints that collapse drop to 0.42–0.47. The masked loss keeps the golds together (0.57–0.61) and gives the best multi-query run, but that is not enough on its own: the diversity-penalty runs keep them together too and score 3–4.5 points lower.
 - **Earlier full sampling, earlier saturation and a higher learning rate all hurt.** The sampling runs peak mid-training, then their first query collapses (test at k = 1 falls below 1 by step 2500). LR 3e-5 is worse than 1e-5 for both modes.
@@ -61,6 +62,47 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 ### Test score against the number of queries
 
 *Figure (see the HTML page): Test MRecall@100 at k = 1–5 (RRF over the first k queries), selected checkpoints. Runs whose queries differ (`multi`, the sampling runs) need all five queries; runs that act like a single query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5.*
+
+### Each query embedding on its own
+
+The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the first generated). Round 1 deleted the per-embedding lists of most selected checkpoints, so `multi`, `masked` and `hps 0.5` use their other evaluated checkpoint (marked); it is within 2 dev points of the selected one.
+
+*Figure (see the HTML page): Test MRecall@100 of each query embedding used alone. MRecall needs every gold of a question in the top 100, so an embedding that targets one gold scores low by design; Recall@100 (second table) shows how much each one covers.*
+
+| run | step | emb 1 | emb 2 | emb 3 | emb 4 | emb 5 | all 5, RRF |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| multi | 1750 (selected 1500) | 10.73 | 4.33 | 3.01 | 1.51 | 7.72 | 39.36 |
+| masked | 1000 (selected 750) | 47.46 | 49.15 | 48.59 | 48.02 | 46.14 | 48.59 |
+| masked + div 0.5 | 750 | 48.59 | 42.18 | 39.92 | 35.97 | 37.10 | 43.13 |
+| masked + div 2 | 750 | 45.01 | 42.94 | 39.74 | 34.84 | 33.90 | 44.63 |
+| hps 0.5 | 1000 (selected 750) | 51.98 | 23.35 | 13.37 | 11.30 | 11.49 | 47.27 |
+| hps 0.25 | 1000 | 46.52 | 10.73 | 10.55 | 8.10 | 14.31 | 40.49 |
+| full sampling | 750 | 9.60 | 3.01 | 1.88 | 1.88 | 1.32 | 38.04 |
+| saturate 25% | 500 | 7.53 | 4.71 | 3.20 | 3.39 | 6.21 | 41.24 |
+| saturate 50% | 1000 | 6.59 | 7.53 | 4.90 | 5.08 | 4.52 | 43.31 |
+| multi, LR 3e-5 | 1750 | 10.36 | 11.68 | 4.90 | 2.45 | 3.20 | 39.92 |
+| single (reference) | 2000 | 53.30 |  |  |  |  |  |
+
+Recall@100 (share of a question's golds found) of each embedding alone, test:
+
+| run | step | emb 1 | emb 2 | emb 3 | emb 4 | emb 5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| multi | 1750 (selected 1500) | 41.06 | 37.32 | 31.69 | 32.48 | 39.32 |
+| masked | 1000 (selected 750) | 75.88 | 75.96 | 75.52 | 74.19 | 73.54 |
+| masked + div 0.5 | 750 | 75.89 | 72.06 | 70.05 | 67.41 | 66.93 |
+| masked + div 2 | 750 | 74.06 | 72.17 | 70.39 | 65.98 | 64.46 |
+| hps 0.5 | 1000 (selected 750) | 77.28 | 56.12 | 43.32 | 40.40 | 45.38 |
+| hps 0.25 | 1000 | 74.63 | 42.03 | 43.76 | 41.57 | 47.47 |
+| full sampling | 750 | 38.90 | 31.33 | 31.04 | 30.39 | 26.85 |
+| saturate 25% | 500 | 36.94 | 32.01 | 30.87 | 28.83 | 35.74 |
+| saturate 50% | 1000 | 35.68 | 40.27 | 37.13 | 36.40 | 36.36 |
+| multi, LR 3e-5 | 1750 | 39.65 | 43.49 | 32.22 | 31.07 | 29.60 |
+
+- **Runs with diverse queries (`multi`, sampling, LR 3e-5): every embedding is weak alone, and they are complementary.** Each finds 27–43% of a question's golds and scores 1.3–11.7 MRecall on its own; fused, they reach 38–43. For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).
+- **`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.
+- **`hps`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused).
+- **Diversity penalty: the later embeddings get weaker, not complementary.** Embedding 1 is best (45–49), the rest decline (34–43), and fusion does not beat embedding 1 alone.
+- No run has embeddings that are both strong alone and complementary. The diverse runs get the complementarity; the others get the strength.
 
 ## Findings by question
 
