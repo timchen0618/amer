@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 10:15; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 10:52; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
 
 ## Summary
 
@@ -25,6 +25,16 @@ QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as 
 | Oct 9–10 | Wave 3 code: frozen document encoder under FSDP (fixed by making the frozen copy an FSDP-ignored module, no DDP fallback), causal query attention for every model class, one shared corpus embedding for all frozen-encoder checkpoints. |
 | Oct 10–11 | Wave 3 launched (cells C, A, B). Wave 2 launches automatically once the hps weight is decided. |
 | all week | Operations: /scratch quota incident (Oct 8), B200 nodes back with automatic requeue, disk-aware launch gates, an eval-queue bug that flagged good results as failed. |
+
+### Common setup (all QAMPARI runs on this page)
+
+Every run shares the settings below; the run tables list only what each one changes.
+
+- **Model**: inf-retriever-v1-1.5b, full fine-tuning (no LoRA), 2 GPUs with FSDP, bf16 mixed precision, seed 0.
+- **Optimisation**: 2,500 steps, AdamW (weight decay 0.01), LR 1e-5 (3e-5 in the two LR runs), 100 warmup steps then linear decay; a checkpoint every 250 steps.
+- **Batch and loss**: 50 questions per GPU (100 per step); InfoNCE with temperature 0.05 on normalised embeddings; in-batch negatives.
+- **Hard negatives (every run)**: training data `clean_v3_hn` with mined hard negatives (30 for 95–97% of questions). Each question gets one extra negative per gold (one in single-query mode), which is a mined hard negative with probability 0.5 and a random passage otherwise. The frozen-encoder cells (A, C) see the same negatives; only their document encoder does not update.
+- **Passages**: 512 tokens. **Multi-query**: as many queries as golds in training, k = 5 at inference.
 
 ## Main results
 
@@ -223,7 +233,7 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 ## Appendix: setup and runs
 
 - Model: inf-retriever-v1-1.5b, fine-tuned in full, 2 GPUs (FSDP), 2,500 steps, LR 1e-5 unless stated, one seed.
-- Data: clean v3 QAMPARI with hard negatives (ratio 0.5); dev = clean v2 dev (500); test = the unchanged AMER test set (531).
+- Data: clean v3 QAMPARI with hard negatives (ratio 0.5; see Common setup); dev = clean v2 dev (500); test = the unchanged AMER test set (531).
 - Corpus: Wikipedia chunks embedded at 512 tokens. Multi-query: k = number of golds in training, k = 5 at inference.
 - Scheduled sampling: the rate of feeding back the model's own query embedding grows linearly to 1 at the end of training unless stated.
 

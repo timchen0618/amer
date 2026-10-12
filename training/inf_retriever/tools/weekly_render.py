@@ -362,6 +362,19 @@ def content():
         ["all week", "Operations: /scratch quota incident (Oct 8), B200 nodes back with automatic requeue, disk-aware launch gates, an eval-queue bug that flagged good results as failed."],
     ], {}))
 
+    B.append(("h3", "Common setup (all QAMPARI runs on this page)"))
+    B.append(("p", "Every run shares the settings below; the run tables list only what each one changes."))
+    B.append(("ul", [
+        "**Model**: inf-retriever-v1-1.5b, full fine-tuning (no LoRA), 2 GPUs with FSDP, bf16 mixed precision, seed 0.",
+        "**Optimisation**: 2,500 steps, AdamW (weight decay 0.01), LR 1e-5 (3e-5 in the two LR runs), 100 warmup steps then linear decay; "
+        "a checkpoint every 250 steps.",
+        "**Batch and loss**: 50 questions per GPU (100 per step); InfoNCE with temperature 0.05 on normalised embeddings; in-batch negatives.",
+        "**Hard negatives (every run)**: training data `clean_v3_hn` with mined hard negatives (30 for 95–97% of questions). "
+        "Each question gets one extra negative per gold (one in single-query mode), which is a mined hard negative with probability 0.5 and a random passage otherwise. "
+        "The frozen-encoder cells (A, C) see the same negatives; only their document encoder does not update.",
+        "**Passages**: 512 tokens. **Multi-query**: as many queries as golds in training, k = 5 at inference.",
+    ]))
+
     B.append(("h2", "Main results"))
     B.append(("p", "Each run at the checkpoint with the best **full dev** score; test is never used for selection. Multi-query runs are "
                    "scored at k = 5 with RRF; single-query runs use their single query. MRecall@100 on the 500 dev and 531 test questions."))
@@ -493,7 +506,7 @@ def content():
     B.append(("h2", "Appendix: setup and runs"))
     B.append(("ul", [
         "Model: inf-retriever-v1-1.5b, fine-tuned in full, 2 GPUs (FSDP), 2,500 steps, LR 1e-5 unless stated, one seed.",
-        "Data: clean v3 QAMPARI with hard negatives (ratio 0.5); dev = clean v2 dev (500); test = the unchanged AMER test set (531).",
+        "Data: clean v3 QAMPARI with hard negatives (ratio 0.5; see Common setup); dev = clean v2 dev (500); test = the unchanged AMER test set (531).",
         "Corpus: Wikipedia chunks embedded at 512 tokens. Multi-query: k = number of golds in training, k = 5 at inference.",
         "Scheduled sampling: the rate of feeding back the model's own query embedding grows linearly to 1 at the end of training unless stated.",
     ]))
