@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 10:09; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 10:15; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
 
 ## Summary
 
@@ -45,8 +45,8 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 |  | saturate 50% | 1000 * | 60.4 | 43.31 | 6.59 | 0.66 | 0.52 | +0.15 | done |
 | learning rate | single, LR 3e-5 | 1250 * | 61.40 | 48.21 | – | – | 0.61 | – | done |
 |  | multi, LR 3e-5 | 1750 * | 55.8 | 39.92 | 10.36 | 0.67 | 0.52 | +0.15 | done |
-| combination (wave 2) | hps + full sampling |  |  |  |  |  |  |  | starts after hps 0.1 |
-|  | hps + saturate 50% |  |  |  |  |  |  |  | starts after hps 0.1 |
+| combination (wave 2) | hps + full sampling |  |  |  |  |  |  |  | waiting for GPUs |
+|  | hps + saturate 50% |  |  |  |  |  |  |  | waiting for GPUs |
 | doc encoder × attention (wave 3) | C single | 500 * | 31.80 | 31.26 | – | – | 0.85 | – | done |
 |  | C multi | 2250 * | 31.4 | 31.07 | 25.42 | 0.89 | 0.85 | +0.04 | done |
 |  | A single | 500 * | 31.60 | 29.76 | – | – | 0.85 | – | done |
@@ -208,7 +208,7 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 
 | work | runs | status |
 | --- | --- | --- |
-| Wave 2: best hps weight combined with sampling | `hps + full sampling`, `hps + saturate 50%` | launches automatically once `hps 0.1` is evaluated (weight = best full dev of 0.5 / 0.25 / 0.1) and the disk projection allows |
+| Wave 2: best hps weight combined with sampling | `hps + full sampling`, `hps + saturate 50%` | launched 2026-10-12 10:14 with weight 0.5, the best full dev of 0.5 / 0.25 / 0.1 (63.0 / 62.8 / 62.6: a tie under the 2-point rule); hps + full sampling: waiting for GPUs; hps + saturate 50%: waiting for GPUs |
 | Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: done; C multi: done; A single: done; A multi: full evals (2 of 3); B single: full evals; B multi: cheap evals |
 
 `C single` (frozen document encoder) scores 31.8 full dev / 31.26 test, against 64.8 / 53.30 for `single` with a trained document encoder: freezing the document encoder roughly halves the score. With the encoder frozen, multi-query matches single-query: `C multi` scores 31.4 / 31.07 (RRF, k = 5), a tie with `C single`. With a trained encoder the gap is 5.7–15.3 test points. So the gap appears only once the document encoder is trained, which fits the gold–gold finding (Hungarian training leaves golds further apart than single-query training). A frozen encoder may also simply cap both near 31, leaving no room for a gap. Its five embeddings are similar in strength on their own (test 25.4, 28.6, 27.1, 23.5, 19.0); fusing them adds 2.4 over the best one. `A multi` (frozen, causal) scores 30.2 / 30.70, a tie with `C multi`: causal attention does not change the multi-query result either. `A single` (frozen, causal attention) scores 31.6 / 29.76, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query.
@@ -242,8 +242,8 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | saturate 50% | sampling | sampling rate reaches 1 at step 1250 |
 | single, LR 3e-5 | learning rate | single-query, LR 3e-5 |
 | multi, LR 3e-5 | learning rate | multi-query, LR 3e-5 |
-| hps + full sampling | combination (wave 2) | best hps weight + sampling rate 1 from the start |
-| hps + saturate 50% | combination (wave 2) | best hps weight + rate reaching 1 at step 1250 |
+| hps + full sampling | combination (wave 2) | hps 0.5 (best of the three weights) + sampling rate 1 from the start |
+| hps + saturate 50% | combination (wave 2) | hps 0.5 (best of the three weights) + rate reaching 1 at step 1250 |
 | C single | doc encoder × attention (wave 3) | frozen doc encoder, bidirectional |
 | C multi | doc encoder × attention (wave 3) | frozen doc encoder, bidirectional |
 | A single | doc encoder × attention (wave 3) | frozen doc encoder, causal query attention |

@@ -458,7 +458,7 @@ def content():
     B.append(("h2", "In progress"))
     B.append(("table", ["work", "runs", "status"], [
         ["Wave 2: best hps weight combined with sampling", "`hps + full sampling`, `hps + saturate 50%`",
-         "launches automatically once `hps 0.1` is evaluated (weight = best full dev of 0.5 / 0.25 / 0.1) and the disk projection allows"],
+         "launched 2026-10-12 10:14 with weight 0.5, the best full dev of 0.5 / 0.25 / 0.1 (63.0 / 62.8 / 62.6: a tie under the 2-point rule); " + "; ".join(f"{r['label']}: {status_text(r)}" for r in runs if "wave 2" in r["group"])],
         ["Wave 3: document encoder frozen or joint × query attention causal or bidirectional",
          "C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1.",
          "; ".join(f"{r['label']}: {status_text(r)}" for r in runs if r["group"].startswith("doc encoder"))],
