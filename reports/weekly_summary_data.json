@@ -3205,15 +3205,13 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "single",
   "desc": "joint doc encoder, causal query attention",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    2250,
    500,
    2500
   ],
-  "missing": [
-   2500
-  ],
+  "missing": [],
   "evals": [
    {
     "step": 500,
@@ -3260,13 +3258,37 @@
      "align_margin": 0.03483599511355779,
      "sibling_rank_median": 3.0
     }
+   },
+   {
+    "step": 2500,
+    "dev": 63.6,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.6689759556055069,
+     "gold_rand_cos": 0.026307214398441373,
+     "gold_cohesion": 0.6426687412070655,
+     "align_cos": 0.7070147079825402,
+     "align_margin": 0.029866335421800613,
+     "sibling_rank_median": 1.0
+    },
+    "test": 51.98,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.603127786388056,
+     "gold_rand_cos": 0.027068374316448568,
+     "gold_cohesion": 0.5760594120716074,
+     "align_cos": 0.6634582260907707,
+     "align_margin": 0.0342208257615005,
+     "sibling_rank_median": 3.0
+    }
    }
   ],
   "selected": 2250,
   "ties": [
-   500
+   500,
+   2500
   ],
-  "final": null
+  "final": 2500
  },
  {
   "run": "clean_v3_abl2_qampari_B_multi",
