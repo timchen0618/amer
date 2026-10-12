@@ -2808,15 +2808,13 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "single",
   "desc": "frozen doc encoder, causal query attention",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    500,
    2250,
    2500
   ],
-  "missing": [
-   2500
-  ],
+  "missing": [],
   "evals": [
    {
     "step": 500,
@@ -2863,13 +2861,37 @@
      "align_margin": 0.019032707658864684,
      "sibling_rank_median": 26.0
     }
+   },
+   {
+    "step": 2500,
+    "dev": 30.2,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8517107036113739,
+     "gold_rand_cos": 0.7402648986577988,
+     "gold_cohesion": 0.11144580495357513,
+     "align_cos": 0.295748035594821,
+     "align_margin": 0.01804538855701685,
+     "sibling_rank_median": 13.0
+    },
+    "test": 31.64,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8549317365087807,
+     "gold_rand_cos": 0.7400112016277349,
+     "gold_cohesion": 0.11492053488104581,
+     "align_cos": 0.30984972516976284,
+     "align_margin": 0.018742696306687515,
+     "sibling_rank_median": 26.0
+    }
    }
   ],
   "selected": 500,
   "ties": [
-   2250
+   2250,
+   2500
   ],
-  "final": null
+  "final": 2500
  },
  {
   "run": "clean_v3_abl2_qampari_A_multi",
@@ -2877,7 +2899,7 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "multi",
   "desc": "frozen doc encoder, causal query attention",
-  "status": "training",
+  "status": "full evals",
   "planned": [],
   "missing": [],
   "evals": [],
