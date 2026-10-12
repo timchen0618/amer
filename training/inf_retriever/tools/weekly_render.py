@@ -269,7 +269,7 @@ def content():
     B.append(("ul", [
         f"**Single-query is still the best QAMPARI retriever on test.** `single` scores {n['single_test']:.2f} test "
         f"({n['single_dev']:.2f} dev). The best multi-query run is round 1's `masked`: {n['masked_test']:.2f} test, "
-        f"{n['masked_dev']:.1f} dev (k = 5, RRF). It is higher on dev but 5.65 points lower on test. None of the 12 finished runs closes that gap.",
+        f"{n['masked_dev']:.1f} dev (k = 5, RRF). It is higher on dev but 5.65 points lower on test. None of the " + str(sum(r["status"] == "done" and r["label"] != "single" for r in runs)) + " other finished runs closes that gap.",
         "**Every objective that helped made the model behave more like a single-query retriever.** `masked`'s five queries are almost "
         f"the same vector (cosine 0.94). `hps 0.5` is best with its first query alone: {n['hps_k1']:.2f} test at k = 1, "
         "the only multi-query number above `single`. Adding its other four queries lowers the score.",
@@ -402,11 +402,21 @@ def content():
          "C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1.",
          "; ".join(f"{r['label']}: {status_text(r)}" for r in runs if r["group"].startswith("doc encoder"))],
     ], {}))
-    cs = ev("C single")
-    B.append(("p", (f"First wave-3 result: `C single` (frozen document encoder) scores {cs['dev']:.1f} full dev / {cs['test']:.2f} test, "
-                    f"against {n['single_dev']:.1f} / {n['single_test']:.2f} for `single` with a trained document encoder. Freezing the document "
-                    "encoder roughly halves the score, so cells A and C (both frozen) will mainly show what attention does on top of a much weaker base."
-                    if cs else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`.")))
+    cs, cm, as_ = ev("C single"), ev("C multi"), ev("A single")
+    w3 = []
+    if cs:
+        w3.append(f"`C single` (frozen document encoder) scores {cs['dev']:.1f} full dev / {cs['test']:.2f} test, against "
+                  f"{n['single_dev']:.1f} / {n['single_test']:.2f} for `single` with a trained document encoder: freezing the document encoder roughly halves the score.")
+    if cs and cm:
+        w3.append(f"With the encoder frozen, multi-query matches single-query: `C multi` scores {cm['dev']:.1f} / {cm['test']:.2f} (RRF, k = 5), a tie with `C single`. "
+                  "With a trained encoder the gap is 5.7–15.3 test points. So the gap appears only once the document encoder is trained, which fits the gold–gold finding "
+                  "(Hungarian training leaves golds further apart than single-query training). A frozen encoder may also simply cap both near 31, leaving no room for a gap.")
+        if cm.get("test_perstep"):
+            w3.append("Its five embeddings are similar in strength on their own (test " + ", ".join(f"{x:.1f}" for x in cm["test_perstep"]) +
+                      f"); fusing them adds {cm['test'] - max(cm['test_perstep']):.1f} over the best one.")
+    if as_:
+        w3.append(f"`A single` (frozen, causal attention) scores {as_['dev']:.1f} / {as_['test']:.2f}, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query.")
+    B.append(("p", " ".join(w3) if w3 else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`."))
 
     B.append(("h2", "Next steps and open questions"))
     B.append(("ul", [
