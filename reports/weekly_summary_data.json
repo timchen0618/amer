@@ -2970,15 +2970,13 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "multi",
   "desc": "frozen doc encoder, causal query attention",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    2250,
    1500,
    2500
   ],
-  "missing": [
-   2500
-  ],
+  "missing": [],
   "evals": [
    {
     "step": 1500,
@@ -3121,13 +3119,85 @@
      52.29,
      58.46
     ]
+   },
+   {
+    "step": 2500,
+    "dev": 29.6,
+    "dev_k1": 24.0,
+    "dev_curve": [
+     24.0,
+     28.0,
+     28.2,
+     29.4,
+     29.6
+    ],
+    "dev_rr5": 27.6,
+    "dev_geom": {
+     "query_pair_cos": 0.8336706624031067,
+     "gold_pair_cos": 0.8517107036113739,
+     "gold_rand_cos": 0.7402648986577988,
+     "gold_cohesion": 0.11144580495357513,
+     "align_cos": 0.2627216946352273,
+     "align_margin": -0.008514551913951436,
+     "sibling_rank_median": 13.0,
+     "gap": -0.018040041208267188
+    },
+    "dev_perstep": [
+     24.0,
+     25.6,
+     20.0,
+     19.8,
+     24.8
+    ],
+    "dev_perstep_recall": [
+     50.13,
+     51.83,
+     44.36,
+     44.99,
+     50.49
+    ],
+    "test": 30.89,
+    "test_k1": 21.85,
+    "test_curve": [
+     21.85,
+     26.18,
+     29.19,
+     29.57,
+     30.89
+    ],
+    "test_rr5": 27.5,
+    "test_geom": {
+     "query_pair_cos": 0.8582498335793418,
+     "gold_pair_cos": 0.8549317365087807,
+     "gold_rand_cos": 0.7400112016277349,
+     "gold_cohesion": 0.11492053488104581,
+     "align_cos": 0.27623490138231954,
+     "align_margin": -0.01140537850059738,
+     "sibling_rank_median": 26.0,
+     "gap": 0.003318097070561077
+    },
+    "test_perstep": [
+     21.85,
+     26.37,
+     17.33,
+     19.77,
+     26.18
+    ],
+    "test_perstep_recall": [
+     52.88,
+     56.2,
+     47.94,
+     49.77,
+     57.12
+    ]
    }
   ],
   "selected": 2250,
   "ties": [
-   1500
+   1500,
+   2500
   ],
-  "final": null
+  "final": 2500
  },
  {
   "run": "clean_v3_abl2_qampari_B_single",
@@ -3142,10 +3212,32 @@
    2500
   ],
   "missing": [
-   500,
    2500
   ],
   "evals": [
+   {
+    "step": 500,
+    "dev": 62.8,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.6472755155265332,
+     "gold_rand_cos": 0.03860806837270502,
+     "gold_cohesion": 0.6086674471538281,
+     "align_cos": 0.6882449214458466,
+     "align_margin": 0.030050779432058333,
+     "sibling_rank_median": 1.0
+    },
+    "test": 51.79,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.5923742200975813,
+     "gold_rand_cos": 0.04172162403922687,
+     "gold_cohesion": 0.5506525960583545,
+     "align_cos": 0.642820818893429,
+     "align_margin": 0.029061520980800837,
+     "sibling_rank_median": 4.0
+    }
+   },
    {
     "step": 2250,
     "dev": 64.0,
@@ -3171,7 +3263,9 @@
    }
   ],
   "selected": 2250,
-  "ties": null,
+  "ties": [
+   500
+  ],
   "final": null
  },
  {
@@ -3181,8 +3275,16 @@
   "mode": "multi",
   "desc": "joint doc encoder, causal query attention",
   "status": "full evals",
-  "planned": [],
-  "missing": [],
+  "planned": [
+   1500,
+   1250,
+   2500
+  ],
+  "missing": [
+   1500,
+   1250,
+   2500
+  ],
   "evals": [],
   "selected": null,
   "ties": null,
