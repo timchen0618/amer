@@ -2348,13 +2348,60 @@
    2500
   ],
   "missing": [
-   500,
-   250,
    2500
   ],
-  "evals": [],
-  "selected": null,
-  "ties": null,
+  "evals": [
+   {
+    "step": 250,
+    "dev": 31.4,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8517107036113739,
+     "gold_rand_cos": 0.7402648986577988,
+     "gold_cohesion": 0.11144580495357513,
+     "align_cos": 0.2990832384452224,
+     "align_margin": 0.018488497138023377,
+     "sibling_rank_median": 13.0
+    },
+    "test": 30.32,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8549317365087807,
+     "gold_rand_cos": 0.7400112016277349,
+     "gold_cohesion": 0.11492053488104581,
+     "align_cos": 0.30990574761467465,
+     "align_margin": 0.020897496147905592,
+     "sibling_rank_median": 26.0
+    }
+   },
+   {
+    "step": 500,
+    "dev": 31.8,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8517107036113739,
+     "gold_rand_cos": 0.7402648986577988,
+     "gold_cohesion": 0.11144580495357513,
+     "align_cos": 0.3094330127239227,
+     "align_margin": 0.019165024891495706,
+     "sibling_rank_median": 13.0
+    },
+    "test": 31.26,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.8549317365087807,
+     "gold_rand_cos": 0.7400112016277349,
+     "gold_cohesion": 0.11492053488104581,
+     "align_cos": 0.3189704835751636,
+     "align_margin": 0.02024681233360718,
+     "sibling_rank_median": 26.0
+    }
+   }
+  ],
+  "selected": 500,
+  "ties": [
+   250
+  ],
   "final": null
  },
  {
@@ -2364,8 +2411,16 @@
   "mode": "multi",
   "desc": "frozen doc encoder, bidirectional",
   "status": "full evals",
-  "planned": [],
-  "missing": [],
+  "planned": [
+   1500,
+   2250,
+   2500
+  ],
+  "missing": [
+   1500,
+   2250,
+   2500
+  ],
   "evals": [],
   "selected": null,
   "ties": null,
@@ -2377,7 +2432,7 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "single",
   "desc": "frozen doc encoder, causal query attention",
-  "status": "cheap evals",
+  "status": "full evals",
   "planned": [],
   "missing": [],
   "evals": [],

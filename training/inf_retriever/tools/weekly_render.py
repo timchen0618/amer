@@ -278,7 +278,7 @@ def content():
         "as the fused result, and `hps` has one strong embedding plus weak ones. No run has embeddings that are both.",
         "**Forcing the queries apart does not help recall.** The diversity penalty lowers the query–query cosine from 0.94 to 0.63, "
         "as intended, but test falls from 47.65 to 44.63 (λ = 2).",
-        "**Hungarian multi-query training pulls a question's golds apart in document space.** Gold–gold cosine is 0.50–0.53 "
+        "**Hungarian multi-query training leaves a question's golds further apart than single-query training.** Gold–gold cosine is 0.50–0.53 "
         "against 0.59 for `single`, and the late checkpoints that collapse drop to 0.42–0.47. The masked loss keeps the golds "
         "together (0.57–0.61) and gives the best multi-query run, but that is not enough on its own: the diversity-penalty runs "
         "keep them together too and score 3–4.5 points lower.",
@@ -363,8 +363,12 @@ def content():
     B.append(("table", h, rows, {"num": list(range(1, 11))}))
     base = ev("C single")
     B.append(("p", "**Untrained document space (reference).** Cell C keeps the base model's document encoder, so its g–g is the base retriever's: " +
-              (f"{gv(base, 'gold_pair_cos'):.2f} (test). " if base and gv(base, 'gold_pair_cos') is not None else "pending (C single full eval running). ") +
-              "Comparing a run's g–g with it shows whether training pulled a question's golds together or apart."))
+              (f"{gv(base, 'gold_pair_cos'):.2f} raw, but random passage pairs already sit at {gv(base, 'gold_rand_cos'):.2f}, so only "
+               f"{gv(base, 'gold_cohesion'):.2f} above random (test). The base space is very anisotropic; training spreads the corpus out "
+               "(random pairs 0.02–0.05 in every trained run), so raw g–g is not comparable with it, only **above random** is. On that scale every trained "
+               "document encoder holds a question's golds far closer together than the base one (0.47–0.59 at the selected checkpoints, against "
+               f"{gv(base, 'gold_cohesion'):.2f}); the differences between runs are differences in how much closer. "
+               if base and gv(base, 'gold_pair_cos') is not None else "pending (C single full eval running). ")))
     B.append(("figure", svg_scatter(), "Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500) of the round-2 runs. "
               "Filled: single-query; open: multi-query. Final checkpoints below 30 test are off the chart."))
     B.append(("ul", [
@@ -398,9 +402,11 @@ def content():
          "C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1.",
          "; ".join(f"{r['label']}: {status_text(r)}" for r in runs if r["group"].startswith("doc encoder"))],
     ], {}))
-    B.append(("p", "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`. An earlier frozen-encoder run "
-                   "scored similarly (37.6, older dev set), and the code path checks out, so freezing the document encoder probably costs a lot. Cheap dev favours models whose "
-                   "document encoder was trained with hard negatives, so only the full evals compare fairly."))
+    cs = ev("C single")
+    B.append(("p", (f"First wave-3 result: `C single` (frozen document encoder) scores {cs['dev']:.1f} full dev / {cs['test']:.2f} test, "
+                    f"against {n['single_dev']:.1f} / {n['single_test']:.2f} for `single` with a trained document encoder. Freezing the document "
+                    "encoder roughly halves the score, so cells A and C (both frozen) will mainly show what attention does on top of a much weaker base."
+                    if cs else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`.")))
 
     B.append(("h2", "Next steps and open questions"))
     B.append(("ul", [

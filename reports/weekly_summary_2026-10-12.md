@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-11 19:34; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 01:05; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, C single, C multi, A single, A multi, B single, B multi.
 
 ## Summary
 
@@ -8,7 +8,7 @@ QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as 
 - **Every objective that helped made the model behave more like a single-query retriever.** `masked`'s five queries are almost the same vector (cosine 0.94). `hps 0.5` is best with its first query alone: 54.05 test at k = 1, the only multi-query number above `single`. Adding its other four queries lowers the score.
 - **Scored one at a time, the embeddings of the diverse runs are weak but complementary.** Each finds 27–43% of a question's golds (`single`'s one query: 77.6%); fused, they reach 38–43 test. `masked`'s five embeddings are each as good as the fused result, and `hps` has one strong embedding plus weak ones. No run has embeddings that are both.
 - **Forcing the queries apart does not help recall.** The diversity penalty lowers the query–query cosine from 0.94 to 0.63, as intended, but test falls from 47.65 to 44.63 (λ = 2).
-- **Hungarian multi-query training pulls a question's golds apart in document space.** Gold–gold cosine is 0.50–0.53 against 0.59 for `single`, and the late checkpoints that collapse drop to 0.42–0.47. The masked loss keeps the golds together (0.57–0.61) and gives the best multi-query run, but that is not enough on its own: the diversity-penalty runs keep them together too and score 3–4.5 points lower.
+- **Hungarian multi-query training leaves a question's golds further apart than single-query training.** Gold–gold cosine is 0.50–0.53 against 0.59 for `single`, and the late checkpoints that collapse drop to 0.42–0.47. The masked loss keeps the golds together (0.57–0.61) and gives the best multi-query run, but that is not enough on its own: the diversity-penalty runs keep them together too and score 3–4.5 points lower.
 - **Earlier full sampling, earlier saturation and a higher learning rate all hurt.** The sampling runs peak mid-training, then their first query collapses (test at k = 1 falls below 1 by step 2500). LR 3e-5 is worse than 1e-5 for both modes.
 - **Measurement fixes.** The earlier multi-query 44.26 was inflated by 44 QAMPARI test questions that leaked into the v1 training data. Cheap dev cannot pick the best checkpoint within a run, so every run is now selected by full dev over the top 2 cheap-dev checkpoints plus the final one.
 
@@ -47,9 +47,9 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 |  | multi, LR 3e-5 | 1750 * | 55.8 | 39.92 | 10.36 | 0.67 | 0.52 | +0.15 | done |
 | combination (wave 2) | hps + full sampling |  |  |  |  |  |  |  | starts after hps 0.1 |
 |  | hps + saturate 50% |  |  |  |  |  |  |  | starts after hps 0.1 |
-| doc encoder × attention (wave 3) | C single |  |  |  |  |  |  |  | full evals |
+| doc encoder × attention (wave 3) | C single | 500 * | 31.80 | 31.26 | – | – | 0.85 | – | full evals (2 of 3) |
 |  | C multi |  |  |  |  |  |  |  | full evals |
-|  | A single |  |  |  |  |  |  |  | cheap evals |
+|  | A single |  |  |  |  |  |  |  | full evals |
 |  | A multi |  |  |  |  |  |  |  | waiting for GPUs |
 |  | B single |  |  |  |  |  |  |  | waiting for GPUs |
 |  | B multi |  |  |  |  |  |  |  | waiting for GPUs |
@@ -158,8 +158,9 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | saturate 50% | 1000 | 0.66 | 0.52 | +0.15 | 0.49 | 0.59 | +0.03 | 16 | 0.66 | 0.57 |
 | single, LR 3e-5 | 1250 | – | 0.61 | – | 0.57 | 0.67 | +0.03 | 4 | – | 0.66 |
 | multi, LR 3e-5 | 1750 | 0.67 | 0.52 | +0.15 | 0.48 | 0.59 | +0.04 | 16 | 0.66 | 0.55 |
+| C single | 500 | – | 0.85 | – | 0.11 | 0.32 | +0.02 | 26 | – | 0.85 |
 
-**Untrained document space (reference).** Cell C keeps the base model's document encoder, so its g–g is the base retriever's: pending (C single full eval running). Comparing a run's g–g with it shows whether training pulled a question's golds together or apart.
+**Untrained document space (reference).** Cell C keeps the base model's document encoder, so its g–g is the base retriever's: 0.85 raw, but random passage pairs already sit at 0.74, so only 0.11 above random (test). The base space is very anisotropic; training spreads the corpus out (random pairs 0.02–0.05 in every trained run), so raw g–g is not comparable with it, only **above random** is. On that scale every trained document encoder holds a question's golds far closer together than the base one (0.47–0.59 at the selected checkpoints, against 0.11); the differences between runs are differences in how much closer. 
 
 *Figure (see the HTML page): Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500) of the round-2 runs. Filled: single-query; open: multi-query. Final checkpoints below 30 test are off the chart.*
 
@@ -193,9 +194,9 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | work | runs | status |
 | --- | --- | --- |
 | Wave 2: best hps weight combined with sampling | `hps + full sampling`, `hps + saturate 50%` | launches automatically once `hps 0.1` is evaluated (weight = best full dev of 0.5 / 0.25 / 0.1) and the disk projection allows |
-| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: full evals; C multi: full evals; A single: cheap evals; A multi: waiting for GPUs; B single: waiting for GPUs; B multi: waiting for GPUs |
+| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: full evals (2 of 3); C multi: full evals; A single: full evals; A multi: waiting for GPUs; B single: waiting for GPUs; B multi: waiting for GPUs |
 
-Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`. An earlier frozen-encoder run scored similarly (37.6, older dev set), and the code path checks out, so freezing the document encoder probably costs a lot. Cheap dev favours models whose document encoder was trained with hard negatives, so only the full evals compare fairly.
+First wave-3 result: `C single` (frozen document encoder) scores 31.8 full dev / 31.26 test, against 64.8 / 53.30 for `single` with a trained document encoder. Freezing the document encoder roughly halves the score, so cells A and C (both frozen) will mainly show what attention does on top of a much weaker base.
 
 ## Next steps and open questions
 
