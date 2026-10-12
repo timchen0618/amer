@@ -15,8 +15,6 @@ HTML = f"{ROOT}/reports/weekly_summary_2026-10-12.html"
 
 runs = json.load(open(DATA))
 R = {r["label"]: r for r in runs}
-COLOR = {"multi": "c1", "masked": "c2", "hps 0.5": "c3", "full sampling": "c4", "saturate 50%": "c5",
-         "masked + div 2": "c6", "hps 0.25": "c7"}   # one colour per run in every figure
 
 
 def ev(label, step=None):
@@ -128,113 +126,173 @@ def perstep_table(key):
     return head, rows
 
 
-PS_RUNS = list(COLOR.items())
+# ---------------------------------------------------------------- figures (SVG + toggle legends)
+# Every run has one colour (class r<i>, defined in run_css()) in every figure. Each figure carries a legend of
+# run chips; the page script hides/shows a run's <g class="run"> and re-spaces the end labels.
+RCLS = {r["label"]: f"r{i}" for i, r in enumerate(runs)}
 
 
-def svg_perstep():
-    W, H, L, Rm, T, B = 640, 340, 52, 170, 16, 44
-    x = lambda k: L + (k - 1) * (W - L - Rm) / 4
-    y = lambda v: T + (60 - v) * (H - T - B) / 60
-    s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Test MRecall@100 of each query embedding used alone">']
-    for v in range(0, 61, 10):
+def run_css():
+    light, dark = [], []
+    for i in range(len(runs)):
+        h = (i * 137.508 + 200) % 360
+        light.append(f".r{i}{{--c:hsl({h:.0f} 62% {38 if i % 2 else 46}%)}}")
+        dark.append((i, f"--c:hsl({h:.0f} 70% {66 if i % 2 else 74}%)"))
+    auto = "".join(f':root:not([data-theme="light"]) .r{i}{{{c}}}' for i, c in dark)
+    forced = "".join(f':root[data-theme="dark"] .r{i}{{{c}}}' for i, c in dark)
+    return "".join(light) + "@media (prefers-color-scheme: dark){" + auto + "}" + forced
+
+
+def legend(fig, labels, refs=()):
+    """Run chips grouped like the main table; refs = single-query runs drawn as dashed reference lines."""
+    o = [f'<div class="legend" data-fig="{fig}"><div class="lg-ctl"><span>click a run to hide or show it; hover to highlight</span>'
+         '<button data-act="all">show all</button><button data-act="none">hide all</button></div>']
+    for g in dict.fromkeys(r["group"] for r in runs):
+        rs = [r["label"] for r in runs if r["group"] == g and r["label"] in labels]
+        if not rs:
+            continue
+        o.append(f'<div class="lg-row"><button class="lg-grp" data-grp="{html.escape(g)}">{html.escape(g)}</button>')
+        for lab in rs:
+            o.append(f'<button class="chip {RCLS[lab]}{" ref" if lab in refs else ""}" data-run="{html.escape(lab)}" '
+                     f'data-grp="{html.escape(g)}"><span class="sw"></span>{html.escape(lab)}</button>')
+        o.append("</div>")
+    o.append("</div>")
+    return "".join(o)
+
+
+def frame(W, H, L, Rm, T, B, ylo, yhi, ystep, aria, xlabel, ylabel):
+    y = lambda v: T + (yhi - v) * (H - T - B) / (yhi - ylo)
+    s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{html.escape(aria)}">']
+    for v in range(ylo, yhi + 1, ystep):
         s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
                  f'<text x="{L - 8}" y="{y(v) + 4:.1f}" class="tick" text-anchor="end">{v}</text>')
+    s.append(f'<text x="{(L + W - Rm) / 2:.1f}" y="{H - 6}" class="axis" text-anchor="middle">{html.escape(xlabel)}</text>')
+    s.append(f'<text x="14" y="{(T + H - B) / 2:.1f}" class="axis" text-anchor="middle" transform="rotate(-90 14 {(T + H - B) / 2:.1f})">{html.escape(ylabel)}</text>')
+    return s, y
+
+
+def g_run(label, inner):
+    return f'<g class="run {RCLS[label]}" data-run="{html.escape(label)}">{inner}</g>'
+
+
+def line_fig(fig, aria, xlabel, series):
+    """series: label -> (values for x = 1..5, end-label text). Single-query runs become dashed reference lines."""
+    W, H, L, Rm, T, B = 640, 360, 52, 190, 16, 44
+    x = lambda k: L + (k - 1) * (W - L - Rm) / 4
+    s, y = frame(W, H, L, Rm, T, B, 0, 60, 10, aria, xlabel, "test MRecall@100")
     for k in range(1, 6):
         s.append(f'<text x="{x(k):.1f}" y="{H - B + 18}" class="tick" text-anchor="middle">{k}</text>')
-    s.append(f'<text x="{(L + W - Rm) / 2:.1f}" y="{H - 6}" class="axis" text-anchor="middle">query embedding used alone (generation order)</text>')
-    s.append(f'<text x="14" y="{(T + H - B) / 2:.1f}" class="axis" text-anchor="middle" transform="rotate(-90 14 {(T + H - B) / 2:.1f})">test MRecall@100</text>')
-    single = ev("single")
-    if single:
-        yy = y(single["test"])
-        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{yy:.1f}" y2="{yy:.1f}" class="ref"/>'
-                 f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab ref-t">single {single["test"]:.2f}</text>')
-    ends = []
-    for label, c in PS_RUNS:
-        e = perstep_ev(label)
-        if not e:
-            continue
-        vals = e["test_perstep"]
+    refs = [r["label"] for r in runs if r["mode"] == "single" and ev(r["label"])]
+    for lab in refs:
+        v = ev(lab)["test"]
+        s.append(g_run(lab, f'<line x1="{L}" x2="{W - Rm}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="ref"><title>{html.escape(lab)} (single query): {v:.2f}</title></line>'
+                            f'<text x="{W - Rm + 8}" y="{y(v) + 4:.1f}" data-y="{y(v) + 4:.1f}" class="lab">{html.escape(lab)} {v:.2f}</text>'))
+    for lab, (vals, end) in series.items():
         pts = " ".join(f"{x(k + 1):.1f},{y(v):.1f}" for k, v in enumerate(vals))
-        s.append(f'<polyline points="{pts}" class="ln {c}"/>')
-        for k, v in enumerate(vals):
-            s.append(f'<circle cx="{x(k + 1):.1f}" cy="{y(v):.1f}" r="3" class="pt {c}"><title>{html.escape(label)}, embedding {k + 1}: {v:.2f}</title></circle>')
-        ends.append([y(vals[-1]), f"{label} (step {e['step']})", c])
-    ends.sort()
-    for i in range(1, len(ends)):
-        ends[i][0] = max(ends[i][0], ends[i - 1][0] + 13)
-    for yy, label, c in ends:
-        s.append(f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab t{c}">{html.escape(label)}</text>')
+        inner = f'<polyline points="{pts}" class="ln"/>'
+        inner += "".join(f'<circle cx="{x(k + 1):.1f}" cy="{y(v):.1f}" r="3.2" class="pt"><title>{html.escape(lab)}, k = {k + 1}: {v:.2f}</title></circle>'
+                         for k, v in enumerate(vals))
+        inner += f'<text x="{W - Rm + 8}" y="{y(vals[-1]) + 4:.1f}" data-y="{y(vals[-1]) + 4:.1f}" class="lab">{html.escape(end)}</text>'
+        s.append(g_run(lab, inner))
     s.append("</svg>")
-    return "".join(s)
-
-
-# ---------------------------------------------------------------- figures (SVG, theme tokens)
-CURVE_RUNS = [(k, v) for k, v in COLOR.items()]
+    return legend(fig, set(series) | set(refs), refs) + "".join(s)
 
 
 def svg_kcurve():
-    W, H, L, Rm, T, B = 640, 340, 52, 150, 16, 44
-    x = lambda k: L + (k - 1) * (W - L - Rm) / 4
-    y = lambda v: T + (60 - v) * (H - T - B) / 60
-    s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Test MRecall@100 against the number of queries k (RRF)">']
-    for v in range(0, 61, 10):
-        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
-                 f'<text x="{L - 8}" y="{y(v) + 4:.1f}" class="tick" text-anchor="end">{v}</text>')
-    for k in range(1, 6):
-        s.append(f'<text x="{x(k):.1f}" y="{H - B + 18}" class="tick" text-anchor="middle">{k}</text>')
-    s.append(f'<text x="{(L + W - Rm) / 2:.1f}" y="{H - 6}" class="axis" text-anchor="middle">queries used (k), RRF</text>')
-    s.append(f'<text x="14" y="{(T + H - B) / 2:.1f}" class="axis" text-anchor="middle" transform="rotate(-90 14 {(T + H - B) / 2:.1f})">test MRecall@100</text>')
-    single = ev("single")
-    if single:
-        yy = y(single["test"])
-        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{yy:.1f}" y2="{yy:.1f}" class="ref"/>'
-                 f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab ref-t">single {single["test"]:.2f}</text>')
-    ends = []
-    for label, c in CURVE_RUNS:
-        e = ev(label)
-        if not e or not e.get("test_curve"):
-            continue
-        pts = " ".join(f"{x(k + 1):.1f},{y(v):.1f}" for k, v in enumerate(e["test_curve"]))
-        s.append(f'<polyline points="{pts}" class="ln {c}"/>')
-        for k, v in enumerate(e["test_curve"]):
-            s.append(f'<circle cx="{x(k + 1):.1f}" cy="{y(v):.1f}" r="3" class="pt {c}"/>')
-        ends.append([y(e["test_curve"][-1]), label, c])
-    ends.sort()
-    for i in range(1, len(ends)):          # keep end labels apart
-        ends[i][0] = max(ends[i][0], ends[i - 1][0] + 13)
-    for yy, label, c in ends:
-        s.append(f'<text x="{W - Rm + 8}" y="{yy + 4:.1f}" class="lab t{c}">{html.escape(label)}</text>')
-    s.append("</svg>")
-    return "".join(s)
+    series = {r["label"]: (ev(r["label"])["test_curve"], r["label"]) for r in runs
+              if r["mode"] == "multi" and ev(r["label"]) and ev(r["label"]).get("test_curve")}
+    return line_fig("kcurve", "Test MRecall@100 against the number of queries k (RRF)", "queries used (k), RRF", series)
+
+
+def svg_perstep():
+    series = {}
+    for r in runs:
+        e = perstep_ev(r["label"]) if r["mode"] == "multi" else None
+        if e:
+            series[r["label"]] = (e["test_perstep"], r["label"] + ("" if e["step"] == r["selected"] else f" (step {e['step']})"))
+    return line_fig("perstep", "Test MRecall@100 of each query embedding used alone", "query embedding used alone (generation order)", series)
 
 
 def svg_scatter():
-    W, H, L, Rm, T, B = 640, 340, 52, 24, 16, 44
-    x0, x1, y0, y1 = 0.40, 0.65, 30, 56
+    W, H, L, Rm, T, B = 640, 360, 52, 24, 16, 44
+    x0, x1 = 0.40, 0.65
     x = lambda v: L + (v - x0) * (W - L - Rm) / (x1 - x0)
-    y = lambda v: T + (y1 - v) * (H - T - B) / (y1 - y0)
-    s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Test score against gold–gold cosine, selected and final checkpoints">']
-    for v in range(30, 57, 5):
-        s.append(f'<line x1="{L}" x2="{W - Rm}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
-                 f'<text x="{L - 8}" y="{y(v) + 4:.1f}" class="tick" text-anchor="end">{v}</text>')
+    s, y = frame(W, H, L, Rm, T, B, 25, 55, 5, "Test score against gold–gold cosine, selected and final checkpoints",
+                 "gold–gold cosine (test, the model's own document space)", "test MRecall@100")
     for i in range(0, 6):
         v = x0 + i * 0.05
         s.append(f'<text x="{x(v):.1f}" y="{H - B + 18}" class="tick" text-anchor="middle">{v:.2f}</text>')
-    s.append(f'<text x="{(L + W - Rm) / 2:.1f}" y="{H - 6}" class="axis" text-anchor="middle">gold–gold cosine (test, the model\'s own document space)</text>')
-    s.append(f'<text x="14" y="{(T + H - B) / 2:.1f}" class="axis" text-anchor="middle" transform="rotate(-90 14 {(T + H - B) / 2:.1f})">test MRecall@100</text>')
+    shown = set()
     for r in runs:
+        inner = ""
         for which, e in (("sel", ev(r["label"])), ("fin", ev(r["label"], 2500) if r["selected"] != 2500 else None)):
             g = gv(e, "gold_pair_cos")
-            if e is None or g is None or not (x0 <= g <= x1) or not (y0 <= e["test"] <= y1 + 1):
+            if e is None or g is None or not (x0 <= g <= x1) or not (25 <= e["test"] <= 56):
                 continue
-            cls = "single" if r["mode"] == "single" else "multi"
-            s.append(f'<circle cx="{x(g):.1f}" cy="{y(min(e["test"], y1)):.1f}" r="{5 if which == "sel" else 3.5}" '
-                     f'class="sc {cls} {which}"><title>{html.escape(r["label"])}, step {e["step"]}: '
-                     f'g–g {g:.3f}, test {e["test"]:.2f}</title></circle>')
-            if which == "sel" and r["label"] in ("single", "masked", "multi", "masked + div 2", "hps 0.5", "full sampling"):
-                s.append(f'<text x="{x(g) + 8:.1f}" y="{y(e["test"]) + 4:.1f}" class="lab">{html.escape(r["label"])}</text>')
+            inner += (f'<circle cx="{x(g):.1f}" cy="{y(e["test"]):.1f}" r="{5.5 if which == "sel" else 3.5}" '
+                      f'class="sc {"single" if r["mode"] == "single" else "multi"} {which}"><title>{html.escape(r["label"])}, step {e["step"]}'
+                      f'{" (selected)" if which == "sel" else " (final)"}: g–g {g:.3f}, test {e["test"]:.2f}</title></circle>')
+            if which == "sel":
+                inner += f'<text x="{x(g) + 8:.1f}" y="{y(e["test"]) + 4:.1f}" data-y="{y(e["test"]) + 4:.1f}" class="lab sl">{html.escape(r["label"])}</text>'
+        if inner:
+            s.append(g_run(r["label"], inner))
+            shown.add(r["label"])
     s.append("</svg>")
-    return "".join(s)
+    return legend("scatter", shown) + "".join(s)
+
+
+def scatter_offchart():
+    out = []
+    for r in runs:
+        e = ev(r["label"]); g = gv(e, "gold_pair_cos")
+        if e is not None and g is not None and not (0.40 <= g <= 0.65 and 25 <= e["test"] <= 56):
+            out.append(f"{r['label']} (g–g {g:.2f}, test {e['test']:.2f})")
+    return out
+
+
+FIG_JS = r"""
+(function(){
+  function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+  document.querySelectorAll('figure.ifig').forEach(function(fig){
+    var lg=fig.querySelector('.legend'), key='wk-hidden-'+lg.dataset.fig, hidden;
+    try{hidden=new Set(JSON.parse(store(key)||'[]'))}catch(e){hidden=new Set()}
+    var chips=[].slice.call(lg.querySelectorAll('.chip')), gs=[].slice.call(fig.querySelectorAll('svg g.run'));
+    function layout(){
+      var labs=[];
+      gs.forEach(function(g){if(!g.classList.contains('off'))g.querySelectorAll('text.lab').forEach(function(t){labs.push(t)})});
+      var line=labs.filter(function(t){return !t.classList.contains('sl')}), sc=labs.filter(function(t){return t.classList.contains('sl')});
+      line.sort(function(a,b){return a.dataset.y-b.dataset.y});
+      var prev=-1e9, ys=line.map(function(t){prev=Math.max(+t.dataset.y,prev+13); return prev});
+      var bottom=+fig.querySelector('svg').getAttribute('viewBox').split(' ')[3]-4;
+      for(var i=ys.length-1;i>=0;i--){ys[i]=Math.min(ys[i],i==ys.length-1?bottom:ys[i+1]-13)}
+      line.forEach(function(t,i){t.setAttribute('y',ys[i])});
+      sc.sort(function(a,b){return a.dataset.y-b.dataset.y}); var placed=[];
+      sc.forEach(function(t){var x=+t.getAttribute('x'), w=t.textContent.length*6.2, yy=+t.dataset.y, moved=true;
+        while(moved){moved=false; for(var i=0;i<placed.length;i++){var p=placed[i];
+          if(x<p.x+p.w&&p.x<x+w&&Math.abs(yy-p.y)<12){yy=p.y+12;moved=true}}}
+        t.setAttribute('y',yy); placed.push({x:x,w:w,y:yy})});
+    }
+    function apply(){
+      gs.forEach(function(g){g.classList.toggle('off',hidden.has(g.dataset.run))});
+      chips.forEach(function(c){c.classList.toggle('off',hidden.has(c.dataset.run)); c.setAttribute('aria-pressed',!hidden.has(c.dataset.run))});
+      store(key,JSON.stringify([].slice.call(hidden))); layout();
+    }
+    chips.forEach(function(c){
+      c.addEventListener('click',function(){hidden.has(c.dataset.run)?hidden.delete(c.dataset.run):hidden.add(c.dataset.run); apply()});
+      c.addEventListener('mouseenter',function(){if(hidden.has(c.dataset.run))return; fig.classList.add('hl');
+        gs.forEach(function(g){g.classList.toggle('hot',g.dataset.run===c.dataset.run)})});
+      c.addEventListener('mouseleave',function(){fig.classList.remove('hl')});
+    });
+    lg.querySelectorAll('.lg-grp').forEach(function(b){b.addEventListener('click',function(){
+      var mine=chips.filter(function(c){return c.dataset.grp===b.dataset.grp}).map(function(c){return c.dataset.run});
+      var anyOn=mine.some(function(r){return !hidden.has(r)});
+      mine.forEach(function(r){anyOn?hidden.add(r):hidden.delete(r)}); apply()})});
+    lg.querySelector('[data-act=all]').addEventListener('click',function(){hidden.clear(); apply()});
+    lg.querySelector('[data-act=none]').addEventListener('click',function(){chips.forEach(function(c){hidden.add(c.dataset.run)}); apply()});
+    apply();
+  });
+})();
+"""
 
 
 # ---------------------------------------------------------------- content
@@ -316,12 +374,12 @@ def content():
     B.append(("h3", "Test score against the number of queries"))
     B.append(("figure", svg_kcurve(), "Test MRecall@100 at k = 1–5 (RRF over the first k queries), selected checkpoints. "
               "Runs whose queries differ (`multi`, the sampling runs) need all five queries; runs that act like a single "
-              "query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5."))
+              "query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5. Dashed lines: single-query runs (one query, so no curve)."))
 
     B.append(("h3", "Each query embedding on its own"))
     B.append(("p", "The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the first generated). "
                    "Round 1 deleted the per-embedding lists of most selected checkpoints, so `multi`, `masked` and `hps 0.5` use "
-                   "their other evaluated checkpoint (marked); it is within 2 dev points of the selected one."))
+                   "their other evaluated checkpoint (marked with its step); it is within 2 dev points of the selected one."))
     B.append(("figure", svg_perstep(), "Test MRecall@100 of each query embedding used alone. MRecall needs every gold of a question "
               "in the top 100, so an embedding that targets one gold scores low by design; Recall@100 (second table) shows how much each one covers."))
     h, rows = perstep_table("test_perstep")
@@ -369,8 +427,9 @@ def content():
                "document encoder holds a question's golds far closer together than the base one (0.47–0.59 at the selected checkpoints, against "
                f"{gv(base, 'gold_cohesion'):.2f}); the differences between runs are differences in how much closer. "
                if base and gv(base, 'gold_pair_cos') is not None else "pending (C single full eval running). ")))
-    B.append(("figure", svg_scatter(), "Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500) of the round-2 runs. "
-              "Filled: single-query; open: multi-query. Final checkpoints below 30 test are off the chart."))
+    B.append(("figure", svg_scatter(), "Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500). "
+              "Filled: single-query; open: multi-query; hover a dot for its numbers. Off the chart: " + "; ".join(scatter_offchart()) +
+              " (the frozen-encoder runs sit in the untrained, anisotropic document space; see above)."))
     B.append(("ul", [
         "Single-query training keeps a question's golds together (g–g 0.59, sibling rank 4). Hungarian multi-query training separates them (0.50–0.53; sibling rank up to 16–20), presumably because each gold is a negative for the queries matched to its siblings.",
         "The masked loss removes that push (other golds are not negatives) and keeps g–g at single-query level (0.57–0.61, sibling rank 3–4). The diversity-penalty runs do too, yet score 3–4.5 points below `masked`: keeping the golds together is not enough on its own.",
@@ -531,19 +590,31 @@ svg .axis{fill:var(--muted);font:12px var(--body)}
 svg .lab{fill:var(--fg);font:12px var(--body)}
 svg .ref{stroke:var(--fg);stroke-width:1.5;stroke-dasharray:5 4}
 svg .ref-t{fill:var(--fg);font-weight:600}
-svg .ln{fill:none;stroke-width:2.2}
-svg .pt{stroke:var(--panel);stroke-width:1.5}
-svg .ln.c1{stroke:var(--c1)} svg .pt.c1{fill:var(--c1)} svg .tc1{fill:var(--c1)}
-svg .ln.c2{stroke:var(--c2)} svg .pt.c2{fill:var(--c2)} svg .tc2{fill:var(--c2)}
-svg .ln.c3{stroke:var(--c3)} svg .pt.c3{fill:var(--c3)} svg .tc3{fill:var(--c3)}
-svg .ln.c4{stroke:var(--c4)} svg .pt.c4{fill:var(--c4)} svg .tc4{fill:var(--c4)}
-svg .ln.c5{stroke:var(--c5)} svg .pt.c5{fill:var(--c5)} svg .tc5{fill:var(--c5)}
-svg .ln.c6{stroke:var(--c6)} svg .pt.c6{fill:var(--c6)} svg .tc6{fill:var(--c6)}
-svg .ln.c7{stroke:var(--c7)} svg .pt.c7{fill:var(--c7)} svg .tc7{fill:var(--c7)}
-svg .sc{stroke-width:1.8}
-svg .sc.single{fill:var(--c2);stroke:var(--c2)}
-svg .sc.multi{fill:var(--panel);stroke:var(--c1)}
-svg .sc.fin{opacity:.75}
+svg .ln{fill:none;stroke-width:2.2;stroke:var(--c)}
+svg .pt{fill:var(--c);stroke:var(--panel);stroke-width:1.5}
+svg .run .lab{fill:var(--c);font-weight:600}
+svg .run .ref{stroke:var(--c)}
+svg .run.off{display:none}
+svg .run{transition:opacity .15s}
+figure.hl svg .run:not(.hot){opacity:.12}
+figure.hl svg .run.hot .ln{stroke-width:3.4}
+svg .sc{stroke-width:2;stroke:var(--c)}
+svg .sc.single{fill:var(--c)}
+svg .sc.multi{fill:var(--panel)}
+svg .sc.fin{opacity:.7}
+svg .lab.sl{font-size:11px;font-weight:500}
+.legend{margin:0 0 10px;font-size:12.5px}
+.lg-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);margin-bottom:6px}
+.lg-ctl span{margin-right:auto;font-size:12px}
+.lg-row{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin:3px 0}
+.legend button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--rule);border-radius:99px;padding:1px 9px;cursor:pointer;line-height:1.6}
+.legend button:hover{border-color:var(--fg)}
+.legend button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.legend .lg-grp{font:600 11px/1.9 var(--mono);text-transform:uppercase;letter-spacing:.03em;color:var(--accent);border-color:transparent;background:var(--accent-soft)}
+.chip .sw{display:inline-block;width:14px;height:3px;background:var(--c);vertical-align:middle;margin-right:6px;border-radius:2px}
+.chip.ref .sw{background:repeating-linear-gradient(90deg,var(--c) 0 4px,transparent 4px 7px)}
+.chip.off{opacity:.45;text-decoration:line-through}
+.chip.off .sw{background:var(--muted)}
 @media (max-width:520px){body{font-size:14px} .wrap{padding-inline:16px}}
 """
 
@@ -552,7 +623,7 @@ def to_html(B):
     o = ['<title>QAMPARI Multi-Query Week</title>',
          '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;600&display=swap">',
-         f"<style>{CSS}</style>", '<div class="wrap">']
+         f"<style>{CSS}{run_css()}</style>", '<div class="wrap">']
     for b in B:
         k = b[0]
         if k == "lede":
@@ -590,8 +661,9 @@ def to_html(B):
             t.append("</tbody></table></div>")
             o.append("".join(t))
         elif k == "figure":
-            o.append(f"<figure>{b[1]}<figcaption>{h_inline(b[2])}</figcaption></figure>")
+            o.append(f'<figure class="ifig">{b[1]}<figcaption>{h_inline(b[2])}</figcaption></figure>')
     o.append("</div>")
+    o.append(f"<script>{FIG_JS}</script>")
     return "\n".join(o)
 
 

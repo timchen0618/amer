@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 07:11; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 09:29; runs still in progress are marked pending: hps 0.1, hps + full sampling, hps + saturate 50%, A multi, B single, B multi.
 
 ## Summary
 
@@ -61,11 +61,11 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 
 ### Test score against the number of queries
 
-*Figure (see the HTML page): Test MRecall@100 at k = 1–5 (RRF over the first k queries), selected checkpoints. Runs whose queries differ (`multi`, the sampling runs) need all five queries; runs that act like a single query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5.*
+*Figure (see the HTML page): Test MRecall@100 at k = 1–5 (RRF over the first k queries), selected checkpoints. Runs whose queries differ (`multi`, the sampling runs) need all five queries; runs that act like a single query (`masked`, `hps`) are flat or fall with k. None reaches `single` at k = 5. Dashed lines: single-query runs (one query, so no curve).*
 
 ### Each query embedding on its own
 
-The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the first generated). Round 1 deleted the per-embedding lists of most selected checkpoints, so `multi`, `masked` and `hps 0.5` use their other evaluated checkpoint (marked); it is within 2 dev points of the selected one.
+The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the first generated). Round 1 deleted the per-embedding lists of most selected checkpoints, so `multi`, `masked` and `hps 0.5` use their other evaluated checkpoint (marked with its step); it is within 2 dev points of the selected one.
 
 *Figure (see the HTML page): Test MRecall@100 of each query embedding used alone. MRecall needs every gold of a question in the top 100, so an embedding that targets one gold scores low by design; Recall@100 (second table) shows how much each one covers.*
 
@@ -173,7 +173,7 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 
 **Untrained document space (reference).** Cell C keeps the base model's document encoder, so its g–g is the base retriever's: 0.85 raw, but random passage pairs already sit at 0.74, so only 0.11 above random (test). The base space is very anisotropic; training spreads the corpus out (random pairs 0.02–0.05 in every trained run), so raw g–g is not comparable with it, only **above random** is. On that scale every trained document encoder holds a question's golds far closer together than the base one (0.47–0.59 at the selected checkpoints, against 0.11); the differences between runs are differences in how much closer. 
 
-*Figure (see the HTML page): Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500) of the round-2 runs. Filled: single-query; open: multi-query. Final checkpoints below 30 test are off the chart.*
+*Figure (see the HTML page): Test MRecall@100 against gold–gold cosine. Large dots: selected checkpoints; small dots: final checkpoints (step 2500). Filled: single-query; open: multi-query; hover a dot for its numbers. Off the chart: C single (g–g 0.85, test 31.26); C multi (g–g 0.85, test 31.07); A single (g–g 0.85, test 29.76) (the frozen-encoder runs sit in the untrained, anisotropic document space; see above).*
 
 - Single-query training keeps a question's golds together (g–g 0.59, sibling rank 4). Hungarian multi-query training separates them (0.50–0.53; sibling rank up to 16–20), presumably because each gold is a negative for the queries matched to its siblings.
 - The masked loss removes that push (other golds are not negatives) and keeps g–g at single-query level (0.57–0.61, sibling rank 3–4). The diversity-penalty runs do too, yet score 3–4.5 points below `masked`: keeping the golds together is not enough on its own.
