@@ -3142,12 +3142,35 @@
    2500
   ],
   "missing": [
-   2250,
    500,
    2500
   ],
-  "evals": [],
-  "selected": null,
+  "evals": [
+   {
+    "step": 2250,
+    "dev": 64.0,
+    "dev_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.6701609333753585,
+     "gold_rand_cos": 0.024349985163644304,
+     "gold_cohesion": 0.6458109482117143,
+     "align_cos": 0.7104925805926323,
+     "align_margin": 0.030006588011980057,
+     "sibling_rank_median": 1.0
+    },
+    "test": 51.79,
+    "test_geom": {
+     "query_pair_cos": null,
+     "gold_pair_cos": 0.6051489094275764,
+     "gold_rand_cos": 0.025646836962397584,
+     "gold_cohesion": 0.5795020724651788,
+     "align_cos": 0.6667620683625594,
+     "align_margin": 0.03483599511355779,
+     "sibling_rank_median": 3.0
+    }
+   }
+  ],
+  "selected": 2250,
   "ties": null,
   "final": null
  },
@@ -3157,7 +3180,7 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "multi",
   "desc": "joint doc encoder, causal query attention",
-  "status": "cheap evals",
+  "status": "full evals",
   "planned": [],
   "missing": [],
   "evals": [],

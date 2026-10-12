@@ -493,6 +493,12 @@ def content():
         w3.append(f"`A multi` (frozen, causal) scores {am['dev']:.1f} / {am['test']:.2f}, a tie with `C multi`: causal attention does not change the multi-query result either.")
     if as_:
         w3.append(f"`A single` (frozen, causal attention) scores {as_['dev']:.1f} / {as_['test']:.2f}, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query.")
+    bs = ev("B single")
+    if bs:
+        w3.append(f"`B single` (trained encoder, causal attention) scores {bs['dev']:.1f} / {bs['test']:.2f}"
+                  + (" so far" if R["B single"]["status"] != "done" else "") +
+                  f", against {n['single_dev']:.1f} / {n['single_test']:.2f} for `single` (trained encoder, bidirectional): "
+                  + ("a tie on dev." if abs(bs['dev'] - n['single_dev']) < 2 else "not a tie on dev."))
     B.append(("p", " ".join(w3) if w3 else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`."))
 
     B.append(("h2", "Next steps and open questions"))
