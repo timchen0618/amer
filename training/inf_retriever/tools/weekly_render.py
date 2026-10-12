@@ -307,8 +307,10 @@ PERSTEP_NOTES = [
     "Each finds 27–43% of a question's golds and scores 1.3–11.7 MRecall on its own; fused, they reach 38–43. "
     "For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).",
     "**`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.",
-    "**`hps`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
+    "**`hps 0.5` and `hps 0.25`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
     "and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused).",
+    "**`hps 0.1`: the single-query term is too weak to make the first query strong.** Embedding 1 alone scores 36.35 (66% of the golds); "
+    "the others are diverse-run-like (3–6 MRecall, 33–38%), and here fusion helps: 44.44 for all five.",
     "**Diversity penalty: the later embeddings get weaker, not complementary.** Embedding 1 is best (45–49), the rest decline (34–43), "
     "and fusion does not beat embedding 1 alone.",
     "No run has embeddings that are both strong alone and complementary. The diverse runs get the complementarity; the others get the strength.",
@@ -473,6 +475,9 @@ def content():
         if cm.get("test_perstep"):
             w3.append("Its five embeddings are similar in strength on their own (test " + ", ".join(f"{x:.1f}" for x in cm["test_perstep"]) +
                       f"); fusing them adds {cm['test'] - max(cm['test_perstep']):.1f} over the best one.")
+    am = ev("A multi")
+    if am and cm:
+        w3.append(f"`A multi` (frozen, causal) scores {am['dev']:.1f} / {am['test']:.2f}, a tie with `C multi`: causal attention does not change the multi-query result either.")
     if as_:
         w3.append(f"`A single` (frozen, causal attention) scores {as_['dev']:.1f} / {as_['test']:.2f}, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query.")
     B.append(("p", " ".join(w3) if w3 else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`."))
