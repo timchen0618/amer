@@ -2547,9 +2547,17 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + rate reaching 1 at step 1250",
-  "status": "cheap evals",
-  "planned": [],
-  "missing": [],
+  "status": "full evals",
+  "planned": [
+   1000,
+   750,
+   2500
+  ],
+  "missing": [
+   1000,
+   750,
+   2500
+  ],
   "evals": [],
   "selected": null,
   "ties": null,
