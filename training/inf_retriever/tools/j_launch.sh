@@ -6,6 +6,7 @@
 #     j_hps_seq         --hps_multi_loss hungarian_seq   (no matching to a gold fed in before)
 #     j_hps_detach      --detach_fed_output
 #     j_hps_seq_detach  both
+#   E5: j_hps_fednorm  --fed_norm token (fed vectors are 80-300x a token embedding, probe D2)
 #   D4(b): j_sat50_dense  plain Hungarian, saturate 50% (as clean_v3_abl2_qampari_sat50), in-training eval
 #     every 50 steps with the new logging, to order the events around the switch at step 1250.
 # Usage (from anywhere): bash <worktree>/training/inf_retriever/tools/j_launch.sh [run ...]
@@ -20,8 +21,9 @@ declare -A EXTRA SAVES
 EXTRA[j_hps_seq]="$HPS --hps_multi_loss hungarian_seq";                         SAVES[j_hps_seq]=$SAVE
 EXTRA[j_hps_detach]="$HPS --detach_fed_output";                                 SAVES[j_hps_detach]=$SAVE
 EXTRA[j_hps_seq_detach]="$HPS --hps_multi_loss hungarian_seq --detach_fed_output"; SAVES[j_hps_seq_detach]=$SAVE
+EXTRA[j_hps_fednorm]="$HPS --fed_norm token";                                  SAVES[j_hps_fednorm]=$SAVE
 EXTRA[j_sat50_dense]="--sampling_saturate_frac 0.5 --eval_freq 50 --select_metric cover5"; SAVES[j_sat50_dense]="1000 1250 1500 2500"
-RUNS=("$@"); [ ${#RUNS[@]} -eq 0 ] && RUNS=(j_hps_seq j_hps_detach j_hps_seq_detach j_sat50_dense)
+RUNS=("$@"); [ ${#RUNS[@]} -eq 0 ] && RUNS=(j_hps_seq j_hps_detach j_hps_seq_detach j_hps_fednorm j_sat50_dense)
 for r in "${RUNS[@]}"; do
   run=clean_v3_j_qampari_${r#j_}
   [ -n "${EXTRA[$r]+x}" ] || { echo "unknown run $r" >&2; exit 1; }
