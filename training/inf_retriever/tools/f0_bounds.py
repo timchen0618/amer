@@ -11,6 +11,7 @@ retrieval_inf.aggregate_rrf; scored at top 100 by gold id, as tools/perstep_eval
   centroid       one query = normalized mean of all golds. Optimistic single-query counterpart of gold_query.
   loo_single     gold i is searched with one query = normalized mean of the other n - 1 golds.
   loo_multi      gold i is searched with min(5, n - 1) queries = k-means centres of the other n - 1 golds, RRF.
+The two multi-query bounds are also scored with round-robin fusion (*_rr).
 For the leave-one-out bounds a question counts for MRecall when every gold is found by its own held-out query.
 
 Geometry: quantiles of per-question mean gold-gold cosine and of gold-pair cosine, shares of gold pairs above
@@ -64,6 +65,15 @@ def rrf(lists):
         for r, d in enumerate(ids, 1):
             s[d] = s.get(d, 0.0) + 1.0 / (r + 60)
     return [d for d, _ in sorted(s.items(), key=lambda t: -t[1])]
+
+
+def round_robin(lists):
+    out, seen = [], set()
+    for r in range(max(map(len, lists))):
+        for ids in lists:
+            if r < len(ids) and ids[r] not in seen:
+                seen.add(ids[r]); out.append(ids[r])
+    return out
 
 
 def main():
@@ -145,16 +155,20 @@ def main():
     res, per_q = {}, {s: [dict(n=len(golds[s][qi])) for qi in range(len(golds[s]))] for s in golds}
     for s, qi, kind, tgt, st, cnt in groups:
         L = lists(st, cnt)
-        top = (rrf(L) if cnt > 1 else L[0])[:TOPK]
         gl = [g for g in map(str, golds[s][qi]) if g in emb_of]
-        if tgt < 0:
-            hit = [g in set(top) for g in gl]
-            per_q[s][qi][kind] = (int(all(hit)), sum(hit) / len(hit))
-        else:
-            per_q[s][qi].setdefault(kind, []).append(gl[tgt] in set(top))
+        fused = {kind: rrf(L) if cnt > 1 else L[0]}
+        if kind in ("gold_query", "loo_multi"):  # also round robin: RRF buries a list's own top hits under consensus docs
+            fused[kind + "_rr"] = round_robin(L)
+        for kd, f in fused.items():
+            top = set(f[:TOPK])
+            if tgt < 0:
+                hit = [g in top for g in gl]
+                per_q[s][qi][kd] = (int(all(hit)), sum(hit) / len(hit))
+            else:
+                per_q[s][qi].setdefault(kd, []).append(gl[tgt] in top)
     for s in golds:
         out = {}
-        for kind in ("gold_query", "centroid", "loo_single", "loo_multi"):
+        for kind in ("gold_query", "gold_query_rr", "centroid", "loo_single", "loo_multi", "loo_multi_rr"):
             rows = []
             for p in per_q[s]:
                 v = p[kind]

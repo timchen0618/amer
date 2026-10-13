@@ -37,9 +37,12 @@ case "$EXTRA" in *--freeze_doc_encoder*) ;; *) echo "f_run.sh is for frozen-doc-
 
 state=results/phaseC/$RUN.trainjob
 if [ -s "$state" ]; then TJ=$(cat "$state"); else
+  # CODE_ROOT (optional): a worktree whose training code runs (its phaseC_train.sbatch must support CODE_ROOT, J's fd96d3b+);
+  # data, checkpoints and evaluation stay on the main checkout.
+  TS=$T/phaseC_train.sbatch; [ -n "${CODE_ROOT:-}" ] && TS=$CODE_ROOT/$T/phaseC_train.sbatch
   TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=data/training/clean_v3 \
-       sbatch --parsable --export=ALL --job-name=phaseC_$RUN $T/phaseC_train.sbatch) || { log "ERROR: training submit failed"; exit 1; }
-  echo "$TJ" > "$state"; log "submitted training job $TJ (frozen F run; mode=$MODE lr=$LR extra='$EXTRA')"
+       sbatch --parsable --export=ALL --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
+  echo "$TJ" > "$state"; log "submitted training job $TJ (frozen F run; mode=$MODE lr=$LR extra='$EXTRA'${CODE_ROOT:+ code=$CODE_ROOT@$(git -C $CODE_ROOT rev-parse --short HEAD)})"
 fi
 TLOG=sbatch_outputs/phaseC_$RUN.out
 ck() { echo checkpoints/$DS/$RUN/checkpoint/step-$1; }
