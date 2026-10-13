@@ -207,7 +207,7 @@ class WeightedAvgStats:
         keys = sorted(self.raw_stats.keys())
         if torch.distributed.is_initialized():
             # Each rank may have accumulated different stat keys (e.g. different
-            # gold-count batches produce different numbers of step_X_teacher_cos_sim
+            # gold-count batches produce different numbers of step_X_next_fed_gold_cos
             # keys). broadcast_object_list requires identical list lengths on all
             # ranks, so use all_gather_object to take the union instead.
             all_keys_list = [None] * torch.distributed.get_world_size()
