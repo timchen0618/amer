@@ -35,6 +35,9 @@ PORT=$((29600 + SLURM_JOB_ID % 300))
 # the phase B/C runs before the 2026-09-27 audit.
 DATA_ROOT=${DATA_ROOT:-data/training/clean}
 D=/scratch/hc3337/projects/autoregressive/$DATA_ROOT/$DS
+# CODE_ROOT: checkout whose training code runs (default the main one). Data and checkpoints stay
+# relative to the main checkout, so a worktree's code can train without touching its own tree.
+CODE_ROOT=${CODE_ROOT:-/scratch/hc3337/projects/autoregressive}
 
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/div.ext3:ro \
@@ -42,7 +45,8 @@ singularity exec --nv \
             /bin/bash -c "
 source /ext3/env.sh
 cd /scratch/hc3337/projects/autoregressive
-accelerate launch --config_file training/inf_retriever/accelerate_config_2gpu_fsdp_nooffload.yaml --main_process_port $PORT training/inf_retriever/finetuning_multi.py \
+echo \"code: $CODE_ROOT $(git -C $CODE_ROOT rev-parse --short HEAD)\"
+accelerate launch --config_file $CODE_ROOT/training/inf_retriever/accelerate_config_2gpu_fsdp_nooffload.yaml --main_process_port $PORT $CODE_ROOT/training/inf_retriever/finetuning_multi.py \
     --train_data $D/train_data.jsonl --eval_data $D/dev_data.jsonl \
     --temperature 0.05 --total_steps $STEPS --warmup_steps $WARMUP --lr $LR \
     --save_freq $FREQ --log_freq $LOGF --eval_freq $FREQ \
