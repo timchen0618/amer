@@ -2525,9 +2525,17 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + sampling rate 1 from the start",
-  "status": "waiting for GPUs",
-  "planned": [],
-  "missing": [],
+  "status": "full evals",
+  "planned": [
+   750,
+   1000,
+   2500
+  ],
+  "missing": [
+   750,
+   1000,
+   2500
+  ],
   "evals": [],
   "selected": null,
   "ties": null,
@@ -2539,7 +2547,7 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + rate reaching 1 at step 1250",
-  "status": "waiting for GPUs",
+  "status": "training",
   "planned": [],
   "missing": [],
   "evals": [],
