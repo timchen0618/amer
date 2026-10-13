@@ -499,6 +499,20 @@ def content():
                   + (" so far" if R["B single"]["status"] != "done" else "") +
                   f", against {n['single_dev']:.1f} / {n['single_test']:.2f} for `single` (trained encoder, bidirectional): "
                   + ("a tie on dev." if abs(bs['dev'] - n['single_dev']) < 2 else "not a tie on dev."))
+    bm, mu = ev("B multi"), ev("multi")
+    if bm and mu:
+        tie = lambda a, b: "a tie" if abs(a - b) < 2 else ("above" if a > b else "below")
+        s = (f"`B multi` (trained encoder, causal attention) scores {bm['dev']:.1f} / {bm['test']:.2f}"
+             + (" so far" if R["B multi"]["status"] != "done" else "") +
+             f", against {mu['dev']:.1f} / {mu['test']:.2f} for `multi` (bidirectional) — {tie(bm['dev'], mu['dev'])} on dev, "
+             f"{bm['test'] - mu['test']:+.1f} on test")
+        if bs:
+            s += f" — and {bs['dev'] - bm['dev']:.1f} dev / {bs['test'] - bm['test']:.1f} test below `B single`"
+        s += "."
+        if bm.get("test_perstep"):
+            s += (" As in `multi`, the first embedding alone is weak (test " + ", ".join(f"{x:.1f}" for x in bm["test_perstep"]) +
+                  "); the score comes from fusing the five.")
+        w3.append(s)
     B.append(("p", " ".join(w3) if w3 else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`."))
 
     B.append(("h2", "Next steps and open questions"))

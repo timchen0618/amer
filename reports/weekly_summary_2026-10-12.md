@@ -1,6 +1,6 @@
 # QAMPARI multi-query: week of Oct 5–11
 
-QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-12 21:15; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, B multi.
+QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of 2026-10-13 00:01; runs still in progress are marked pending: hps + full sampling, hps + saturate 50%, B multi.
 
 ## Summary
 
@@ -62,7 +62,7 @@ Each run at the checkpoint with the best **full dev** score; test is never used 
 |  | A single | 500 * | 31.60 | 29.76 | – | – | 0.85 | – | done |
 |  | A multi | 2250 * | 30.2 | 30.70 | 22.41 | 0.87 | 0.85 | +0.02 | done |
 |  | B single | 2250 * | 64.00 | 51.79 | – | – | 0.61 | – | done |
-|  | B multi |  |  |  |  |  |  |  | full evals |
+|  | B multi | 1500 | 62.0 | 43.31 | 16.57 | 0.73 | 0.50 | +0.22 | full evals (1 of 3) |
 
 - **q–q cos**: mean cosine between a question's 5 query embeddings (test). Blank for single-query runs.
 - **g–g cos**: mean cosine between the gold passages of the same question, in that model's own document space (test). Training changes the document encoder, so this differs between runs.
@@ -94,6 +94,7 @@ The same retrieval, scored with one embedding's top 100 alone (embedding 1 = the
 | multi, LR 3e-5 | 1750 | 10.36 | 11.68 | 4.90 | 2.45 | 3.20 | 39.92 |
 | C multi | 2250 | 25.42 | 28.63 | 27.12 | 23.54 | 19.02 | 31.07 |
 | A multi | 2250 | 22.41 | 26.93 | 19.59 | 22.03 | 27.50 | 30.70 |
+| B multi | 1500 | 16.57 | 11.49 | 8.10 | 6.97 | 4.52 | 43.31 |
 | single (reference) | 2000 | 53.30 |  |  |  |  |  |
 
 Recall@100 (share of a question's golds found) of each embedding alone, test:
@@ -113,6 +114,7 @@ Recall@100 (share of a question's golds found) of each embedding alone, test:
 | multi, LR 3e-5 | 1750 | 39.65 | 43.49 | 32.22 | 31.07 | 29.60 |
 | C multi | 2250 | 55.34 | 61.15 | 57.50 | 54.95 | 50.82 |
 | A multi | 2250 | 54.01 | 56.95 | 49.80 | 52.29 | 58.46 |
+| B multi | 1500 | 47.79 | 46.41 | 42.39 | 39.04 | 34.92 |
 
 - **Runs with diverse queries (`multi`, sampling, LR 3e-5): every embedding is weak alone, and they are complementary.** Each finds 27–43% of a question's golds and scores 1.3–11.7 MRecall on its own; fused, they reach 38–43. For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).
 - **`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.
@@ -187,6 +189,7 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | A single | 500 | – | 0.85 | – | 0.11 | 0.32 | +0.02 | 26 | – | 0.85 |
 | A multi | 2250 | 0.87 | 0.85 | +0.02 | 0.11 | 0.28 | -0.01 | 26 | 0.85 | 0.85 |
 | B single | 2250 | – | 0.61 | – | 0.58 | 0.67 | +0.03 | 3 | – | 0.67 |
+| B multi | 1500 | 0.73 | 0.50 | +0.22 | 0.48 | 0.58 | +0.02 | 18 | 0.72 | 0.54 |
 
 **Untrained document space (reference).** Cell C keeps the base model's document encoder, so its g–g is the base retriever's: 0.85 raw, but random passage pairs already sit at 0.74, so only 0.11 above random (test). The base space is very anisotropic; training spreads the corpus out (random pairs 0.02–0.05 in every trained run), so raw g–g is not comparable with it, only **above random** is. On that scale every trained document encoder holds a question's golds far closer together than the base one (0.47–0.59 at the selected checkpoints, against 0.11); the differences between runs are differences in how much closer. 
 
@@ -222,9 +225,9 @@ Computed on the full corpus for every evaluated checkpoint (`tools/geometry_eval
 | work | runs | status |
 | --- | --- | --- |
 | Wave 2: best hps weight combined with sampling | `hps + full sampling`, `hps + saturate 50%` | launched 2026-10-12 10:14 with weight 0.5, the best full dev of 0.5 / 0.25 / 0.1 (63.0 / 62.8 / 62.6: a tie under the 2-point rule); hps + full sampling: full evals; hps + saturate 50%: training |
-| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: done; C multi: done; A single: done; A multi: done; B single: done; B multi: full evals |
+| Wave 3: document encoder frozen or joint × query attention causal or bidirectional | C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1. | C single: done; C multi: done; A single: done; A multi: done; B single: done; B multi: full evals (1 of 3) |
 
-`C single` (frozen document encoder) scores 31.8 full dev / 31.26 test, against 64.8 / 53.30 for `single` with a trained document encoder: freezing the document encoder roughly halves the score. With the encoder frozen, multi-query matches single-query: `C multi` scores 31.4 / 31.07 (RRF, k = 5), a tie with `C single`. With a trained encoder the gap is 5.7–15.3 test points. So the gap appears only once the document encoder is trained, which fits the gold–gold finding (Hungarian training leaves golds further apart than single-query training). A frozen encoder may also simply cap both near 31, leaving no room for a gap. Its five embeddings are similar in strength on their own (test 25.4, 28.6, 27.1, 23.5, 19.0); fusing them adds 2.4 over the best one. `A multi` (frozen, causal) scores 30.2 / 30.70, a tie with `C multi`: causal attention does not change the multi-query result either. `A single` (frozen, causal attention) scores 31.6 / 29.76, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query. `B single` (trained encoder, causal attention) scores 64.0 / 51.79, against 64.8 / 53.30 for `single` (trained encoder, bidirectional): a tie on dev.
+`C single` (frozen document encoder) scores 31.8 full dev / 31.26 test, against 64.8 / 53.30 for `single` with a trained document encoder: freezing the document encoder roughly halves the score. With the encoder frozen, multi-query matches single-query: `C multi` scores 31.4 / 31.07 (RRF, k = 5), a tie with `C single`. With a trained encoder the gap is 5.7–15.3 test points. So the gap appears only once the document encoder is trained, which fits the gold–gold finding (Hungarian training leaves golds further apart than single-query training). A frozen encoder may also simply cap both near 31, leaving no room for a gap. Its five embeddings are similar in strength on their own (test 25.4, 28.6, 27.1, 23.5, 19.0); fusing them adds 2.4 over the best one. `A multi` (frozen, causal) scores 30.2 / 30.70, a tie with `C multi`: causal attention does not change the multi-query result either. `A single` (frozen, causal attention) scores 31.6 / 29.76, also a tie with `C single`: with a frozen encoder, causal vs bidirectional query attention makes no difference for single-query. `B single` (trained encoder, causal attention) scores 64.0 / 51.79, against 64.8 / 53.30 for `single` (trained encoder, bidirectional): a tie on dev. `B multi` (trained encoder, causal attention) scores 62.0 / 43.31 so far, against 61.2 / 38.42 for `multi` (bidirectional) — a tie on dev, +4.9 on test — and 2.0 dev / 8.5 test below `B single`. As in `multi`, the first embedding alone is weak (test 16.6, 11.5, 8.1, 7.0, 4.5); the score comes from fusing the five.
 
 ## Next steps and open questions
 
