@@ -2525,15 +2525,13 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + sampling rate 1 from the start",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    750,
    1000,
    2500
   ],
-  "missing": [
-   2500
-  ],
+  "missing": [],
   "evals": [
    {
     "step": 750,
@@ -2676,13 +2674,84 @@
      20.22,
      24.92
     ]
+   },
+   {
+    "step": 2500,
+    "dev": 49.8,
+    "dev_k1": 55.6,
+    "dev_curve": [
+     55.6,
+     50.2,
+     49.0,
+     50.0,
+     49.8
+    ],
+    "dev_rr5": 47.4,
+    "dev_geom": {
+     "query_pair_cos": 0.5260233519673347,
+     "gold_pair_cos": 0.5330797027647495,
+     "gold_rand_cos": 0.035925697903534455,
+     "gold_cohesion": 0.4971540048612151,
+     "align_cos": 0.632928423192352,
+     "align_margin": 0.06363534394954332,
+     "sibling_rank_median": 1.0,
+     "gap": -0.007056350797414734
+    },
+    "dev_perstep": [
+     55.6,
+     1.8,
+     0.4,
+     1.0,
+     2.4
+    ],
+    "dev_perstep_recall": [
+     80.17,
+     32.1,
+     20.97,
+     20.68,
+     27.0
+    ],
+    "test": 35.03,
+    "test_k1": 40.11,
+    "test_curve": [
+     40.11,
+     35.78,
+     32.77,
+     31.64,
+     35.03
+    ],
+    "test_rr5": 32.02,
+    "test_geom": {
+     "query_pair_cos": 0.543495695525868,
+     "gold_pair_cos": 0.4699581706029996,
+     "gold_rand_cos": 0.041367905909454133,
+     "gold_cohesion": 0.4285902646935455,
+     "align_cos": 0.5961951834855604,
+     "align_margin": 0.07153032987866123,
+     "sibling_rank_median": 11.0,
+     "gap": 0.07353752492286836
+    },
+    "test_perstep": [
+     40.11,
+     0.56,
+     0.19,
+     0.19,
+     0.38
+    ],
+    "test_perstep_recall": [
+     69.95,
+     23.68,
+     16.54,
+     15.52,
+     18.53
+    ]
    }
   ],
   "selected": 750,
   "ties": [
    1000
   ],
-  "final": null
+  "final": 2500
  },
  {
   "run": "clean_v3_abl2_qampari_hps_sat50",
