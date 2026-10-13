@@ -308,7 +308,9 @@ PERSTEP_NOTES = [
     "For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).",
     "**`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.",
     "**`hps 0.5` and `hps 0.25`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
-    "and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused).",
+    "and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused). "
+    "`hps + full sampling` is the same shape with even weaker extras: embedding 1 finds 75–76% of the golds (48.4–50.1 MRecall), embeddings 2–5 find 20–36% (0.2–3.2), "
+    "and fusion again lowers the score (step 750: 50.09 alone, 46.33 fused).",
     "**`hps 0.1`: the single-query term is too weak to make the first query strong.** Embedding 1 alone scores 36.35 (66% of the golds); "
     "the others are diverse-run-like (3–6 MRecall, 33–38%), and here fusion helps: 44.44 for all five.",
     "**Diversity penalty: the later embeddings get weaker, not complementary.** Embedding 1 is best (45–49), the rest decline (34–43), "
