@@ -37,8 +37,9 @@ case "$EXTRA" in *--freeze_doc_encoder*) ;; *) echo "f_run.sh is for frozen-doc-
 
 state=results/phaseC/$RUN.trainjob
 if [ -s "$state" ]; then TJ=$(cat "$state"); else
-  # CODE_ROOT (optional): a worktree whose training code runs (its phaseC_train.sbatch must support CODE_ROOT, J's fd96d3b+);
-  # data, checkpoints and evaluation stay on the main checkout.
+  # CODE_ROOT (optional): a worktree whose code trains (its phaseC_train.sbatch must support CODE_ROOT, J's fd96d3b+) and
+  # retrieves (its retrieve_ckpt.sbatch must run $CODE_ROOT/retrieval_inf.py; needed when a flag changes generate(), e.g.
+  # --fed_norm token); data, checkpoints, scoring and results stay on the main checkout.
   TS=$T/phaseC_train.sbatch; [ -n "${CODE_ROOT:-}" ] && TS=$CODE_ROOT/$T/phaseC_train.sbatch
   TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=data/training/clean_v3 \
        sbatch --parsable --export=ALL --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
@@ -59,7 +60,7 @@ submit() {  # $1 step $2 dev|test
   [ -n "$K" ] && ps=$b/${set}_steps.jsonl
   sbatch --parsable --job-name=full_${RUN}_s${s}_$set \
     --export=ALL,CKPT=$(ck $s),EMB_DIR=$EMB,DATA_NAME=$DS,DATA=$data,OUT_DIR=$b/$set,K=$K,SAVE_PER_STEP=$ps,SAVE_QEMB=$b/${set}_qemb.npy \
-    $T/retrieve_ckpt.sbatch > $b/$set.job
+    ${CODE_ROOT:+$CODE_ROOT/}$T/retrieve_ckpt.sbatch > $b/$set.job
 }
 # score one finished retrieval; returns 0 when the score is on disk
 score() {  # $1 step $2 dev|test
