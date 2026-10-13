@@ -303,8 +303,8 @@ def nums():
 
 
 PERSTEP_NOTES = [
-    "**Runs with diverse queries (`multi`, sampling, LR 3e-5): every embedding is weak alone, and they are complementary.** "
-    "Each finds 27–43% of a question's golds and scores 1.3–11.7 MRecall on its own; fused, they reach 38–43. "
+    "**Runs with diverse queries (`multi`, sampling, LR 3e-5, `B multi`): every embedding is weak alone, and they are complementary.** "
+    "Each finds 27–48% of a question's golds and scores 1.3–16.6 MRecall on its own; fused, they reach 38–43. "
     "For comparison, `single`'s one query finds 77.62% of the golds (53.30 MRecall).",
     "**`masked`: five copies of one good query.** Every embedding alone scores 46–49 and finds 74–76% of the golds; fusing them gives 48.59, no gain.",
     "**`hps 0.5` and `hps 0.25`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
@@ -512,6 +512,11 @@ def content():
         if bm.get("test_perstep"):
             s += (" As in `multi`, the first embedding alone is weak (test " + ", ".join(f"{x:.1f}" for x in bm["test_perstep"]) +
                   "); the score comes from fusing the five.")
+        fin = next((e for e in R["B multi"]["evals"] if e["step"] == 2500), None)
+        if fin and fin.get("test_perstep_recall") and bm["dev"] - fin["dev"] >= 2:
+            s += (f" It degrades late in training: step 2500 scores {fin['dev']:.1f} / {fin['test']:.2f}, each embedding alone finds only "
+                  f"{min(fin['test_perstep_recall']):.0f}–{max(fin['test_perstep_recall']):.0f}% of the golds "
+                  f"({min(fin['test_perstep']):.1f}–{max(fin['test_perstep']):.1f} MRecall), so nearly all of its score comes from fusion.")
         w3.append(s)
     B.append(("p", " ".join(w3) if w3 else "Early sign from wave 3: `C single` scores 37–39 on cheap dev at every step, against 71–74 for `single`."))
 

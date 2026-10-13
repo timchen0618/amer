@@ -2547,7 +2547,7 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + rate reaching 1 at step 1250",
-  "status": "training",
+  "status": "cheap evals",
   "planned": [],
   "missing": [],
   "evals": [],
@@ -3304,17 +3304,85 @@
   "group": "doc encoder \u00d7 attention (wave 3)",
   "mode": "multi",
   "desc": "joint doc encoder, causal query attention",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    1500,
    1250,
    2500
   ],
-  "missing": [
-   1250,
-   2500
-  ],
+  "missing": [],
   "evals": [
+   {
+    "step": 1250,
+    "dev": 58.8,
+    "dev_k1": 34.4,
+    "dev_curve": [
+     34.4,
+     47.8,
+     55.0,
+     59.8,
+     58.8
+    ],
+    "dev_rr5": 54.4,
+    "dev_geom": {
+     "query_pair_cos": 0.7091593426465989,
+     "gold_pair_cos": 0.5431367191076278,
+     "gold_rand_cos": 0.026943867683952703,
+     "gold_cohesion": 0.5161928514236752,
+     "align_cos": 0.5865110789257102,
+     "align_margin": 0.02547159595543053,
+     "sibling_rank_median": 5.0,
+     "gap": 0.16602262353897101
+    },
+    "dev_perstep": [
+     34.4,
+     24.4,
+     15.2,
+     12.6,
+     15.8
+    ],
+    "dev_perstep_recall": [
+     62.36,
+     56.08,
+     51.77,
+     47.34,
+     51.91
+    ],
+    "test": 42.94,
+    "test_k1": 15.07,
+    "test_curve": [
+     15.07,
+     27.12,
+     37.1,
+     42.18,
+     42.94
+    ],
+    "test_rr5": 36.35,
+    "test_geom": {
+     "query_pair_cos": 0.7125961077864337,
+     "gold_pair_cos": 0.5193664932767326,
+     "gold_rand_cos": 0.03142386394098214,
+     "gold_cohesion": 0.48794262933575044,
+     "align_cos": 0.5653743145878649,
+     "align_margin": 0.021845531375785383,
+     "sibling_rank_median": 18.0,
+     "gap": 0.1932296145097011
+    },
+    "test_perstep": [
+     15.07,
+     8.66,
+     5.84,
+     4.52,
+     5.27
+    ],
+    "test_perstep_recall": [
+     45.93,
+     44.62,
+     39.92,
+     35.26,
+     36.45
+    ]
+   },
    {
     "step": 1500,
     "dev": 62.0,
@@ -3385,10 +3453,81 @@
      39.04,
      34.92
     ]
+   },
+   {
+    "step": 2500,
+    "dev": 52.0,
+    "dev_k1": 5.6,
+    "dev_curve": [
+     5.6,
+     17.6,
+     27.8,
+     42.0,
+     52.0
+    ],
+    "dev_rr5": 45.2,
+    "dev_geom": {
+     "query_pair_cos": 0.6185464905500412,
+     "gold_pair_cos": 0.5121264570951461,
+     "gold_rand_cos": 0.017129843834525673,
+     "gold_cohesion": 0.4949966132606205,
+     "align_cos": 0.6322563620010158,
+     "align_margin": 0.06274900883944065,
+     "sibling_rank_median": 4.0,
+     "gap": 0.10642003345489504
+    },
+    "dev_perstep": [
+     5.6,
+     4.8,
+     4.0,
+     3.8,
+     1.0
+    ],
+    "dev_perstep_recall": [
+     36.76,
+     36.75,
+     34.39,
+     33.21,
+     33.3
+    ],
+    "test": 31.26,
+    "test_k1": 1.88,
+    "test_curve": [
+     1.88,
+     5.84,
+     12.81,
+     22.41,
+     31.26
+    ],
+    "test_rr5": 25.05,
+    "test_geom": {
+     "query_pair_cos": 0.6339054418597967,
+     "gold_pair_cos": 0.4659737821829745,
+     "gold_rand_cos": 0.021252771162547666,
+     "gold_cohesion": 0.4447210110204269,
+     "align_cos": 0.6004558552316128,
+     "align_margin": 0.05552591449783498,
+     "sibling_rank_median": 31.0,
+     "gap": 0.16793165967682216
+    },
+    "test_perstep": [
+     1.88,
+     0.75,
+     0.19,
+     0.56,
+     0.56
+    ],
+    "test_perstep_recall": [
+     22.95,
+     25.3,
+     24.66,
+     25.35,
+     24.05
+    ]
    }
   ],
   "selected": 1500,
   "ties": null,
-  "final": null
+  "final": 2500
  }
 ]
