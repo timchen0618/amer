@@ -12,8 +12,8 @@ RUNS=("$@")
 [ ${#RUNS[@]} -eq 0 ] && RUNS=($(awk '{print $3}' results/phaseC/j_runs.log | sort -u))
 log() { echo "[$(date '+%F %T')] [j_select] $*" | tee -a "$LOG" >&2; }
 sel() { grep -m1 -o 'MRecall: [0-9.]*' "$1/select_metrics.txt" 2>/dev/null | cut -d' ' -f2; }
-declare -A DONE
-while [ ${#DONE[@]} -lt ${#RUNS[@]} ]; do
+declare -A DONE=([_]=x)   # never empty: "${#DONE[@]}" on an empty array trips set -u in this bash
+while [ $(( ${#DONE[@]} - 1 )) -lt ${#RUNS[@]} ]; do
   for run in "${RUNS[@]}"; do
     [ -n "${DONE[$run]:-}" ] && continue
     if grep -q "\[$run\] RUN FAILED" $LOG 2>/dev/null && ! grep -q "\[$run\] RUN DONE" $LOG; then
