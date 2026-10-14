@@ -310,7 +310,9 @@ PERSTEP_NOTES = [
     "**`hps 0.5` and `hps 0.25`: one strong query plus weak extras.** Embedding 1 finds 75–77% of the golds (46.5–52.0 MRecall). Embeddings 2–5 find 40–56% (8–23 MRecall), "
     "and fusing them in lowers the score (`hps 0.5` step 1000: 51.98 alone, 47.27 fused). "
     "`hps + full sampling` is the same shape with even weaker extras: embedding 1 finds 75–76% of the golds (48.4–50.1 MRecall), embeddings 2–5 find 20–36% (0.2–3.2), "
-    "and fusion again lowers the score (step 750: 50.09 alone, 46.33 fused).",
+    "and fusion again lowers the score (step 750: 50.09 alone, 46.33 fused). "
+    "`hps + saturate 50%` is the same: embedding 1 finds 76% of the golds (49.34 MRecall), embeddings 2–5 find 28–36% (2.5–6.0), "
+    "and fusion lowers the score (step 1000: 49.34 alone, 46.14 fused).",
     "**`hps 0.1`: the single-query term is too weak to make the first query strong.** Embedding 1 alone scores 36.35 (66% of the golds); "
     "the others are diverse-run-like (3–6 MRecall, 33–38%), and here fusion helps: 44.44 for all five.",
     "**Diversity penalty: the later embeddings get weaker, not complementary.** Embedding 1 is best (45–49), the rest decline (34–43), "
@@ -325,7 +327,9 @@ def content():
     pend = [r["label"] for r in runs if r["status"] != "done"]
     B = []
     B.append(("lede", f"QAMPARI only (AmbigQA is on hold). Week of 2026-10-05 to 2026-10-11. Numbers as of {now}; "
-                      f"runs still in progress are marked pending: {', '.join(pend)}."))
+                      + (f"runs still in progress are marked pending: {', '.join(pend)}." if pend else
+                         "every run in this report is fully evaluated; the report is closed. Follow-up work (frozen document "
+                         "encoder, and the objective audit of 2026-10-13) is tracked in reports/objective_audit_2026-10-13/PLAN.md.")))
 
     B.append(("h2", "Summary"))
     B.append(("ul", [
@@ -344,6 +348,10 @@ def content():
         "against 0.59 for `single`, and the late checkpoints that collapse drop to 0.42–0.47. The masked loss keeps the golds "
         "together (0.57–0.61) and gives the best multi-query run, but that is not enough on its own: the diversity-penalty runs "
         "keep them together too and score 3–4.5 points lower.",
+        "**Wave 2: adding sampling to `hps 0.5` gains nothing at the best checkpoint and brings back the late collapse.** "
+        "`hps + full sampling` (62.8 dev / 46.33 test) and `hps + saturate 50%` (63.8 / 46.14) tie with `hps 0.5` (63.0 / 46.14). "
+        "By step 2500 both fall to about 35 test (35.03, 35.40), like the plain sampling runs, and in both the first query alone "
+        "(50.09, 49.34 test) beats the five fused.",
         "**Earlier full sampling, earlier saturation and a higher learning rate all hurt.** The sampling runs peak mid-training, then "
         "their first query collapses (test at k = 1 falls below 1 by step 2500). LR 3e-5 is worse than 1e-5 for both modes.",
         "**Measurement fixes.** The earlier multi-query 44.26 was inflated by 44 QAMPARI test questions that leaked into the v1 "
@@ -470,9 +478,9 @@ def content():
         "New protocol: full-evaluate the top 2 by cheap dev plus the final checkpoint; select by full dev; treat differences under 2 points as ties.",
     ]))
 
-    B.append(("h2", "In progress"))
+    B.append(("h2", "In progress" if pend else "Status of the week's work (all done)"))
     B.append(("table", ["work", "runs", "status"], [
-        ["Wave 2: best hps weight combined with sampling", "`hps + full sampling`, `hps + saturate 50%`",
+        ["Wave 2 (done): best hps weight combined with sampling", "`hps + full sampling`, `hps + saturate 50%`",
          "launched 2026-10-12 10:14 with weight 0.5, the best full dev of 0.5 / 0.25 / 0.1 (63.0 / 62.8 / 62.6: a tie under the 2-point rule); " + "; ".join(f"{r['label']}: {status_text(r)}" for r in runs if "wave 2" in r["group"])],
         ["Wave 3: document encoder frozen or joint × query attention causal or bidirectional",
          "C (frozen, bidirectional), A (frozen, causal), B (joint, causal); single and multi each. D = round 1.",

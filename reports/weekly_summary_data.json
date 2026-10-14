@@ -2759,21 +2759,233 @@
   "group": "combination (wave 2)",
   "mode": "multi",
   "desc": "hps 0.5 (best of the three weights) + rate reaching 1 at step 1250",
-  "status": "full evals",
+  "status": "done",
   "planned": [
    1000,
    750,
    2500
   ],
-  "missing": [
-   1000,
-   750,
-   2500
+  "missing": [],
+  "evals": [
+   {
+    "step": 750,
+    "dev": 62.4,
+    "dev_k1": 66.6,
+    "dev_curve": [
+     66.6,
+     60.4,
+     60.4,
+     62.2,
+     62.4
+    ],
+    "dev_rr5": 59.6,
+    "dev_geom": {
+     "query_pair_cos": 0.5953310010433197,
+     "gold_pair_cos": 0.5655043563246727,
+     "gold_rand_cos": 0.028879482309310846,
+     "gold_cohesion": 0.536624874015362,
+     "align_cos": 0.5582099334373604,
+     "align_margin": 0.029834275000874187,
+     "sibling_rank_median": 1.0,
+     "gap": 0.029826644718647044
+    },
+    "dev_perstep": [
+     66.6,
+     20.8,
+     11.0,
+     7.4,
+     12.0
+    ],
+    "dev_perstep_recall": [
+     85.78,
+     56.71,
+     44.48,
+     38.32,
+     47.17
+    ],
+    "test": 46.52,
+    "test_k1": 49.91,
+    "test_curve": [
+     49.91,
+     43.69,
+     42.56,
+     44.44,
+     46.52
+    ],
+    "test_rr5": 39.55,
+    "test_geom": {
+     "query_pair_cos": 0.6004826786827906,
+     "gold_pair_cos": 0.5284880312149134,
+     "gold_rand_cos": 0.03309589383698142,
+     "gold_cohesion": 0.495392137377932,
+     "align_cos": 0.5254688034497075,
+     "align_margin": 0.018342667713660152,
+     "sibling_rank_median": 6.0,
+     "gap": 0.0719946474678772
+    },
+    "test_perstep": [
+     49.91,
+     15.63,
+     1.69,
+     2.82,
+     6.4
+    ],
+    "test_perstep_recall": [
+     76.11,
+     45.71,
+     29.84,
+     30.99,
+     35.28
+    ]
+   },
+   {
+    "step": 1000,
+    "dev": 63.8,
+    "dev_k1": 66.6,
+    "dev_curve": [
+     66.6,
+     61.0,
+     58.4,
+     62.4,
+     63.8
+    ],
+    "dev_rr5": 59.6,
+    "dev_geom": {
+     "query_pair_cos": 0.6038996981978416,
+     "gold_pair_cos": 0.571834962129593,
+     "gold_rand_cos": 0.024228830266176372,
+     "gold_cohesion": 0.5476061318634166,
+     "align_cos": 0.6064133526806953,
+     "align_margin": 0.04259477519232314,
+     "sibling_rank_median": 1.0,
+     "gap": 0.03206473606824867
+    },
+    "dev_perstep": [
+     66.6,
+     8.2,
+     12.6,
+     13.6,
+     16.4
+    ],
+    "dev_perstep_recall": [
+     85.88,
+     43.77,
+     43.55,
+     46.63,
+     46.63
+    ],
+    "test": 46.14,
+    "test_k1": 49.34,
+    "test_curve": [
+     49.34,
+     42.75,
+     40.87,
+     44.82,
+     46.14
+    ],
+    "test_rr5": 39.92,
+    "test_geom": {
+     "query_pair_cos": 0.5999290592926371,
+     "gold_pair_cos": 0.5335615350813965,
+     "gold_rand_cos": 0.027045464176700403,
+     "gold_cohesion": 0.5065160709046961,
+     "align_cos": 0.5672797400988429,
+     "align_margin": 0.030542678136019852,
+     "sibling_rank_median": 7.0,
+     "gap": 0.06636752421124059
+    },
+    "test_perstep": [
+     49.34,
+     6.03,
+     2.45,
+     4.71,
+     5.65
+    ],
+    "test_perstep_recall": [
+     75.56,
+     35.65,
+     27.81,
+     33.75,
+     30.94
+    ]
+   },
+   {
+    "step": 2500,
+    "dev": 50.0,
+    "dev_k1": 56.4,
+    "dev_curve": [
+     56.4,
+     49.6,
+     49.0,
+     49.2,
+     50.0
+    ],
+    "dev_rr5": 46.6,
+    "dev_geom": {
+     "query_pair_cos": 0.5304801818728447,
+     "gold_pair_cos": 0.525513347953558,
+     "gold_rand_cos": 0.02618448594223082,
+     "gold_cohesion": 0.49932886201132715,
+     "align_cos": 0.6339173126976938,
+     "align_margin": 0.07295653308660258,
+     "sibling_rank_median": 2.0,
+     "gap": 0.004966833919286762
+    },
+    "dev_perstep": [
+     56.4,
+     1.8,
+     2.4,
+     2.6,
+     1.8
+    ],
+    "dev_perstep_recall": [
+     81.4,
+     26.1,
+     28.17,
+     26.3,
+     25.55
+    ],
+    "test": 35.4,
+    "test_k1": 38.23,
+    "test_curve": [
+     38.23,
+     32.58,
+     29.38,
+     29.76,
+     35.4
+    ],
+    "test_rr5": 32.2,
+    "test_geom": {
+     "query_pair_cos": 0.5338973073523822,
+     "gold_pair_cos": 0.46352967819139335,
+     "gold_rand_cos": 0.02931485504127702,
+     "gold_cohesion": 0.43421482315011634,
+     "align_cos": 0.5915202261762529,
+     "align_margin": 0.06828766247049753,
+     "sibling_rank_median": 13.0,
+     "gap": 0.07036762916098882
+    },
+    "test_perstep": [
+     38.23,
+     0.56,
+     0.0,
+     0.19,
+     0.56
+    ],
+    "test_perstep_recall": [
+     67.35,
+     17.62,
+     17.65,
+     18.35,
+     19.36
+    ]
+   }
   ],
-  "evals": [],
-  "selected": null,
-  "ties": null,
-  "final": null
+  "selected": 1000,
+  "ties": [
+   750
+  ],
+  "final": 2500
  },
  {
   "run": "clean_v3_abl2_qampari_C_single",
