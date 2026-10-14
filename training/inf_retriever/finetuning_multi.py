@@ -508,7 +508,13 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
 
     # Multi-embedding diagnostics
     multi_step_correct = {}   # step_j -> total correct across all batches
+    multi_step_count = {}     # step_j -> number of queries with more than j golds (the ones that have a step j)
     multi_step_total = 0
+    # Gold coverage of the k free-running embeddings (2026-10-13): share of a query's golds that
+    # are the top-1 (cover1) / in the top 5 (cover5) of at least one embedding, over the in-batch pool.
+    total_cover1 = 0.0
+    total_cover5 = 0.0
+    total_all_cover5 = 0
     total_pairwise_sim = 0.0
     total_pairwise_count = 0
     total_same_top1 = 0       # queries where all k embeddings retrieve the same top-1 doc
@@ -574,17 +580,29 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
 
             # Per-step accuracy: for step j, is top-1 retrieved doc any gold of that query?
             all_top1 = torch.zeros(bsz, nqe, dtype=torch.long, device=batch["q_tokens"].device)
+            hit1 = torch.zeros(bsz, nqe, dtype=torch.bool, device=batch["q_tokens"].device)  # [qi, gold]
+            hit5 = torch.zeros(bsz, nqe, dtype=torch.bool, device=batch["q_tokens"].device)
             for step_j in range(nqe):
                 if step_j not in multi_step_correct:
                     multi_step_correct[step_j] = 0
+                    multi_step_count[step_j] = 0
+                multi_step_count[step_j] += bsz
                 step_emb = multi_embs[:, step_j, :]  # (bsz, d)
                 step_scores = torch.einsum("id,jd->ij", step_emb, all_docs)  # (bsz, total_docs)
                 top1 = step_scores.argmax(dim=-1)  # (bsz,)
+                top5 = step_scores.topk(min(5, step_scores.size(1)), dim=-1).indices  # (bsz, 5)
                 all_top1[:, step_j] = top1
                 for qi in range(bsz):
                     pos_start = qi * nqe
                     pos_end = pos_start + nqe
                     multi_step_correct[step_j] += int(top1[qi].item() in range(pos_start, pos_end))
+                    if pos_start <= top1[qi].item() < pos_end:
+                        hit1[qi, top1[qi].item() - pos_start] = True
+                    in5 = top5[qi][(top5[qi] >= pos_start) & (top5[qi] < pos_end)] - pos_start
+                    hit5[qi, in5] = True
+            total_cover1 += hit1.float().mean(dim=1).sum().item()
+            total_cover5 += hit5.float().mean(dim=1).sum().item()
+            total_all_cover5 += hit5.all(dim=1).sum().item()
 
             # Mode collapse check: all k embeddings retrieve the same top-1 document
             same_top1 = (all_top1 == all_top1[:, :1]).all(dim=-1)  # (bsz,)
@@ -632,10 +650,18 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
         log_dict["eval_repeat_pct"] = repeat_pct
         message.append(f"repeat_pct: {repeat_pct:.1f}%")
 
+        # Divided by the queries that have a step j (more than j golds); before 2026-10-13 this divided
+        # by all queries, which made accuracy appear to fall after j = 4 (the smallest gold count).
         for j in sorted(multi_step_correct):
-            step_acc = 100.0 * multi_step_correct[j] / multi_step_total
+            step_acc = 100.0 * multi_step_correct[j] / multi_step_count[j]
             log_dict[f"eval_step_{j}_acc"] = step_acc
             message.append(f"step_{j}_acc: {step_acc:.2f}%")
+
+        cover1 = 100.0 * total_cover1 / multi_step_total
+        cover5 = 100.0 * total_cover5 / multi_step_total
+        all_cover5 = 100.0 * total_all_cover5 / multi_step_total
+        log_dict.update({"eval_cover1": cover1, "eval_cover5": cover5, "eval_all_cover5": all_cover5})
+        message += [f"cover1: {cover1:.2f}%", f"cover5: {cover5:.2f}%", f"all_cover5: {all_cover5:.2f}%"]
 
     for name in sorted(geom):
         v = geom[name][0] / max(geom[name][1], 1)
@@ -654,7 +680,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     del model
     torch.cuda.empty_cache()
 
-    return acc, mrr
+    return acc, mrr, log_dict
 
 
 # GRAD_DIAG_STEPS=N (environment, default 0 = off): for the first N steps, every rank logs one
@@ -900,14 +926,20 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                 if step % (opt.eval_freq * opt.accumulation_steps) == 0:
                     state_dict=accelerator.get_state_dict(model)
                     if accelerator.is_main_process:
-                        _, mrr = evaluate(opt, state_dict, eval_loader, accelerator, step, device)
+                        _, mrr, eval_log = evaluate(opt, state_dict, eval_loader, accelerator, step, device)
+                        # --select_metric: the score best_model is gated on. 'mrr' (default) is output 0's
+                        # in-batch MRR; for multi runs 'cover5' scores all k embeddings (2026-10-13).
+                        select_metric = getattr(opt, "select_metric", "mrr")
+                        if select_metric != "mrr" and f"eval_{select_metric}" not in eval_log:
+                            raise ValueError(f"--select_metric {select_metric} is not logged for this run")
+                        score = mrr if select_metric == "mrr" else eval_log[f"eval_{select_metric}"]
                         if opt.eval_recall:
                             precision_score, mrecall_score, recall_score = evaluate_recall(opt, model, tokenizer, device)
                             accelerator.log({"precision": precision_score, "mrecall": mrecall_score, "recall": recall_score}, step=step)    
                         
-                        if mrr > best_eval_metric:  # save only when gets better performance
-                            print('mrr', mrr, 'best eval metric', best_eval_metric)
-                            best_eval_metric = mrr
+                        if score > best_eval_metric:  # save only when gets better performance
+                            print(select_metric, score, 'best eval metric', best_eval_metric)
+                            best_eval_metric = score
                             if step % (opt.save_freq * opt.accumulation_steps) == 0 and dist_utils.get_rank() == 0:
                                 if (not opt.not_save) and (not getattr(opt, "no_save_best_model", False)) and accelerator.is_main_process:
                                     utils.save_state_dict(

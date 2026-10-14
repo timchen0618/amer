@@ -120,7 +120,7 @@ class Options:
             type=str,
             default="auto",
             choices=["auto", "contrastive", "hungarian_masked", "hungarian", "hungarian_plus_single",
-                     "hungarian_masked_div"],
+                     "hungarian_masked_div", "hungarian_seq", "hungarian_seq_used"],
             help=(
                 "Loss used by EmbeddingModelDocEncNoProj. 'auto' picks "
                 "hungarian_masked when training_mode=='multi' and contrastive "
@@ -130,8 +130,32 @@ class Options:
                 "w * single-query contrastive on the first embedding, w = --single_loss_weight. "
                 "'hungarian_masked_div' (multi mode only) = hungarian_masked + div_weight * "
                 "mean over i != j of relu(cos(q_i, q_j) - cos(g_a(i), g_a(j))), a(.) = the Hungarian "
-                "assignment: query embeddings may not be more alike than the golds they are matched to."
+                "assignment: query embeddings may not be more alike than the golds they are matched to. "
+                "'hungarian_seq' (multi only) = hungarian, but output t may not be matched to a gold fed in "
+                "before it (blocks copying the teacher-forced input); 'hungarian_seq_used' = the same match, "
+                "with only the golds already used before step t (fed in or matched earlier) as same-example "
+                "negatives and later golds masked. See reports/objective_audit_2026-10-13/PLAN.md (E1)."
             ),
+        )
+        self.parser.add_argument(
+            "--hps_multi_loss", type=str, default="hungarian",
+            choices=["hungarian", "hungarian_seq", "hungarian_seq_used"],
+            help="Multi-query term of --loss_fn hungarian_plus_single (default: plain hungarian).",
+        )
+        self.parser.add_argument(
+            "--detach_fed_output", action="store_true",
+            help=("Detach a fed-back output before it becomes the next input token, so later steps' losses "
+                  "send no gradient into the step that produced it (objective audit E2)."),
+        )
+        self.parser.add_argument(
+            "--fed_norm", type=str, default="none", choices=["none", "token"],
+            help=("'token': rescale every fed-in vector (teacher gold or own output, in training and "
+                  "generate()) to the mean norm of the question's token embeddings (objective audit E5)."),
+        )
+        self.parser.add_argument(
+            "--select_metric", type=str, default="mrr", choices=["mrr", "cover1", "cover5", "all_cover5"],
+            help=("In-training eval score that gates best_model. 'mrr' (default) scores only output 0 in "
+                  "multi mode; cover1 / cover5 / all_cover5 score all k free-running embeddings (multi only)."),
         )
         self.parser.add_argument(
             "--div_weight", type=float, default=0.5,
@@ -268,4 +292,8 @@ class Options:
         opt = self.parser.parse_args()
         if not 0.0 < opt.sampling_saturate_frac <= 1.0:
             self.parser.error(f"--sampling_saturate_frac must be in (0, 1], got {opt.sampling_saturate_frac}")
+        if opt.select_metric != "mrr" and opt.training_mode != "multi":
+            self.parser.error(f"--select_metric {opt.select_metric} needs --training_mode multi")
+        if opt.hps_multi_loss != "hungarian" and opt.loss_fn != "hungarian_plus_single":
+            self.parser.error("--hps_multi_loss only applies to --loss_fn hungarian_plus_single")
         return opt

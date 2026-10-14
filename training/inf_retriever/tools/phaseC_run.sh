@@ -41,7 +41,10 @@ case $DS in
            [ -z "$DEV_TAG" ] && SET=ambigqa_dev300
            [ "$DENSE" = 1 ] && STEPS=$(seq -s ' ' 50 50 400) ;;
 esac
-SAVE_AT_OVERRIDE=""; [ "$DENSE" = 1 ] && SAVE_AT_OVERRIDE="$STEPS"
+# STEPS_OVERRIDE="500 750 ...": the steps this run saves (and the driver waits for / cheap-evals), for a
+# training job submitted elsewhere with its own SAVE_AT_OVERRIDE (e.g. tools/j_launch.sh, 2026-10-13).
+[ -n "${STEPS_OVERRIDE:-}" ] && STEPS=$STEPS_OVERRIDE
+SAVE_AT_OVERRIDE=""; { [ "$DENSE" = 1 ] || [ -n "${STEPS_OVERRIDE:-}" ]; } && SAVE_AT_OVERRIDE="$STEPS"
 FINAL_STEP=${STEPS##* }   # last saved step = end of training (KEEP_FINAL)
 K=""; [ "$MODE" = multi ] && K=$K_MULTI
 # squeue can come back empty while the controller is busy, so confirm with sacct before calling a

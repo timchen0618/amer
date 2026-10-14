@@ -83,6 +83,68 @@ def add_geometry_stats(iter_stats, stats_prefix, outputs, positive_embeddings, n
     return iter_stats
 
 
+@torch.no_grad()
+def copy_stats(outputs, golds, fed_gold, assignment=None):
+    """Copy / repeat diagnostics of one training batch (2026-10-13, objective audit D1).
+
+    outputs (bsz, k, d); golds (bsz, k, d), gold j = the one fed in after output j under teacher forcing;
+    fed_gold (bsz, k) bool; assignment (bsz, k) gold index matched to each output by the loss (None:
+    a cosine Hungarian match, the one every Hungarian loss here makes without fed-gold constraints).
+
+    Over outputs t >= 1 whose input was gold t - 1 (teacher-forced):
+      tf_copy_cos        cos(output t, gold t - 1), the gold just fed in;
+      tf_best_unfed_cos  largest cos(output t, g) over golds g not fed in before output t;
+      tf_copy_match      share matched to gold t - 1 (copying: near 1; chance about 1 / k).
+    Over outputs t >= 1 whose input was output t - 1 (free-running):
+      free_repeat_cos    cos(output t, output t - 1);
+      free_repeat_top1   share whose most similar gold equals output t - 1's most similar gold.
+    Returns {name: (sum, count)}; names with no eligible output are left out.
+    """
+    bsz, k, d = outputs.shape
+    if k < 2:
+        return {}
+    with torch.autocast(device_type=outputs.device.type, enabled=False):
+        q = F.normalize(outputs.float(), dim=-1)
+        g = F.normalize(golds.float().reshape(bsz, k, d), dim=-1)
+        qg = torch.bmm(q, g.transpose(1, 2))                                     # (bsz, k, k)
+        if assignment is None:
+            from scipy.optimize import linear_sum_assignment
+            qg_np = qg.cpu().numpy()
+            assignment = torch.empty(bsz, k, dtype=torch.long)
+            for i in range(bsz):
+                rows, cols = linear_sum_assignment(qg_np[i], maximize=True)
+                assignment[i, torch.as_tensor(rows)] = torch.as_tensor(cols, dtype=torch.long)
+        assignment = assignment.to(outputs.device)
+        t = torch.arange(1, k, device=outputs.device)
+        tf = fed_gold[:, :-1]                                                     # (bsz, k-1): input of output t was gold t-1
+        free = ~tf
+        copy_cos = qg[:, t, t - 1]                                                # (bsz, k-1)
+        earlier = torch.tril(torch.ones(k, k, dtype=torch.bool, device=outputs.device), -1)
+        fed_before = earlier.unsqueeze(0) & fed_gold.unsqueeze(1)                 # (bsz, k, k): [t, j] gold j fed before t
+        best_unfed = qg.masked_fill(fed_before, float("-inf")).max(-1).values[:, 1:]
+        copy_match = (assignment[:, 1:] == (t - 1).unsqueeze(0)).float()
+        repeat_cos = (q[:, 1:] * q[:, :-1]).sum(-1)
+        top1 = qg.argmax(-1)
+        repeat_top1 = (top1[:, 1:] == top1[:, :-1]).float()
+    out = {}
+    n_tf, n_free = int(tf.sum()), int(free.sum())
+    if n_tf:
+        out["tf_copy_cos"] = (float(copy_cos[tf].sum()), n_tf)
+        out["tf_best_unfed_cos"] = (float(best_unfed[tf].sum()), n_tf)
+        out["tf_copy_match"] = (float(copy_match[tf].sum()), n_tf)
+    if n_free:
+        out["free_repeat_cos"] = (float(repeat_cos[free].sum()), n_free)
+        out["free_repeat_top1"] = (float(repeat_top1[free].sum()), n_free)
+    return out
+
+
+def add_copy_stats(iter_stats, stats_prefix, outputs, golds, fed_gold, assignment=None):
+    """Log copy_stats as means (iter_stats convention: (value, weight))."""
+    for name, (s, c) in copy_stats(outputs, golds, fed_gold, assignment).items():
+        iter_stats[f"{stats_prefix}/{name}"] = (s / c, c)
+    return iter_stats
+
+
 class ContrastiveLoss(nn.Module):
     def __init__(self, temperature=0.05, normalize_embeddings=True):
         super().__init__()
@@ -147,7 +209,10 @@ class HungarianContrastiveLoss(nn.Module):
         if iter_stats is None:
             iter_stats = {}
         loss = self._core_forward(outputs, positive_embeddings, negative_embeddings)
-        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), outputs.shape[0])
+        bsz = outputs.shape[0]
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
+        for name, v in self.last_stats.items():
+            iter_stats[f"{stats_prefix}/{name}"] = (v, bsz)
         return loss, iter_stats
 
     def _core_forward(self, outputs, positive_embeddings, negative_embeddings):
@@ -168,17 +233,40 @@ class HungarianContrastiveLoss(nn.Module):
         similarity = torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb)
         similarity = self.log_softmax(similarity)
         losses = []
+        assigned_gold = torch.empty(batch_size, k, dtype=torch.long)  # [i, j] = gold matched to output j
+        local_start = 0 if dist_utils.get_rank() == 0 else int(var_sizes[:dist_utils.get_rank()].sum())
         for i in range(batch_size):
-            start_idx = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
-            start_idx += k * i
+            start_idx = local_start + k * i
             batch_scores = similarity[k * i:k * (i + 1)]
             cost_matrix = batch_scores[:, start_idx:start_idx + k]
 
             row_ind, col_ind = self.linear_sum_assignment(cost_matrix.float().detach().cpu().numpy(), maximize=True)
+            assigned_gold[i, torch.as_tensor(row_ind)] = torch.as_tensor(col_ind, dtype=torch.long)
             costs = cost_matrix[row_ind, col_ind]
             costs = -(costs)
             losses.append(costs.mean())
+        self.last_assignment = assigned_gold.to(outputs.device)
+        self.last_stats = _hungarian_accuracy(similarity.detach(), assigned_gold.to(outputs.device), local_start, k)
         return torch.stack(losses).mean()
+
+
+@torch.no_grad()
+def _hungarian_accuracy(similarity, assigned_gold, local_pos_start, k):
+    """Training accuracy of a Hungarian loss (2026-10-13; the unmasked losses logged none).
+
+    similarity (b*k, total) over the gathered pool, rows = this rank's outputs; assigned_gold (b, k);
+    local_pos_start = column of this rank's first positive. Returns
+      accuracy_strict: the row's argmax over the whole pool is its Hungarian-assigned gold;
+      accuracy:        the row's argmax is any gold of the same example (relaxed, as hungarian_masked logs).
+    """
+    bk = similarity.size(0)
+    rows = torch.arange(bk, device=similarity.device)
+    block_start = local_pos_start + k * (rows // k)
+    target = block_start + assigned_gold.reshape(-1)
+    pred = similarity.argmax(dim=-1)
+    strict = (pred == target).float().mean().item()
+    relaxed = ((pred >= block_start) & (pred < block_start + k)).float().mean().item()
+    return {"accuracy_strict": 100.0 * strict, "accuracy": 100.0 * relaxed}
 
 
 class HungarianMaskedContrastiveLoss(nn.Module):
@@ -296,6 +384,109 @@ class HungarianMaskedContrastiveLoss(nn.Module):
         return loss, iter_stats
 
 
+class HungarianSeqLoss(nn.Module):
+    """Hungarian contrastive loss that knows which golds were fed in (2026-10-13, objective audit E1).
+
+    With teacher forcing, gold j is fed in after output j, and the unconstrained Hungarian match lets
+    output j + 1 take that same gold: copying the input solves k - 1 of the k slots
+    (reports/objective_audit_2026-10-13/PLAN.md). Here:
+
+    1. Output t may not be matched to a gold that was fed in before it (gold j with j < t and
+       fed_gold[:, j]). The diagonal t -> t is always allowed, so a full matching always exists.
+       Golds produced by the model itself need no rule: the matching is one-to-one, so output t
+       never shares a target with an earlier output.
+    2. Same-example golds in the softmax denominator, by ``siblings``:
+       'negative' every other gold of the example is a negative, as in HungarianContrastiveLoss
+                  (with fed_gold=None this loss equals HungarianContrastiveLoss exactly);
+       'used'     only the golds already used before step t (fed in, or matched to an earlier
+                  output) are negatives; golds still to come are masked out, as in hungarian_masked.
+                  Repeating an earlier query is penalised, being close to a later gold is not.
+
+    fed_gold: (bsz, k) bool, [i, j] = gold j of example i was fed in after output j; None = nothing fed.
+    """
+
+    uses_feed_info = True
+    FORBIDDEN = -1e9
+
+    def __init__(self, temperature=0.05, siblings="negative", normalize_embeddings=True):
+        super().__init__()
+        assert siblings in ("negative", "used"), siblings
+        from scipy.optimize import linear_sum_assignment
+        self.linear_sum_assignment = linear_sum_assignment
+        self.temperature = temperature
+        self.siblings = siblings
+        self.normalize_embeddings = normalize_embeddings
+
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None,
+                fed_gold=None):
+        iter_stats = {} if iter_stats is None else iter_stats
+        loss = self._core_forward(outputs, positive_embeddings, negative_embeddings, fed_gold=fed_gold)
+        bsz = outputs.shape[0]
+        iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
+        for name, v in self.last_stats.items():
+            iter_stats[f"{stats_prefix}/{name}"] = (v, bsz)
+        return loss, iter_stats
+
+    def _core_forward(self, outputs, positive_embeddings, negative_embeddings, fed_gold=None):
+        if self.normalize_embeddings:
+            outputs = F.normalize(outputs, dim=-1)
+            positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+            negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+
+        batch_size, k, d = outputs.shape
+        bk = batch_size * k
+        outputs_flat = outputs.reshape(bk, d)
+        all_embeddings = torch.cat([positive_embeddings.reshape(bk, d), negative_embeddings.reshape(bk, d)], dim=0)
+        var_sizes = dist_utils.get_varsize(all_embeddings)
+        rank = dist_utils.get_rank()
+        local_start = 0 if rank == 0 else int(var_sizes[:rank].sum().item())
+        gather_kemb = dist_utils.varsize_gather(all_embeddings)
+        similarity = torch.einsum('bd,cd->bc', outputs_flat / self.temperature, gather_kemb)  # (bk, total)
+
+        fed = (np.zeros((batch_size, k), dtype=bool) if fed_gold is None
+               else fed_gold.detach().cpu().numpy().astype(bool).reshape(batch_size, k))
+        sim_np = similarity.detach().float().cpu().numpy()
+        assigned = np.empty((batch_size, k), dtype=np.int64)
+        keep_block = np.zeros((bk, k), dtype=bool)  # same-example golds kept in row (i, t)'s denominator
+        earlier = np.tril(np.ones((k, k), dtype=bool), -1)  # earlier[t, j] = j < t
+        for i in range(batch_size):
+            ps = local_start + k * i
+            cost = sim_np[k * i:k * (i + 1), ps:ps + k].copy()
+            forbidden = earlier & fed[i][None, :]  # [t, j]: gold j was fed in before output t
+            cost[forbidden] = self.FORBIDDEN
+            rows, cols = self.linear_sum_assignment(cost, maximize=True)
+            assigned[i, rows] = cols
+            if self.siblings == "negative":
+                keep_block[k * i:k * (i + 1)] = True
+            else:
+                used = forbidden.copy()                                  # fed in before t
+                for t in range(k):
+                    used[t, assigned[i, :t]] = True                      # matched to an earlier output
+                    used[t, assigned[i, t]] = True                       # its own target
+                keep_block[k * i:k * (i + 1)] = used
+
+        device = outputs.device
+        assigned_t = torch.from_numpy(assigned).to(device)
+        rows_idx = torch.arange(bk, device=device)
+        targets = local_start + k * (rows_idx // k) + assigned_t.reshape(-1)
+        mask = torch.ones_like(similarity, dtype=torch.bool)
+        block = torch.zeros(bk, bk, dtype=torch.bool, device=device)
+        cols = k * (rows_idx // k).unsqueeze(1) + torch.arange(k, device=device).unsqueeze(0)  # (bk, k)
+        block.scatter_(1, cols, torch.from_numpy(keep_block).to(device))
+        same_example = (rows_idx // k).unsqueeze(1).eq((torch.arange(bk, device=device) // k).unsqueeze(0))
+        mask[:, local_start:local_start + bk] = ~same_example | block
+        masked_similarity = similarity.masked_fill(~mask, float('-inf'))
+        loss = F.cross_entropy(masked_similarity, targets)
+
+        self.last_assignment = assigned_t
+        stats = _hungarian_accuracy(similarity.detach(), assigned_t, local_start, k)
+        with torch.no_grad():
+            stats["accuracy_strict"] = 100.0 * (masked_similarity.argmax(-1) == targets).float().mean().item()
+            stats["fed_gold_frac"] = float(fed[:, :-1].mean()) if k > 1 else 0.0
+        self.last_stats = stats
+        return loss
+
+
 class HungarianPlusSingleLoss(nn.Module):
     """Multi-query and single-query objectives in the same step (2026-10-04):
 
@@ -311,10 +502,20 @@ class HungarianPlusSingleLoss(nn.Module):
     rank, so the collectives stay matched.
     """
 
-    def __init__(self, temperature=0.05, single_weight=0.5, normalize_embeddings=True):
+    MULTI_LOSSES = ("hungarian", "hungarian_seq", "hungarian_seq_used")
+
+    def __init__(self, temperature=0.05, single_weight=0.5, normalize_embeddings=True, multi_loss="hungarian"):
         super().__init__()
         assert 0.0 <= single_weight <= 1.0, single_weight
-        self.multi = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
+        assert multi_loss in self.MULTI_LOSSES, multi_loss
+        # L_multi: HungarianContrastiveLoss (default), or HungarianSeqLoss with the fed-in golds
+        # excluded from the matching (--hps_multi_loss, 2026-10-13).
+        if multi_loss == "hungarian":
+            self.multi = HungarianContrastiveLoss(temperature=temperature, normalize_embeddings=normalize_embeddings)
+        else:
+            self.multi = HungarianSeqLoss(temperature=temperature, normalize_embeddings=normalize_embeddings,
+                                          siblings="negative" if multi_loss == "hungarian_seq" else "used")
+        self.uses_feed_info = getattr(self.multi, "uses_feed_info", False)
         self.temperature = temperature
         self.single_weight = single_weight
         self.normalize_embeddings = normalize_embeddings
@@ -344,15 +545,25 @@ class HungarianPlusSingleLoss(nn.Module):
         accuracy = 100 * (similarity.argmax(dim=-1) == labels).float().mean()
         return loss, accuracy
 
-    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+    @property
+    def last_assignment(self):
+        return self.multi.last_assignment
+
+    def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None,
+                fed_gold=None):
         iter_stats = {} if iter_stats is None else iter_stats
-        loss_multi = self.multi._core_forward(outputs, positive_embeddings, negative_embeddings)
+        if self.uses_feed_info:
+            loss_multi = self.multi._core_forward(outputs, positive_embeddings, negative_embeddings, fed_gold=fed_gold)
+        else:
+            loss_multi = self.multi._core_forward(outputs, positive_embeddings, negative_embeddings)
         loss_single, acc_single = self._single(outputs[:, 0], positive_embeddings, negative_embeddings, outputs.shape[1])
         loss = (1.0 - self.single_weight) * loss_multi + self.single_weight * loss_single
         bsz = outputs.shape[0]
         iter_stats[f"{stats_prefix}/loss_multi"] = (loss_multi.item(), bsz)
         iter_stats[f"{stats_prefix}/loss_single"] = (loss_single.item(), bsz)
         iter_stats[f"{stats_prefix}/accuracy_single"] = (acc_single.item(), bsz)
+        for name, v in self.multi.last_stats.items():
+            iter_stats[f"{stats_prefix}/multi_{name}"] = (v, bsz)
         iter_stats[f"{stats_prefix}/loss"] = (loss.item(), bsz)
         return loss, iter_stats
 
@@ -405,6 +616,8 @@ LOSS_REGISTRY = {
     "hungarian": HungarianContrastiveLoss,
     "hungarian_plus_single": HungarianPlusSingleLoss,
     "hungarian_masked_div": HungarianMaskedDivLoss,
+    "hungarian_seq": HungarianSeqLoss,
+    "hungarian_seq_used": HungarianSeqLoss,
 }
 
 
@@ -424,8 +637,13 @@ def build_loss(opt):
         if getattr(opt, "training_mode", None) != "multi":
             raise ValueError("loss_fn='hungarian_plus_single' requires training_mode='multi'")
         w = getattr(opt, "single_loss_weight", 0.5)
-        print(f"[build_loss] single_loss_weight={w}", flush=True)
-        return HungarianPlusSingleLoss(temperature=opt.temperature, single_weight=w)
+        multi_loss = getattr(opt, "hps_multi_loss", "hungarian")
+        print(f"[build_loss] single_loss_weight={w} hps_multi_loss={multi_loss}", flush=True)
+        return HungarianPlusSingleLoss(temperature=opt.temperature, single_weight=w, multi_loss=multi_loss)
+    if name in ("hungarian_seq", "hungarian_seq_used"):
+        if getattr(opt, "training_mode", None) != "multi":
+            raise ValueError(f"loss_fn={name!r} requires training_mode='multi'")
+        return HungarianSeqLoss(temperature=opt.temperature, siblings="negative" if name == "hungarian_seq" else "used")
     if name == "hungarian_masked_div":
         if getattr(opt, "training_mode", None) != "multi":
             raise ValueError("loss_fn='hungarian_masked_div' requires training_mode='multi'")
@@ -619,6 +837,23 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         # --force_causal: causal self-attention in the QUERY encoder (training and generate());
         # documents stay bidirectional. See query_attention_kwargs.
         self.force_causal = getattr(opt, "force_causal", False)
+        # Objective-audit options (2026-10-13, reports/objective_audit_2026-10-13/PLAN.md); getattr
+        # defaults keep older checkpoints' opts loading unchanged.
+        # --detach_fed_output: no gradient through a fed-back output into the step that produced it.
+        self.detach_fed_output = getattr(opt, "detach_fed_output", False)
+        # --fed_norm token: every fed-in vector (gold or own output, training and generate()) is
+        # rescaled to the mean norm of the question's token embeddings.
+        self.fed_norm = getattr(opt, "fed_norm", "none")
+        assert self.fed_norm in ("none", "token"), self.fed_norm
+
+    def _fed_input(self, vec, q_embeds, q_mask):
+        """The vector fed in as the next input token: vec (bsz, 1, d), unchanged unless --fed_norm token."""
+        if self.fed_norm == "none":
+            return vec
+        with torch.no_grad():
+            m = q_mask.unsqueeze(-1).to(q_embeds.dtype)
+            target = (q_embeds.float().norm(dim=-1, keepdim=True) * m).sum(1, keepdim=True) / m.sum(1, keepdim=True)
+        return (F.normalize(vec.float(), dim=-1) * target).to(vec.dtype)
 
     def _load_retriever(self, model_id):
         tokenizer = utils.load_hf(transformers.AutoTokenizer, model_id, trust_remote_code=True)
@@ -715,7 +950,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         assert (q_mask[:, -1] == 1).all(), \
             "Left-padding expected: last token position must always be a real token"
 
-        current_input = self.embedding(q_tokens)
+        q_embeds = current_input = self.embedding(q_tokens)
         attn = q_mask
         pos = q_position_ids
         all_outputs = []
@@ -733,7 +968,7 @@ class EmbeddingModelDocEncNoProj(nn.Module):
             if j == max_new_tokens - 1:
                 break
 
-            next_tok = next_hidden.unsqueeze(1)
+            next_tok = self._fed_input(next_hidden.unsqueeze(1), q_embeds, q_mask)
             current_input = torch.cat((current_input, next_tok), dim=1)
             attn = torch.cat(
                 (attn, torch.ones(bsz, 1, dtype=attn.dtype, device=device)),
@@ -777,11 +1012,12 @@ class EmbeddingModelDocEncNoProj(nn.Module):
             q_mask[:, -1],
         )
 
-        current_input = self.embedding(q_tokens)
+        q_embeds = current_input = self.embedding(q_tokens)
         attn = q_mask
         pos = q_position_ids
         device = q_tokens.device
         all_outputs = []
+        fed_gold = torch.zeros(bsz, output_len, dtype=torch.bool, device=device)  # [i, j]: gold j fed after output j
 
         for j in range(output_len):
             outputs = self.encoder(
@@ -793,7 +1029,9 @@ class EmbeddingModelDocEncNoProj(nn.Module):
             next_hidden = self.last_token_pool(outputs.last_hidden_state, attn)
             all_outputs.append(next_hidden.unsqueeze(1))
 
-            # Per-step cosine similarity between the model's output and its teacher embedding
+            # Cosine between output j and gold j, the gold fed in AFTER output j under teacher forcing
+            # (golds are in shuffled order, so this is a random sibling gold, not output j's matched
+            # target). Was logged as step_{j}_teacher_cos_sim before 2026-10-13.
             with torch.no_grad():
                 teacher_j = teacher_embeddings[:, j, :].to(dtype=next_hidden.dtype)
                 cos_sim_j = F.cosine_similarity(
@@ -801,15 +1039,18 @@ class EmbeddingModelDocEncNoProj(nn.Module):
                     F.normalize(teacher_j, dim=-1),
                     dim=-1,
                 ).mean().item()
-                iter_stats[f"{stats_prefix}/step_{j}_teacher_cos_sim"] = (cos_sim_j, bsz)
+                iter_stats[f"{stats_prefix}/step_{j}_next_fed_gold_cos"] = (cos_sim_j, bsz)
 
             if j == output_len - 1:
                 break
 
             use_predicted = (torch.rand(bsz, 1, 1, device=device) < sampling_rate)
+            fed_gold[:, j] = ~use_predicted.view(bsz)
             predicted = next_hidden.unsqueeze(1)
+            if self.detach_fed_output:
+                predicted = predicted.detach()
             teacher = teacher_embeddings[:, j, :].unsqueeze(1).to(dtype=next_hidden.dtype).detach()
-            next_tok = torch.where(use_predicted, predicted, teacher)
+            next_tok = self._fed_input(torch.where(use_predicted, predicted, teacher), q_embeds, q_mask)
 
             current_input = torch.cat((current_input, next_tok), dim=1)
             attn = torch.cat(
@@ -831,13 +1072,17 @@ class EmbeddingModelDocEncNoProj(nn.Module):
 
         add_geometry_stats(iter_stats, stats_prefix, selected_outputs_embeddings, positive_embeddings, negative_embeddings)
 
+        feed_kwargs = {"fed_gold": fed_gold} if getattr(self.loss_fct, "uses_feed_info", False) else {}
         loss, iter_stats = self.loss_fct(
             selected_outputs_embeddings,
             positive_embeddings,
             negative_embeddings,
             stats_prefix=stats_prefix,
             iter_stats=iter_stats,
+            **feed_kwargs,
         )
+        add_copy_stats(iter_stats, stats_prefix, selected_outputs_embeddings, teacher_embeddings, fed_gold,
+                       getattr(self.loss_fct, "last_assignment", None))
         return loss, iter_stats
 
 
