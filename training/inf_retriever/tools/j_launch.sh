@@ -33,6 +33,7 @@ for r in "${RUNS[@]}"; do
   run=clean_v3_j_qampari_${r#j_}
   [ -n "${EXTRA[$r]+x}" ] || { echo "unknown run $r" >&2; exit 1; }
   if [ -e "checkpoints/qampari/$run" ]; then echo "$run exists; skipping" >&2; continue; fi
+  if squeue -h -u "$USER" --name=phaseC_$run -o %i | grep -q .; then echo "$run already queued/running; skipping" >&2; continue; fi
   jid=$(DS=qampari MODE=multi LR=1e-5 RUN_NAME=$run EXTRA="$HN ${EXTRA[$r]}" SAVE_AT_OVERRIDE="${SAVES[$r]}" \
         DATA_ROOT=data/training/clean_v3 CODE_ROOT=$WT \
         sbatch --parsable --export=ALL --job-name=phaseC_$run "$WT/training/inf_retriever/tools/phaseC_train.sbatch")
