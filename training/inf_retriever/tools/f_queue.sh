@@ -8,7 +8,8 @@ cd /scratch/hc3337/projects/autoregressive
 MAXRUN=${MAXRUN:-3}
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/f-objective
 BASE="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 --freeze_doc_encoder"
-# order: F5, D4(a) test, rest of F2, F3b.  name|extra|code root ("" = main checkout)
+# order: F5, D4(a) test, rest of F2, F3b, then the 2026-10-15 additions.
+# name|extra|code root ("" = main checkout)[|training script]
 QUEUE=(
   "C_fednorm|--fed_norm token|$WT"
   "C_sat50|--sampling_saturate_frac 0.5|"
@@ -17,13 +18,18 @@ QUEUE=(
   "C_hps05|--loss_fn hungarian_plus_single --single_loss_weight 0.5|"
   "C_multi_t01|--temperature 0.1|"
   "C_seq_used|--loss_fn hungarian_seq_used|$WT"
+  # 2026-10-15 user-approved additions: learned input/output layers (src/inbatch_proj.py, vs C_seq) and the
+  # frozen hps weight sweep (vs C_hps05). 4th field: training entry point (TRAIN_SCRIPT, default finetuning_multi.py).
+  "C_seq_ioproj|--loss_fn hungarian_seq --io_proj||finetuning_multi_proj.py"
+  "C_hps025|--loss_fn hungarian_plus_single --single_loss_weight 0.25|"
+  "C_hps010|--loss_fn hungarian_plus_single --single_loss_weight 0.1|"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
-  IFS='|' read -r r extra root <<< "$e"; run=clean_v3_f_qampari_$r
+  IFS='|' read -r r extra root script <<< "$e"; run=clean_v3_f_qampari_$r
   [ -s results/phaseC/$run.trainjob ] && continue
   while [ "$(squeue -h -u $USER -o %j | grep -c '^phaseC_clean_v3_f_qampari_')" -ge $MAXRUN ]; do sleep 300; done
-  CODE_ROOT=$root setsid nohup bash training/inf_retriever/tools/f_run.sh multi 1e-5 $run "$BASE $extra" \
+  CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh multi 1e-5 $run "$BASE $extra" \
     >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
   sleep 30; log "started $run ($(cat results/phaseC/$run.trainjob 2>/dev/null))"
 done

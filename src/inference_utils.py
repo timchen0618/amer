@@ -50,6 +50,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
                         if freeze_doc_encoder
                         else inbatch.EmbeddingModelDocEncNoProj
                     )
+                    if getattr(opt, "io_proj", False):  # learned input/output layers (finetuning_multi_proj.py)
+                        from training.inf_retriever.src.inbatch_proj import EmbeddingModelFrozenDocEncProj
+                        model_class = EmbeddingModelFrozenDocEncProj
             else:
                 raise NotImplementedError("training_mode not specified")
         else:

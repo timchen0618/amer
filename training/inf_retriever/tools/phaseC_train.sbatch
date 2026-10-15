@@ -18,6 +18,9 @@
 # Schedules are the old runs' effective ones (as in phase B). Checkpoints skip the AdamW state.
 : "${DS:?}" "${MODE:?}" "${LR:?}" "${RUN_NAME:?}"
 EXTRA=${EXTRA:-}; SEED=${SEED:-0}
+# TRAIN_SCRIPT: training entry point under training/inf_retriever/ (default finetuning_multi.py;
+# finetuning_multi_proj.py adds --io_proj, the learned input/output layers of src/inbatch_proj.py).
+TRAIN_SCRIPT=${TRAIN_SCRIPT:-finetuning_multi.py}
 case $DS in
   qampari) STEPS=2500; WARMUP=100; FREQ=250; LOGF=25; SAVE_AT="250 500 1000 2500" ;;
   ambigqa) STEPS=400;  WARMUP=15;  FREQ=10;  LOGF=5;  SAVE_AT="30 100 150 250 400" ;;
@@ -46,7 +49,7 @@ singularity exec --nv \
 source /ext3/env.sh
 cd /scratch/hc3337/projects/autoregressive
 echo \"code: $CODE_ROOT $(git -C $CODE_ROOT rev-parse --short HEAD)\"
-accelerate launch --config_file $CODE_ROOT/training/inf_retriever/accelerate_config_2gpu_fsdp_nooffload.yaml --main_process_port $PORT $CODE_ROOT/training/inf_retriever/finetuning_multi.py \
+accelerate launch --config_file $CODE_ROOT/training/inf_retriever/accelerate_config_2gpu_fsdp_nooffload.yaml --main_process_port $PORT $CODE_ROOT/training/inf_retriever/$TRAIN_SCRIPT \
     --train_data $D/train_data.jsonl --eval_data $D/dev_data.jsonl \
     --temperature 0.05 --total_steps $STEPS --warmup_steps $WARMUP --lr $LR \
     --save_freq $FREQ --log_freq $LOGF --eval_freq $FREQ \
