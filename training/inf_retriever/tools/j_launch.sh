@@ -7,6 +7,9 @@
 #     j_hps_detach      --detach_fed_output
 #     j_hps_seq_detach  both
 #   E5: j_hps_fednorm  --fed_norm token (fed vectors are 80-300x a token embedding, probe D2)
+#   E3 (2026-10-15; the post-switch collapse needs a trainable doc encoder, D4(a)): documents encoded
+#     without gradient after step 1250 (--doc_grad_until): j_hps_seq_docstop (best recipe so far),
+#     j_sat50_docstop (the run with the clearest collapse, vs clean_v3_abl2_qampari_sat50)
 #   D4(b): j_sat50_dense  plain Hungarian, saturate 50% (as clean_v3_abl2_qampari_sat50), in-training eval
 #     every 50 steps with the new logging, to order the events around the switch at step 1250.
 # Usage (from anywhere): bash <worktree>/training/inf_retriever/tools/j_launch.sh [run ...]
@@ -22,6 +25,8 @@ EXTRA[j_hps_seq]="$HPS --hps_multi_loss hungarian_seq";                         
 EXTRA[j_hps_detach]="$HPS --detach_fed_output";                                 SAVES[j_hps_detach]=$SAVE
 EXTRA[j_hps_seq_detach]="$HPS --hps_multi_loss hungarian_seq --detach_fed_output"; SAVES[j_hps_seq_detach]=$SAVE
 EXTRA[j_hps_fednorm]="$HPS --fed_norm token";                                  SAVES[j_hps_fednorm]=$SAVE
+EXTRA[j_hps_seq_docstop]="$HPS --hps_multi_loss hungarian_seq --doc_grad_until 1250"; SAVES[j_hps_seq_docstop]=$SAVE
+EXTRA[j_sat50_docstop]="--sampling_saturate_frac 0.5 --doc_grad_until 1250 --select_metric cover5"; SAVES[j_sat50_docstop]=$SAVE
 EXTRA[j_sat50_dense]="--sampling_saturate_frac 0.5 --eval_freq 50 --select_metric cover5"; SAVES[j_sat50_dense]="1000 1250 1500 2500"
 RUNS=("$@"); [ ${#RUNS[@]} -eq 0 ] && RUNS=(j_hps_seq j_hps_detach j_hps_seq_detach j_hps_fednorm j_sat50_dense)
 for r in "${RUNS[@]}"; do

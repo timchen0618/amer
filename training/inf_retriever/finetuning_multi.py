@@ -863,11 +863,13 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                 # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
                 _sampling_rate = 1.0 if opt.full_sampling else min(1.0, step / (opt.sampling_saturate_frac * opt.total_steps))
-                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate)
+                # --doc_grad_until N: after step N the documents are encoded without gradient (E3).
+                _doc_grad = opt.doc_grad_until <= 0 or step <= opt.doc_grad_until
+                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate, doc_grad=_doc_grad)
                 accelerator.backward(train_loss)
                 if opt.optim == "sam" or opt.optim == "asam":
                     optimizer.first_step(zero_grad=True)
-                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=_sampling_rate)
+                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=_sampling_rate, doc_grad=_doc_grad)
                     # sam_loss.backward()
                     accelerator.backward(sam_loss)
                     optimizer.second_step(zero_grad=True)
