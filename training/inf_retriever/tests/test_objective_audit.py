@@ -317,6 +317,31 @@ def test_default_path_unchanged():
     assert "t/free_repeat_cos" in st and "t/tf_copy_cos" not in st
 
 
+
+def test_doc_grad_off():
+    """doc_grad=False (--doc_grad_until): documents are encoded without gradient; queries still train."""
+    torch.manual_seed(13)
+    bt = batch()
+    m = build()
+    seen = {}
+
+    def loss_fn(o):
+        return o.sum()
+    cap = Capture(loss_fn)
+    orig = cap.forward
+
+    def fwd(outputs, pos, neg, **kw):
+        seen["pos_grad"] = pos.requires_grad
+        return orig(outputs, pos, neg, **kw)
+    cap.forward = fwd
+    m.loss_fct = cap
+    _, st = m(**bt, sampling_rate=1.0, stats_prefix="t")
+    assert seen["pos_grad"] and st["t/doc_grad"][0] == 1.0
+    loss, st = m(**bt, sampling_rate=1.0, stats_prefix="t", doc_grad=False)
+    assert not seen["pos_grad"] and st["t/doc_grad"][0] == 0.0
+    loss.backward()
+    assert m.encoder.lin.weight.grad is not None and m.encoder.lin.weight.grad.abs().sum() > 0
+
 if __name__ == "__main__":
     tests = [v for k_, v in list(globals().items()) if k_.startswith("test_") and callable(v)]
     for t in tests:

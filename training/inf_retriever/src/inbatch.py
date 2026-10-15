@@ -1002,7 +1002,15 @@ class EmbeddingModelDocEncNoProj(nn.Module):
         sampling_rate = kwargs.get("sampling_rate", 1.0)
         iter_stats[f"{stats_prefix}/sampling_rate"] = (sampling_rate, bsz)
 
-        positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
+        # doc_grad (kwargs, default True): False encodes the documents without gradient, so the shared
+        # encoder learns only through the query side (--doc_grad_until, objective audit E3, 2026-10-15).
+        doc_grad = kwargs.get("doc_grad", True)
+        iter_stats[f"{stats_prefix}/doc_grad"] = (float(doc_grad), bsz)
+        if doc_grad:
+            positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
+        else:
+            with torch.no_grad():
+                positive_embeddings, negative_embeddings = self.encode_documents(k_tokens, k_mask)
         teacher_embeddings = positive_embeddings.reshape(bsz, -1, positive_embeddings.size(-1))
         negative_embeddings = negative_embeddings.reshape(bsz, -1, negative_embeddings.size(-1))
         output_len = teacher_embeddings.size(1)

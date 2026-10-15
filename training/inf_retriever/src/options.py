@@ -153,6 +153,12 @@ class Options:
                   "generate()) to the mean norm of the question's token embeddings (objective audit E5)."),
         )
         self.parser.add_argument(
+            "--doc_grad_until", type=int, default=0,
+            help=("Joint doc encoder only: after this training step, documents are encoded without gradient, "
+                  "so the shared encoder is trained only through the query side (objective audit E3: the "
+                  "post-switch collapse needs a trainable doc encoder). 0 (default) = always train the doc side."),
+        )
+        self.parser.add_argument(
             "--select_metric", type=str, default="mrr", choices=["mrr", "cover1", "cover5", "all_cover5"],
             help=("In-training eval score that gates best_model. 'mrr' (default) scores only output 0 in "
                   "multi mode; cover1 / cover5 / all_cover5 score all k free-running embeddings (multi only)."),
@@ -294,6 +300,8 @@ class Options:
             self.parser.error(f"--sampling_saturate_frac must be in (0, 1], got {opt.sampling_saturate_frac}")
         if opt.select_metric != "mrr" and opt.training_mode != "multi":
             self.parser.error(f"--select_metric {opt.select_metric} needs --training_mode multi")
+        if opt.doc_grad_until > 0 and opt.freeze_doc_encoder:
+            self.parser.error("--doc_grad_until needs a trainable doc encoder (not --freeze_doc_encoder)")
         if opt.hps_multi_loss != "hungarian" and opt.loss_fn != "hungarian_plus_single":
             self.parser.error("--hps_multi_loss only applies to --loss_fn hungarian_plus_single")
         return opt
