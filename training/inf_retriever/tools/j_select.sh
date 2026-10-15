@@ -6,7 +6,7 @@
 #   setsid nohup bash training/inf_retriever/tools/j_select.sh [run ...] > results/phaseC/j_select.out 2>&1 &
 set -u
 cd /scratch/hc3337/projects/autoregressive
-Q=results/phaseC/full_queue_qampari_clean_v3_j.txt; touch $Q
+Q=${QUEUE:-results/phaseC/full_queue_qampari_clean_v3_j.txt}; touch $Q
 LOG=results/phaseC/phaseC.log
 RUNS=("$@")
 [ ${#RUNS[@]} -eq 0 ] && RUNS=($(awk '{print $3}' results/phaseC/j_runs.log | sort -u))

@@ -27,6 +27,12 @@ EXTRA[j_hps_seq_detach]="$HPS --hps_multi_loss hungarian_seq --detach_fed_output
 EXTRA[j_hps_fednorm]="$HPS --fed_norm token";                                  SAVES[j_hps_fednorm]=$SAVE
 EXTRA[j_hps_seq_docstop]="$HPS --hps_multi_loss hungarian_seq --doc_grad_until 1250"; SAVES[j_hps_seq_docstop]=$SAVE
 EXTRA[j_sat50_docstop]="--sampling_saturate_frac 0.5 --doc_grad_until 1250 --select_metric cover5"; SAVES[j_sat50_docstop]=$SAVE
+# E1/E2/E5 on plain Hungarian (round 1 multi = off/off, clean_v3_abl_qampari_multi; 2026-10-15). Deferred
+# until every planned J and F run is done (tools/j_deferred.sh); they must not compete with planned runs.
+EXTRA[j_multi_seq]="--loss_fn hungarian_seq --select_metric cover5";                      SAVES[j_multi_seq]=$SAVE
+EXTRA[j_multi_detach]="--detach_fed_output --select_metric cover5";                       SAVES[j_multi_detach]=$SAVE
+EXTRA[j_multi_seq_detach]="--loss_fn hungarian_seq --detach_fed_output --select_metric cover5"; SAVES[j_multi_seq_detach]=$SAVE
+EXTRA[j_multi_fednorm]="--fed_norm token --select_metric cover5";                         SAVES[j_multi_fednorm]=$SAVE
 EXTRA[j_sat50_dense]="--sampling_saturate_frac 0.5 --eval_freq 50 --select_metric cover5"; SAVES[j_sat50_dense]="1000 1250 1500 2500"
 RUNS=("$@"); [ ${#RUNS[@]} -eq 0 ] && RUNS=(j_hps_seq j_hps_detach j_hps_seq_detach j_hps_fednorm j_sat50_dense)
 for r in "${RUNS[@]}"; do
