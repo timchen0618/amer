@@ -22,6 +22,10 @@ The output layer is applied by a forward hook on the query encoder (self.encoder
 separate frozen self.doc_encoder and are not projected. A hook rather than a wrapper module keeps the
 encoder's state-dict keys unchanged. The input layer replaces _fed_input, the single place where both
 training and generate() build the next fed token.
+
+--io_proj_mode (default both; saved in opt, so load_retriever rebuilds the same layers) keeps one layer only:
+  - in:  input layer only; queries are scored on the encoder's own state h (as the base class);
+  - out: output layer only; fed vectors enter raw, as the base class with --fed_norm none (norm ~195).
 """
 import torch
 import torch.nn as nn
@@ -35,16 +39,21 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
     def __init__(self, opt, retriever=None, tokenizer=None):
         super().__init__(opt, retriever, tokenizer)
         assert getattr(opt, "fed_norm", "none") == "none", "--io_proj replaces --fed_norm; set only one"
+        self.io_proj_mode = getattr(opt, "io_proj_mode", "both")
+        assert self.io_proj_mode in ("both", "in", "out"), self.io_proj_mode
         d = self.embedding.weight.size(1)
         with torch.no_grad():
             s = self.embedding.weight.float().norm(dim=-1).mean().item()
-        self.in_proj = nn.Linear(d, d, bias=False)
-        self.out_proj = nn.Linear(d, d, bias=False)
-        with torch.no_grad():
-            self.in_proj.weight.copy_(torch.eye(d) * s)
-            self.out_proj.weight.copy_(torch.eye(d))
         self.in_proj_init_scale = s
-        self.encoder.register_forward_hook(self._project_query_output)
+        if self.io_proj_mode in ("both", "in"):
+            self.in_proj = nn.Linear(d, d, bias=False)
+            with torch.no_grad():
+                self.in_proj.weight.copy_(torch.eye(d) * s)
+        if self.io_proj_mode in ("both", "out"):
+            self.out_proj = nn.Linear(d, d, bias=False)
+            with torch.no_grad():
+                self.out_proj.weight.copy_(torch.eye(d))
+            self.encoder.register_forward_hook(self._project_query_output)
 
     def _project_query_output(self, module, args, output):
         h = output.last_hidden_state
@@ -52,5 +61,7 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
         return output
 
     def _fed_input(self, vec, q_embeds, q_mask):
+        if self.io_proj_mode == "out":
+            return super()._fed_input(vec, q_embeds, q_mask)
         x = F.normalize(vec.float(), dim=-1).to(self.in_proj.weight.dtype)
         return self.in_proj(x).to(q_embeds.dtype)

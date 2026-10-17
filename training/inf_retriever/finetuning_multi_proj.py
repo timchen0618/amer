@@ -21,9 +21,15 @@ class ProjOptions(Options):
             "--io_proj", action="store_true",
             help="learned input layer on fed vectors + output layer on queries (src/inbatch_proj.py)",
         )
+        self.parser.add_argument(
+            "--io_proj_mode", type=str, default="both", choices=["both", "in", "out"],
+            help="with --io_proj: both layers (default), the input layer only, or the output layer only",
+        )
 
     def parse(self):
         opt = super().parse()
+        if opt.io_proj_mode != "both" and not opt.io_proj:
+            self.parser.error("--io_proj_mode needs --io_proj")
         if opt.io_proj:
             if not (opt.freeze_doc_encoder and opt.training_mode == "multi"):
                 self.parser.error("--io_proj needs --freeze_doc_encoder and --training_mode multi")

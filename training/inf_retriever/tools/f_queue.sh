@@ -23,6 +23,12 @@ QUEUE=(
   "C_seq_ioproj|--loss_fn hungarian_seq --io_proj||finetuning_multi_proj.py"
   "C_hps025|--loss_fn hungarian_plus_single --single_loss_weight 0.25|"
   "C_hps010|--loss_fn hungarian_plus_single --single_loss_weight 0.1|"
+  # 2026-10-17 user-approved ioproj follow-ups: #1 ioproj + hps 0.25 (multi term hungarian_seq), vs C_seq_ioproj and
+  # C_hps025; #4 ioproj on plain Hungarian (vs C_multi); #5 one layer only on plain Hungarian (vs #4).
+  "C_hps025_seq_ioproj|--loss_fn hungarian_plus_single --single_loss_weight 0.25 --hps_multi_loss hungarian_seq --io_proj||finetuning_multi_proj.py"
+  "C_multi_ioproj|--loss_fn hungarian --io_proj||finetuning_multi_proj.py"
+  "C_multi_inproj|--loss_fn hungarian --io_proj --io_proj_mode in||finetuning_multi_proj.py"
+  "C_multi_outproj|--loss_fn hungarian --io_proj --io_proj_mode out||finetuning_multi_proj.py"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
