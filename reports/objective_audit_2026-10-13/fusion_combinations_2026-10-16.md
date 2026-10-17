@@ -75,3 +75,16 @@ Families: `hps` (runs with the single-query term) vs the rest; within each famil
     python training/inf_retriever/tools/fusion_combo.py --single_dir <single ckpt dir> --partners <other single dirs> --out results/phaseC/fusion/control_<set>.json
     python training/inf_retriever/tools/fusion_combo_summary.py --combo results/phaseC/fusion/combo_frozen.json results/phaseC/fusion/combo_joint.json \
         --fe frozen=results/phaseC/fusion/frozen.json,results/phaseC/fusion/extra_besttest.json joint=results/phaseC/fusion/joint.json
+
+## Addendum (2026-10-17): new frozen checkpoints
+
+Combinations rerun on the frozen checkpoints finished after the study (`results/phaseC/fusion/combo_frozen_new.json`). dev / test / large / small:
+
+| Checkpoint | Plain RRF | 1. Weighted summed (w 2) | 2b. Hybrid, single (w 2) + all 5 |
+| --- | --- | --- | --- |
+| C_seq_ioproj s1250 (dev-selected) | 32.6 / 31.45 / 13.10 / 48.89 | 33.0 / 32.02 / 13.69 / 49.44 | 33.2 / 33.33 / 13.69 / 51.67 |
+| C_seq_ioproj s2500 (best test) | 30.2 / 33.15 / 17.26 / 50.56 | 30.6 / 33.33 / 17.26 / 50.56 | 31.6 / 34.46 / 17.26 / 52.78 |
+| C_hps025 s1750 | 31.8 / 33.33 / 14.88 / 52.22 | 31.6 / 33.90 / 14.29 / 53.33 | 31.8 / 34.09 / 14.29 / 52.22 |
+| C_hps010 s1750 | 31.6 / 32.58 / 13.10 / 50.56 | — | 32.6 / 34.84 / 14.88 / 51.67 |
+
+Frozen single alone: 31.8 / 31.26 / 12.50 / 49.44; single + a second single model (control): 31.4–31.6 / 32.77–33.52 / 13.69–14.29 / 49.44–51.67. The hybrids sit about 1 point above the control on test but tie it on dev, so the conclusion is unchanged: no dev-visible gain from multi-query.
