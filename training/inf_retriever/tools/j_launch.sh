@@ -12,6 +12,8 @@
 #     j_sat50_docstop (the run with the clearest collapse, vs clean_v3_abl2_qampari_sat50)
 #   D4(b): j_sat50_dense  plain Hungarian, saturate 50% (as clean_v3_abl2_qampari_sat50), in-training eval
 #     every 50 steps with the new logging, to order the events around the switch at step 1250.
+#   2026-10-22 (user): j_multi_seq_ioproj  j_multi_seq + learned input/output layers on the joint model
+#     (src/inbatch_proj.EmbeddingModelDocEncProj via finetuning_multi_proj.py --io_proj).
 # Usage (from anywhere): bash <worktree>/training/inf_retriever/tools/j_launch.sh [run ...]
 set -euo pipefail
 WT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -20,7 +22,7 @@ cd "$MAIN"
 HN="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5"   # as abl/abl2_launch.sh
 HPS="--loss_fn hungarian_plus_single --single_loss_weight 0.5 --select_metric cover5"
 SAVE="500 750 1000 1250 1500 2000 2500"
-declare -A EXTRA SAVES
+declare -A EXTRA SAVES SCRIPT
 EXTRA[j_hps_seq]="$HPS --hps_multi_loss hungarian_seq";                         SAVES[j_hps_seq]=$SAVE
 EXTRA[j_hps_detach]="$HPS --detach_fed_output";                                 SAVES[j_hps_detach]=$SAVE
 EXTRA[j_hps_seq_detach]="$HPS --hps_multi_loss hungarian_seq --detach_fed_output"; SAVES[j_hps_seq_detach]=$SAVE
@@ -33,6 +35,8 @@ EXTRA[j_multi_seq]="--loss_fn hungarian_seq --select_metric cover5";            
 EXTRA[j_multi_detach]="--detach_fed_output --select_metric cover5";                       SAVES[j_multi_detach]=$SAVE
 EXTRA[j_multi_seq_detach]="--loss_fn hungarian_seq --detach_fed_output --select_metric cover5"; SAVES[j_multi_seq_detach]=$SAVE
 EXTRA[j_multi_fednorm]="--fed_norm token --select_metric cover5";                         SAVES[j_multi_fednorm]=$SAVE
+EXTRA[j_multi_seq_ioproj]="--loss_fn hungarian_seq --io_proj --select_metric cover5"; SAVES[j_multi_seq_ioproj]=$SAVE
+SCRIPT[j_multi_seq_ioproj]=finetuning_multi_proj.py
 EXTRA[j_sat50_dense]="--sampling_saturate_frac 0.5 --eval_freq 50 --select_metric cover5"; SAVES[j_sat50_dense]="1000 1250 1500 2500"
 RUNS=("$@"); [ ${#RUNS[@]} -eq 0 ] && RUNS=(j_hps_seq j_hps_detach j_hps_seq_detach j_hps_fednorm j_sat50_dense)
 for r in "${RUNS[@]}"; do
@@ -41,7 +45,7 @@ for r in "${RUNS[@]}"; do
   if [ -e "checkpoints/qampari/$run" ]; then echo "$run exists; skipping" >&2; continue; fi
   if squeue -h -u "$USER" --name=phaseC_$run -o %i | grep -q .; then echo "$run already queued/running; skipping" >&2; continue; fi
   jid=$(DS=qampari MODE=multi LR=1e-5 RUN_NAME=$run EXTRA="$HN ${EXTRA[$r]}" SAVE_AT_OVERRIDE="${SAVES[$r]}" \
-        DATA_ROOT=data/training/clean_v3 CODE_ROOT=$WT \
+        DATA_ROOT=data/training/clean_v3 CODE_ROOT=$WT TRAIN_SCRIPT=${SCRIPT[$r]:-finetuning_multi.py} \
         sbatch --parsable --export=ALL --job-name=phaseC_$run "$WT/training/inf_retriever/tools/phaseC_train.sbatch")
   echo "$(date '+%F %T') $run job $jid code $(git -C "$WT" rev-parse --short HEAD) extra='${EXTRA[$r]}'" | tee -a results/phaseC/j_runs.log
 done
