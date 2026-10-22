@@ -65,3 +65,47 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
             return super()._fed_input(vec, q_embeds, q_mask)
         x = F.normalize(vec.float(), dim=-1).to(self.in_proj.weight.dtype)
         return self.in_proj(x).to(q_embeds.dtype)
+
+
+class EmbeddingModelDocEncProj(inbatch.EmbeddingModelDocEncNoProj):
+    """EmbeddingModelFrozenDocEncProj for the JOINT doc encoder (Session J, 2026-10-22): the same input and
+    output layers, initialization and --io_proj_mode, on top of EmbeddingModelDocEncNoProj.
+
+    Queries and documents share self.encoder here, so the output layer must not touch documents. Every
+    query-side call (forward, generate) passes inputs_embeds, and every document call (encode_documents,
+    and gen_embed_new.py's corpus embedding through model.encoder) passes input_ids. The hook therefore
+    projects only calls that came with inputs_embeds. Documents, and the corpus, stay in the encoder's own
+    space, as the frozen class keeps them in the frozen encoder's.
+    """
+
+    def __init__(self, opt, retriever=None, tokenizer=None):
+        super().__init__(opt, retriever, tokenizer)
+        assert getattr(opt, "fed_norm", "none") == "none", "--io_proj replaces --fed_norm; set only one"
+        self.io_proj_mode = getattr(opt, "io_proj_mode", "both")
+        assert self.io_proj_mode in ("both", "in", "out"), self.io_proj_mode
+        d = self.embedding.weight.size(1)
+        with torch.no_grad():
+            s = self.embedding.weight.float().norm(dim=-1).mean().item()
+        self.in_proj_init_scale = s
+        if self.io_proj_mode in ("both", "in"):
+            self.in_proj = nn.Linear(d, d, bias=False)
+            with torch.no_grad():
+                self.in_proj.weight.copy_(torch.eye(d) * s)
+        if self.io_proj_mode in ("both", "out"):
+            self.out_proj = nn.Linear(d, d, bias=False)
+            with torch.no_grad():
+                self.out_proj.weight.copy_(torch.eye(d))
+            self.encoder.register_forward_hook(self._project_query_output, with_kwargs=True)
+
+    def _project_query_output(self, module, args, kwargs, output):
+        if kwargs.get("inputs_embeds") is None:  # document call: leave unprojected
+            return output
+        h = output.last_hidden_state
+        output.last_hidden_state = self.out_proj(h.to(self.out_proj.weight.dtype)).to(h.dtype)
+        return output
+
+    def _fed_input(self, vec, q_embeds, q_mask):
+        if self.io_proj_mode == "out":
+            return super()._fed_input(vec, q_embeds, q_mask)
+        x = F.normalize(vec.float(), dim=-1).to(self.in_proj.weight.dtype)
+        return self.in_proj(x).to(q_embeds.dtype)

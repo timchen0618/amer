@@ -4,8 +4,9 @@ Runs finetuning_multi.main() unchanged, after two in-process substitutions:
   - Options gains --io_proj (saved in the checkpoint's opt, which load_retriever reads to pick the class);
   - with --io_proj, inbatch.EmbeddingModelFrozenDocEnc resolves to EmbeddingModelFrozenDocEncProj, so
     finetuning_multi's model construction and its in-training evaluate() both build the projected model.
-Nothing in finetuning_multi.py, options.py or inbatch.py is edited. Frozen document encoder only:
---io_proj requires --freeze_doc_encoder and --training_mode multi.
+Nothing in finetuning_multi.py, options.py or inbatch.py is edited. --io_proj requires --training_mode multi;
+with --freeze_doc_encoder it uses EmbeddingModelFrozenDocEncProj, without it (joint doc encoder, 2026-10-22)
+inbatch.EmbeddingModelDocEncNoProj resolves to EmbeddingModelDocEncProj.
 
     tools/phaseC_train.sbatch with TRAIN_SCRIPT=finetuning_multi_proj.py and EXTRA="... --io_proj"
 """
@@ -31,9 +32,12 @@ class ProjOptions(Options):
         if opt.io_proj_mode != "both" and not opt.io_proj:
             self.parser.error("--io_proj_mode needs --io_proj")
         if opt.io_proj:
-            if not (opt.freeze_doc_encoder and opt.training_mode == "multi"):
-                self.parser.error("--io_proj needs --freeze_doc_encoder and --training_mode multi")
-            inbatch.EmbeddingModelFrozenDocEnc = inbatch_proj.EmbeddingModelFrozenDocEncProj
+            if opt.training_mode != "multi":
+                self.parser.error("--io_proj needs --training_mode multi")
+            if opt.freeze_doc_encoder:
+                inbatch.EmbeddingModelFrozenDocEnc = inbatch_proj.EmbeddingModelFrozenDocEncProj
+            else:
+                inbatch.EmbeddingModelDocEncNoProj = inbatch_proj.EmbeddingModelDocEncProj
         return opt
 
 
