@@ -45,14 +45,19 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
         with torch.no_grad():
             s = self.embedding.weight.float().norm(dim=-1).mean().item()
         self.in_proj_init_scale = s
+        # --io_proj_init random (2026-10-22, paper-gap plan): keep nn.Linear's default init, as the legacy
+        # src/model.py projections did, instead of identity / s * identity.
+        identity = getattr(opt, "io_proj_init", "identity") == "identity"
         if self.io_proj_mode in ("both", "in"):
             self.in_proj = nn.Linear(d, d, bias=False)
-            with torch.no_grad():
-                self.in_proj.weight.copy_(torch.eye(d) * s)
+            if identity:
+                with torch.no_grad():
+                    self.in_proj.weight.copy_(torch.eye(d) * s)
         if self.io_proj_mode in ("both", "out"):
             self.out_proj = nn.Linear(d, d, bias=False)
-            with torch.no_grad():
-                self.out_proj.weight.copy_(torch.eye(d))
+            if identity:
+                with torch.no_grad():
+                    self.out_proj.weight.copy_(torch.eye(d))
             self.encoder.register_forward_hook(self._project_query_output)
 
     def _project_query_output(self, module, args, output):

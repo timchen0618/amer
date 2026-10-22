@@ -26,6 +26,8 @@ case $DS in
   ambigqa) STEPS=400;  WARMUP=15;  FREQ=10;  LOGF=5;  SAVE_AT="30 100 150 250 400" ;;
   *) echo "DS must be qampari or ambigqa"; exit 1 ;;
 esac
+# STEPS_OVERRIDE / WARMUP_OVERRIDE (optional, 2026-10-22): a longer run on the same data (F's 10k-step runs).
+STEPS=${STEPS_OVERRIDE:-$STEPS}; WARMUP=${WARMUP_OVERRIDE:-$WARMUP}
 # Dense schedules (phaseC_run.sh with DENSE=1) override the save steps; FREQ must divide them.
 SAVE_AT=${SAVE_AT_OVERRIDE:-$SAVE_AT}
 case $MODE in

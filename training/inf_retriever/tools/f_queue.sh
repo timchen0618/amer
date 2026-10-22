@@ -7,6 +7,7 @@
 cd /scratch/hc3337/projects/autoregressive
 MAXRUN=${MAXRUN:-3}
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/f-objective
+LONG="STEPS_OVERRIDE=10000 WARMUP_OVERRIDE=400 F_STEPS=1000,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000 F_FINAL=10000 TRAIN_TIME=16:00:00"
 BASE="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 --freeze_doc_encoder"
 # order: F5, D4(a) test, rest of F2, F3b, then the 2026-10-15 additions.
 # name|extra|code root ("" = main checkout)[|training script]
@@ -29,13 +30,21 @@ QUEUE=(
   "C_multi_ioproj|--loss_fn hungarian --io_proj||finetuning_multi_proj.py"
   "C_multi_inproj|--loss_fn hungarian --io_proj --io_proj_mode in||finetuning_multi_proj.py"
   "C_multi_outproj|--loss_fn hungarian --io_proj --io_proj_mode out||finetuning_multi_proj.py"
+  # 2026-10-22 user-approved paper-gap plan, Stage A: sampling schedule x length on plain Hungarian (C_multi = linear
+  # 0->1 at 2500 steps). cap = legacy min(10 t / T, 0.8); const = legacy multi_sampling (rate 1.0). 5th field: env
+  # for f_run.sh / phaseC_train.sbatch (10k steps: warmup 400 = 4% as at 2500, eval every 1000 + 2500, 16 h walltime).
+  "C_multi_cap|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|"
+  "C_multi_const|--loss_fn hungarian --full_sampling||finetuning_multi_paper.py|"
+  "C_multi_10k|--loss_fn hungarian||finetuning_multi_paper.py|$LONG"
+  "C_multi_cap_10k|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|$LONG"
+  "C_multi_const_10k|--loss_fn hungarian --full_sampling||finetuning_multi_paper.py|$LONG"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
-  IFS='|' read -r r extra root script <<< "$e"; run=clean_v3_f_qampari_$r
+  IFS='|' read -r r extra root script envs <<< "$e"; run=clean_v3_f_qampari_$r
   [ -s results/phaseC/$run.trainjob ] && continue
   while [ "$(squeue -h -u $USER -o %j | grep -c '^phaseC_clean_v3_f_qampari_')" -ge $MAXRUN ]; do sleep 300; done
-  CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh multi 1e-5 $run "$BASE $extra" \
+  env $envs CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh multi 1e-5 $run "$BASE $extra" \
     >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
   sleep 30; log "started $run ($(cat results/phaseC/$run.trainjob 2>/dev/null))"
 done

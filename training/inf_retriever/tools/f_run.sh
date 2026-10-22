@@ -21,7 +21,11 @@ LOG=results/phaseC/phaseC.log
 EMB=wikipedia_embeddings/qampari/shared_frozen_base_512
 DEV=data/phaseA/qampari_cleanv2dev500.jsonl; TEST=data/amer_data/eval_data/qampari.jsonl
 IMG=/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
+# F_STEPS (comma-separated save/eval steps) and F_FINAL override the 2500-step schedule for longer runs; the training
+# job then needs STEPS_OVERRIDE (= F_FINAL) and usually WARMUP_OVERRIDE / TRAIN_TIME (sbatch --time), all from the env.
 STEPS=$(seq -s ' ' 250 250 2500); FINAL=2500
+[ -n "${F_STEPS:-}" ] && STEPS=$(echo "$F_STEPS" | tr ',' ' ')
+FINAL=${F_FINAL:-$FINAL}
 K=""; [ "$MODE" = multi ] && K=5
 log() { echo "[$(date '+%F %T')] [$RUN] $*" | tee -a "$LOG" >&2; }
 trap 'rc=$?; [ $rc -ne 0 ] && log "RUN FAILED (exit $rc); restart this driver to resume"' EXIT
@@ -42,7 +46,7 @@ if [ -s "$state" ]; then TJ=$(cat "$state"); else
   # --fed_norm token); data, checkpoints, scoring and results stay on the main checkout.
   TS=$T/phaseC_train.sbatch; [ -n "${CODE_ROOT:-}" ] && TS=$CODE_ROOT/$T/phaseC_train.sbatch
   TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=data/training/clean_v3 \
-       sbatch --parsable --export=ALL --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
+       sbatch --parsable --export=ALL ${TRAIN_TIME:+--time=$TRAIN_TIME} --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
   echo "$TJ" > "$state"; log "submitted training job $TJ (frozen F run; mode=$MODE lr=$LR extra='$EXTRA'${CODE_ROOT:+ code=$CODE_ROOT@$(git -C $CODE_ROOT rev-parse --short HEAD)})"
 fi
 TLOG=sbatch_outputs/phaseC_$RUN.out
