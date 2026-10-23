@@ -4,6 +4,8 @@
    encoder(input_ids=...) call as gen_embed_new.py makes, stay in the encoder's own space.
 2. At initialization the first query equals the base class's; fed vectors enter as in_proj(normalize(v)).
 3. --io_proj_mode in / out build only that layer; the state dict round-trips through load_model_state.
+4. The real entry path: finetuning_multi_proj's option parsing makes finetuning_multi build the joint proj
+   class, and leaves src.inbatch's own globals alone (job 20622528 died on exactly this, 2026-10-22).
 
 Run from the repo root:  python training/inf_retriever/tests/test_io_proj_joint.py
 """
@@ -69,6 +71,25 @@ def test_modes_and_state_dict():
     inbatch.load_model_state(b, a.state_dict())
     q, m, pos, kt, km = batch()
     assert torch.allclose(a.generate(q, m, pos, 3), b.generate(q, m, pos, 3))
+
+
+def test_entry_point_swap():
+    sys.path.insert(0, os.path.join(HERE, ".."))
+    import finetuning_multi
+    import finetuning_multi_proj
+    base_cls = inbatch.EmbeddingModelDocEncNoProj
+    argv = sys.argv
+    sys.argv = ["finetuning_multi_proj.py", "--training_mode", "multi", "--io_proj", "--loss_fn", "hungarian_seq"]
+    try:
+        finetuning_multi_proj.ProjOptions().parse()
+    finally:
+        sys.argv = argv
+    assert inbatch.EmbeddingModelDocEncNoProj is base_cls, "src.inbatch globals must stay untouched"
+    cls = finetuning_multi.inbatch.EmbeddingModelDocEncNoProj
+    assert cls is inbatch_proj.EmbeddingModelDocEncProj
+    m = build(cls)  # the constructor call that failed in job 20622528
+    assert hasattr(m, "in_proj") and hasattr(m, "out_proj")
+    assert finetuning_multi.inbatch.EmbeddingModelFrozenDocEnc is inbatch.EmbeddingModelFrozenDocEnc
 
 
 if __name__ == "__main__":

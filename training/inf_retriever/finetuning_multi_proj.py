@@ -15,6 +15,16 @@ from src import inbatch, inbatch_proj
 from src.options import Options
 
 
+class _InbatchView:
+    """src.inbatch with some attributes overridden, for finetuning_multi's `inbatch.X` lookups only."""
+
+    def __init__(self, **overrides):
+        self.__dict__.update(overrides)
+
+    def __getattr__(self, name):
+        return getattr(inbatch, name)
+
+
 class ProjOptions(Options):
     def initialize(self):
         super().initialize()
@@ -37,7 +47,11 @@ class ProjOptions(Options):
             if opt.freeze_doc_encoder:
                 inbatch.EmbeddingModelFrozenDocEnc = inbatch_proj.EmbeddingModelFrozenDocEncProj
             else:
-                inbatch.EmbeddingModelDocEncNoProj = inbatch_proj.EmbeddingModelDocEncProj
+                # Not inbatch.EmbeddingModelDocEncNoProj = ...: inbatch.py's own __init__ calls
+                # super(EmbeddingModelDocEncNoProj, self) by global name, so rebinding that global breaks
+                # the base class (job 20622528, 2026-10-22). finetuning_multi instead gets a view of inbatch
+                # in which only that name is swapped; inbatch's globals stay untouched.
+                finetuning_multi.inbatch = _InbatchView(EmbeddingModelDocEncNoProj=inbatch_proj.EmbeddingModelDocEncProj)
         return opt
 
 
