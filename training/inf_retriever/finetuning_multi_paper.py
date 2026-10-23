@@ -243,6 +243,61 @@ def _install_one_label_step():
     finetuning_multi.build_accelerator = build_accelerator
 
 
+def _install_dev_loss_eval():
+    """Log the legacy selection metric at every in-training eval (2026-10-23, user request: compare selection rules).
+
+    The legacy loop (train_distributed.py) kept the checkpoint with the lowest dev Hungarian loss computed at
+    sampling rate 1.0. finetuning_multi.evaluate() logs in-batch retrieval metrics only; this wraps it to also
+    compute the training loss (opt.loss_fn) over the same eval batches with sampling_rate=1.0, using the model
+    evaluate() just built, and logs it as eval_loss_sr1 (wandb) and as a "[eval_loss_sr1] step S: v" line that
+    tools/f_run.sh reads. evaluate() runs on the main process only, so the loss's cross-rank gather is replaced by
+    the identity while it runs."""
+    from src import dist_utils
+    orig_eval = finetuning_multi.evaluate
+    base = inbatch.EmbeddingModelFrozenDocEnc
+
+    class Recorded(base):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            _STATE["last_model"] = self
+
+    Recorded.__name__ = base.__name__
+    inbatch.EmbeddingModelFrozenDocEnc = Recorded
+
+    def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
+        out = orig_eval(opt, state_dict, eval_loader, accelerator, step, device)
+        model = _STATE.pop("last_model", None)
+        if model is None or opt.training_mode != "multi":
+            return out
+        saved = (dist_utils.varsize_gather, dist_utils.get_varsize, dist_utils.get_rank)
+        dist_utils.varsize_gather = lambda x, *a, **k: x
+        dist_utils.get_varsize = lambda x, *a, **k: torch.tensor([x.size(0)], device=x.device)
+        dist_utils.get_rank = lambda: 0
+        tot, n = 0.0, 0
+        try:  # never let the extra metric break a training run
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                for batch in eval_loader:
+                    batch = {k: v.to(device) if torch.is_tensor(v) else v for k, v in batch.items()}
+                    loss, _ = model(**batch, stats_prefix="eval_sr1", sampling_rate=1.0)
+                    bsz = batch["q_tokens"].size(0)
+                    tot += loss.item() * bsz
+                    n += bsz
+        except Exception as e:
+            logger.warning(f"[eval_loss_sr1] step {step}: FAILED ({type(e).__name__}: {e})")
+            n = 0
+        finally:
+            dist_utils.varsize_gather, dist_utils.get_varsize, dist_utils.get_rank = saved
+        if n:
+            logger.warning(f"[eval_loss_sr1] step {step}: {tot / n:.5f}")
+            accelerator.log({"eval_loss_sr1": tot / n}, step=step)
+        del model
+        torch.cuda.empty_cache()
+        return out
+
+    finetuning_multi.evaluate = evaluate
+
+
 if __name__ == "__main__":
     finetuning_multi.Options = PaperOptions
+    _install_dev_loss_eval()
     finetuning_multi.main()

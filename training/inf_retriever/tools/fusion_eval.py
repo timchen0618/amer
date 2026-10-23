@@ -32,6 +32,8 @@ import numpy as np
 DEV = "data/phaseA/qampari_cleanv2dev500.jsonl"
 TEST = "data/amer_data/eval_data/qampari.jsonl"
 SUB = {s: f"data/qampari/test531_{s}_distance_indices_inf.txt" for s in ("large", "small")}
+# Dev thirds with the paper's thresholds (tools/dev_distance_subsets.py, 2026-10-23): 173 large / 165 small of 500.
+DEV_SUB = {s: f"data/qampari/dev500_{s}_distance_indices_inf.txt" for s in ("large", "small")}
 TOPK, NDOCS = 100, 500
 LEAD_N = (0, 20, 40, 60, 80, 100)
 WRRF = [(w, c) for w in (1, 1.5, 2, 3, 5) for c in (10, 60)]
@@ -137,12 +139,17 @@ def methods(lists, scores, q):
 
 
 def load_sub():
-    return {s: [int(x) for x in open(p).read().split()] for s, p in SUB.items()}
+    out = {s: [int(x) for x in open(p).read().split()] for s, p in SUB.items()}
+    if all(os.path.exists(p) for p in DEV_SUB.values()):
+        out.update({f"dev_{s}": [int(x) for x in open(p).read().split()] for s, p in DEV_SUB.items()})
+    return out
 
 
 def eval_dir(d, golds, sub):
     res = {}
     for split in ("dev", "test"):
+        if not os.path.exists(f"{d}/{split}_steps.jsonl"):  # pruned steps have dev lists only
+            continue
         rows = [json.loads(l) for l in open(f"{d}/{split}_steps.jsonl")]
         Q = np.load(f"{d}/{split}_qemb.npy").astype(np.float32)
         k = len(rows[0]["lists"])
@@ -156,9 +163,11 @@ def eval_dir(d, golds, sub):
         for name, f in fused.items():
             e = res.setdefault(name, {})
             e[split] = score(f, golds[split])
-            if split == "test":
-                for s, idx in sub.items():
+            for s, idx in sub.items():
+                if split == "test" and not s.startswith("dev_"):
                     e[f"test_{s}"] = score(f, golds[split], idx)
+                elif split == "dev" and s.startswith("dev_"):
+                    e[s] = score(f, golds[split], idx)
         if split == "test":
             res["_q1_only"] = {"test": score([r["lists"][0]["ids"] for r in rows], golds["test"])}
     return res
@@ -177,7 +186,7 @@ def main():
         name, path = spec.split("=", 1)
         ids = [[str(c["id"]) for c in json.loads(l)["ctxs"]] for l in open(path)]
         e = {"test": score(ids, golds["test"])}
-        for s, idx in sub.items():
+        for s, idx in [(s, x) for s, x in sub.items() if not s.startswith('dev_')]:
             e[f"test_{s}"] = score(ids, golds["test"], idx)
         out[name] = {"single": e}
         print(name, json.dumps(e), flush=True)

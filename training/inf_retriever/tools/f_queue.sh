@@ -8,6 +8,7 @@ cd /scratch/hc3337/projects/autoregressive
 MAXRUN=${MAXRUN:-3}
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/f-objective
 LONG="STEPS_OVERRIDE=10000 WARMUP_OVERRIDE=400 F_STEPS=1000,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000 F_FINAL=10000 TRAIN_TIME=16:00:00"
+LONG20=${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=20:00:00}
 BASE="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 --freeze_doc_encoder"
 # order: F5, D4(a) test, rest of F2, F3b, then the 2026-10-15 additions.
 # name|extra|code root ("" = main checkout)[|training script]
@@ -42,6 +43,11 @@ QUEUE=(
   "C_multi_onelabel|--loss_fn hungarian --one_label_step||finetuning_multi_paper.py|"
   "C_multi_ioprojrand|--loss_fn hungarian --io_proj --io_proj_init random||finetuning_multi_paper.py|"
   "C_multi_onelabel_ioprojrand|--loss_fn hungarian --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|"
+  # Stage B, Track 2 (user 2026-10-23): the same 2 x 2 on the large-distance base, paper cap 0.8 x 10k
+  # (Track 2 reports its final checkpoint, step 10000). One-label runs get a 20 h walltime.
+  "C_cap10k_onelabel|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$LONG20"
+  "C_cap10k_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG"
+  "C_cap10k_onelabel_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
