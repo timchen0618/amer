@@ -11,15 +11,19 @@ LOG=results/phaseC/phaseC.log
 RUNS=("$@")
 [ ${#RUNS[@]} -eq 0 ] && RUNS=($(awk '{print $3}' results/phaseC/j_runs.log | sort -u))
 log() { echo "[$(date '+%F %T')] [j_select] $*" | tee -a "$LOG" >&2; }
+# Only log lines from the run's latest launch (j_runs.log) count, so an earlier failed attempt of the same
+# run name does not mark a relaunch as failed (2026-10-23, multi_seq_ioproj).
+since() { awk -v r="$1" '$3 == r {t = $1 " " $2} END {print t}' results/phaseC/j_runs.log; }
+runlog() { awk -v t="[$(since $1)]" 'substr($0, 1, 21) >= t' $LOG 2>/dev/null; }
 sel() { grep -m1 -o 'MRecall: [0-9.]*' "$1/select_metrics.txt" 2>/dev/null | cut -d' ' -f2; }
 declare -A DONE=([_]=x)   # never empty: "${#DONE[@]}" on an empty array trips set -u in this bash
 while [ $(( ${#DONE[@]} - 1 )) -lt ${#RUNS[@]} ]; do
   for run in "${RUNS[@]}"; do
     [ -n "${DONE[$run]:-}" ] && continue
-    if grep -q "\[$run\] RUN FAILED" $LOG 2>/dev/null && ! grep -q "\[$run\] RUN DONE" $LOG; then
+    if runlog $run | grep -q "\[$run\] RUN FAILED" && ! runlog $run | grep -q "\[$run\] RUN DONE"; then
       log "$run: driver failed; not queueing (restart it with j_drivers.sh $run)"; DONE[$run]=failed; continue
     fi
-    grep -q "\[$run\] RUN DONE" $LOG 2>/dev/null || continue
+    runlog $run | grep -q "\[$run\] RUN DONE" || continue
     top=$(for d in results/phaseC/$run/step*; do m=$(sel $d); [ -n "$m" ] && echo "${d##*step} $m"; done | sort -k2,2nr | head -2 | cut -d' ' -f1)
     for s in $top 2500; do
       tag=${run}_s$s; ck=checkpoints/qampari/$run/checkpoint/step-$s
