@@ -178,9 +178,12 @@ def main():
     ap.add_argument("--dirs", nargs="*", default=[])
     ap.add_argument("--single", nargs="*", default=[], help="name=path to a test retrieval jsonl with ctxs")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--dev", default=DEV, help="full-dev file the dirs were scored on (default: the old 500-question set)")
     a = ap.parse_args()
-    golds = {"dev": clusters(DEV), "test": clusters(TEST)}
+    golds = {"dev": clusters(a.dev), "test": clusters(TEST)}
     sub = load_sub()
+    if a.dev != DEV:  # the dev distance thirds index the old 500-question set only
+        sub = {k: v for k, v in sub.items() if not k.startswith("dev_")}
     out = json.load(open(a.out)) if os.path.exists(a.out) else {}
     for spec in a.single:
         name, path = spec.split("=", 1)

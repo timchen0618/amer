@@ -9,6 +9,8 @@ MAXRUN=${MAXRUN:-3}
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/f-objective
 LONG="STEPS_OVERRIDE=10000 WARMUP_OVERRIDE=400 F_STEPS=1000,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000 F_FINAL=10000 TRAIN_TIME=16:00:00"
 LONG20=${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=20:00:00}
+S0="--train_data data/training/clean_v3_hn_s0/qampari/train_data.jsonl"
+S0ENV="F_DEV=data/phaseA/qampari_clean_v3_dev_s0.jsonl F_DATA_ROOT=data/training/clean_v3_hn_s0"
 BASE="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 --freeze_doc_encoder"
 # order: F5, D4(a) test, rest of F2, F3b, then the 2026-10-15 additions.
 # name|extra|code root ("" = main checkout)[|training script]
@@ -45,16 +47,26 @@ QUEUE=(
   "C_multi_onelabel_ioprojrand|--loss_fn hungarian --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|"
   # Stage B, Track 2 (user 2026-10-23): the same 2 x 2 on the large-distance base, paper cap 0.8 x 10k
   # (Track 2 reports its final checkpoint, step 10000). One-label runs get a 20 h walltime.
-  "C_cap10k_onelabel|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$LONG20"
-  "C_cap10k_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG"
-  "C_cap10k_onelabel_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG20"
+  # cancelled 2026-10-23 (Stage A re-run first): "C_cap10k_onelabel|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$LONG20"
+  # cancelled 2026-10-23 (Stage A re-run first): "C_cap10k_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG"
+  # cancelled 2026-10-23 (Stage A re-run first): "C_cap10k_onelabel_ioprojrand|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$LONG20"
+  # 2026-10-23 (user): Stage B cancelled; Stage A re-run on the seeded 90/10 split (tools/build_seed_split.py --seed 0:
+  # 23732 train / 2637 dev), single-query baseline included. Runs whose name has "single" use mode single.
+  "S0_single|$S0||finetuning_multi.py|$S0ENV"
+  "S0_multi|$S0 --loss_fn hungarian||finetuning_multi_paper.py|$S0ENV"
+  "S0_cap|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|$S0ENV"
+  "S0_const|$S0 --loss_fn hungarian --full_sampling||finetuning_multi_paper.py|$S0ENV"
+  "S0_10k|$S0 --loss_fn hungarian||finetuning_multi_paper.py|$S0ENV $LONG"
+  "S0_cap_10k|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|$S0ENV $LONG"
+  "S0_const_10k|$S0 --loss_fn hungarian --full_sampling||finetuning_multi_paper.py|$S0ENV $LONG"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
   IFS='|' read -r r extra root script envs <<< "$e"; run=clean_v3_f_qampari_$r
+  mode=multi; case $r in *single*) mode=single ;; esac
   [ -s results/phaseC/$run.trainjob ] && continue
   while [ "$(squeue -h -u $USER -o %j | grep -c '^phaseC_clean_v3_f_qampari_')" -ge $MAXRUN ]; do sleep 300; done
-  env $envs CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh multi 1e-5 $run "$BASE $extra" \
+  env $envs CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh $mode 1e-5 $run "$BASE $extra" \
     >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
   sleep 30; log "started $run ($(cat results/phaseC/$run.trainjob 2>/dev/null))"
 done

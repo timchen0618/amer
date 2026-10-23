@@ -13,6 +13,12 @@ User-approved 2026-10-22. Run autonomously, in stages; each stage builds on the 
 | E | Only if nothing beats C_multi: data filter (drop 1-gold questions, or keep only 5–8 golds as the paper did) | 1–2 | Does training on the paper's gold-count range help? |
 | F | After everything, on the final best: re-test input layers: linear input + output, linear input only, **2-layer MLP input, no output layer** | 3 | Do learned input layers help once the rest of the recipe is right? |
 
+**Stage A re-run on a larger, seeded dev set (user, 2026-10-23).** The 500-question dev set is too small to select reliably. Stage B (both tracks) was cancelled before training; Stage A is re-run (7 runs, `S0_*`, single-query baseline included) on a seeded 90/10 split of the training pool (`tools/build_seed_split.py --seed 0`: 23,732 train / 2,637 dev; no test overlap), as in the legacy code's `train_test_split(test_size=0.1)`. The 2,637 dev questions are both the full-dev selection set and the in-training eval set; a full-dev eval takes ~11 min (≈10 min at 500: corpus loading dominates). Other seeds give other splits for variance runs once the recipe is settled. Note: ~20% of training-split questions are "born in X / died in X" questions that the test set does not have; a test-like dev score without them is reported alongside. GPU use starts after the other session's Llama-8B runs finish (user, 2026-10-23).
+
+**Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
+
+**Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
+
 Notes:
 
 - The RepLlama-inspired changes (Stage C, added 2026-10-22) run before the deferred ablations (Stage D), so the ablations are done on the final best setting.

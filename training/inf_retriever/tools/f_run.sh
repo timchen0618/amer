@@ -19,7 +19,11 @@ MODE=$1; LR=$2; RUN=$3; EXTRA=${4:-}
 DS=qampari; T=training/inf_retriever/tools
 LOG=results/phaseC/phaseC.log
 EMB=wikipedia_embeddings/qampari/shared_frozen_base_512
-DEV=data/phaseA/qampari_cleanv2dev500.jsonl; TEST=data/amer_data/eval_data/qampari.jsonl
+# F_DEV / F_DATA_ROOT (optional, 2026-10-23): full-dev file and training data root (its dev_data.jsonl is the in-training
+# eval set) for the seeded 90/10 splits (tools/build_seed_split.py), e.g. data/phaseA/qampari_clean_v3_dev_s0.jsonl and
+# data/training/clean_v3_hn_s0.
+DEV=${F_DEV:-data/phaseA/qampari_cleanv2dev500.jsonl}; TEST=data/amer_data/eval_data/qampari.jsonl
+F_DATA_ROOT=${F_DATA_ROOT:-data/training/clean_v3}
 IMG=/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
 # F_STEPS (comma-separated save/eval steps) and F_FINAL override the 2500-step schedule for longer runs; the training
 # job then needs STEPS_OVERRIDE (= F_FINAL) and usually WARMUP_OVERRIDE / TRAIN_TIME (sbatch --time), all from the env.
@@ -45,7 +49,7 @@ if [ -s "$state" ]; then TJ=$(cat "$state"); else
   # retrieves (its retrieve_ckpt.sbatch must run $CODE_ROOT/retrieval_inf.py; needed when a flag changes generate(), e.g.
   # --fed_norm token); data, checkpoints, scoring and results stay on the main checkout.
   TS=$T/phaseC_train.sbatch; [ -n "${CODE_ROOT:-}" ] && TS=$CODE_ROOT/$T/phaseC_train.sbatch
-  TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=data/training/clean_v3 \
+  TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=$F_DATA_ROOT \
        sbatch --parsable --export=ALL ${TRAIN_TIME:+--time=$TRAIN_TIME} --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
   echo "$TJ" > "$state"; log "submitted training job $TJ (frozen F run; mode=$MODE lr=$LR extra='$EXTRA'${CODE_ROOT:+ code=$CODE_ROOT@$(git -C $CODE_ROOT rev-parse --short HEAD)})"
 fi
@@ -98,10 +102,18 @@ testscore() {
   else grep -m1 -o 'MRecall: [0-9.]*' $b/test/eval_metrics.txt 2>/dev/null | cut -d' ' -f2; fi
 }
 ranked() { for s in $STEPS; do m=$(devscore $s); [ -n "$m" ] && echo "$s $m"; done | sort -k2,2nr -k1,1n; }
+# The legacy rule's pick (2026-10-23): the saved step with the lowest dev Hungarian loss at sampling rate 1.0, from the
+# "[eval_loss_sr1] step S: v" lines finetuning_multi_paper.py logs; empty if the run logs none. Kept and test-evaluated
+# next to the top 2 by full dev, so the two selection rules can be compared; deleted after test as any other step.
+lossbest() {
+  grep -oE "\[eval_loss_sr1\] step [0-9]+: [0-9.]+" "$TLOG" 2>/dev/null | awk -v steps=" $STEPS " \
+    '{s=$3; sub(":","",s); if (index(steps, " " s " ")) print s, $4}' | sort -k2,2g -k1,1n | head -1 | cut -d' ' -f1
+}
 prune_dev() {  # step 2: drop scored steps outside the current top 2 (never the final step)
-  local s keep; keep=$(ranked | head -2 | cut -d' ' -f1 | xargs)
+  local s keep lb; keep=$(ranked | head -2 | cut -d' ' -f1 | xargs); lb=$(lossbest)
   for s in $(ranked | tail -n +3 | cut -d' ' -f1); do
     [ "$s" = $FINAL ] && continue
+    [ "$s" = "$lb" ] && continue
     [ -d $(ck $s) ] && rm -rf -- $(ck $s) && log "pruned step $s (not in top 2 by full dev; top 2 so far: $keep)"
   done
   [ -d $(ck 0) ] && [ -n "$(ranked)" ] && rm -rf -- $(ck 0) && log "deleted step-0"
@@ -145,8 +157,9 @@ done
 log "TRAINED + DEV DONE: full dev ranking $(ranked | tr '\n' ' ')"
 
 # --- phase 2: full test on top 2 + final ---
-TSTEPS=$(echo $(ranked | head -2 | cut -d' ' -f1) $FINAL | tr ' ' '\n' | awk '!seen[$0]++' | xargs)
-log "full test on steps $TSTEPS (top 2 by full dev + final)"
+LOSSBEST=$(lossbest)
+TSTEPS=$(echo $(ranked | head -2 | cut -d' ' -f1) $FINAL $LOSSBEST | tr ' ' '\n' | awk '!seen[$0]++' | xargs)
+log "full test on steps $TSTEPS (top 2 by full dev + final${LOSSBEST:+ + lowest dev loss at rate 1.0: $LOSSBEST})"
 declare -A TJOB
 for s in $TSTEPS; do
   [ -n "$(testscore $s)" ] && continue
@@ -176,4 +189,4 @@ for s in $TSTEPS; do
   [ "$s" = "$best_test" ] || [ "$s" = "$dev_sel" ] && continue
   [ -d $(ck $s) ] && rm -rf -- $(ck $s) && log "deleted step $s after test (kept: best test $best_test, dev-selected $dev_sel)"
 done
-log "RUN DONE (dev-selected $dev_sel, best test $best_test)"
+log "RUN DONE (dev-selected $dev_sel, best test $best_test${LOSSBEST:+, loss-selected $LOSSBEST})"
