@@ -38,6 +38,10 @@ QUEUE=(
   "C_multi_10k|--loss_fn hungarian||finetuning_multi_paper.py|$LONG"
   "C_multi_cap_10k|--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|$LONG"
   "C_multi_const_10k|--loss_fn hungarian --full_sampling||finetuning_multi_paper.py|$LONG"
+  # Stage B (2026-10-23): Stage A winner = C_multi itself (linear @ 2500), so the 2 x 2 is on C_multi.
+  "C_multi_onelabel|--loss_fn hungarian --one_label_step||finetuning_multi_paper.py|"
+  "C_multi_ioprojrand|--loss_fn hungarian --io_proj --io_proj_init random||finetuning_multi_paper.py|"
+  "C_multi_onelabel_ioprojrand|--loss_fn hungarian --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
