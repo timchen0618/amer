@@ -13,6 +13,8 @@ inbatch.py are not edited. Every option defaults to off, so without them this is
                           against in-batch documents). The LR scheduler still steps once per training step, as in
                           the legacy loop. Difference from legacy: legacy drew the one-label batch from a separate
                           shuffled loader (other questions); here it reuses the current batch's questions.
+  --negative_ctxs n > 1   n negatives per gold (default 1) for frozen multi-query runs with --loss_fn hungarian;
+                          the shared collator / document split / loss assume one, see _enable_multi_negatives.
   --io_proj_init random   (with --io_proj) nn.Linear's default init for the input/output layers, as in legacy
                           src/model.py, instead of identity (src/inbatch_proj.py).
 
@@ -45,6 +47,10 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
             self.parser.error(f"--sampling_cap must be in (0, 1], got {opt.sampling_cap}")
         if opt.io_proj_init != "identity" and not opt.io_proj:
             self.parser.error("--io_proj_init needs --io_proj")
+        if opt.training_mode == "multi" and opt.negative_ctxs > 1:
+            if not opt.freeze_doc_encoder:
+                self.parser.error("--negative_ctxs > 1 is implemented for the frozen doc encoder only")
+            _enable_multi_negatives(opt.negative_ctxs)
         if opt.sampling_cap < 1.0:
             _cap_sampling(opt.sampling_cap)
         if opt.one_label_step:
@@ -70,6 +76,104 @@ def _cap_sampling(cap):
             return __base.forward(self, *args, sampling_rate=eff, **kwargs)
 
         setattr(inbatch, name, type(base.__name__, (base,), {"forward": forward, "__module__": base.__module__}))
+
+
+def _enable_multi_negatives(n):
+    """--negative_ctxs n > 1 for multi-query training (2026-10-22, Stage C): n negatives per gold instead of one.
+
+    The shared code assumes one negative per gold in three places, each overridden here without editing it:
+      1. CollatorDocEncMultiQuery asserts len(negatives) == len(golds): replaced by a subclass that tokenizes
+         golds + all negatives (still golds first, then negatives in example order);
+      2. encode_documents splits the passage embeddings in half: the frozen class's split is now 1 : n;
+      3. HungarianContrastiveLoss views the negatives as (batch * k, d): its subclass reshapes them to (-1, d).
+    The dataset already draws negative_ctxs * k negatives per question (finetuning_data.Dataset)."""
+    from src import finetuning_data
+
+    class CollatorMultiNeg(finetuning_data.CollatorDocEncMultiQuery):
+        def __call__(self, batch):
+            import random
+            for ex in batch:  # the in-training eval set is built with one negative per gold: resample to n per gold
+                need = n * len(ex["gold"]) - len(ex["negatives"])
+                if need > 0:
+                    ex["negatives"] = list(ex["negatives"]) + random.choices(ex["negatives"], k=need)
+            kept = [ex["negatives"] for ex in batch]
+            for ex in batch:  # parent builds the query side with one negative per gold
+                ex["negatives"] = ex["negatives"][:len(ex["gold"])]
+            out = super().__call__(batch)
+            for ex, negs in zip(batch, kept):
+                ex["negatives"] = negs
+            golds = [g for ex in batch for g in ex["gold"]]
+            negs = [x for ex in batch for x in ex["negatives"]]
+            assert len(negs) == n * len(golds), (len(negs), n, len(golds))
+            kout = self.tokenizer.batch_encode_plus(golds + negs, max_length=self.passage_maxlength, truncation=True,
+                                                    padding=True, add_special_tokens=True, return_tensors="pt")
+            kt, km = kout["input_ids"], kout["attention_mask"].to(torch.long)
+            out.update(k_tokens=kt, k_mask=km, g_tokens=kt[:len(golds)], g_mask=km[:len(golds)],
+                       n_tokens=kt[len(golds):], n_mask=km[len(golds):])
+            return out
+
+    finetuning_data.CollatorDocEncMultiQuery = CollatorMultiNeg
+
+    class HungarianMultiNeg(inbatch.HungarianContrastiveLoss):
+        def _core_forward(self, outputs, positive_embeddings, negative_embeddings):
+            b, k, d = outputs.shape
+            # the parent views negatives as (b * k, d); pass them through a (b, k, d)-shaped view of the pool instead
+            return _hungarian_any_negatives(self, outputs, positive_embeddings, negative_embeddings.reshape(-1, d))
+
+    base = inbatch.EmbeddingModelFrozenDocEnc
+
+    class MultiNeg(base):
+        def __init__(self, opt, *args, **kwargs):
+            super().__init__(opt, *args, **kwargs)
+            assert type(self.loss_fct) is inbatch.HungarianContrastiveLoss, \
+                f"--negative_ctxs > 1 is implemented for --loss_fn hungarian only, got {type(self.loss_fct).__name__}"
+            new = HungarianMultiNeg.__new__(HungarianMultiNeg)
+            new.__dict__.update(self.loss_fct.__dict__)
+            self.loss_fct = new
+
+        def encode_documents(self, input_document_ids, attention_mask_document):
+            n_pos = input_document_ids.size(0) // (1 + n)
+            assert n_pos * (1 + n) == input_document_ids.size(0)
+            chunks = []
+            with torch.no_grad():  # frozen encoder, no gradient: encode in chunks so many negatives fit in memory
+                for i in range(0, input_document_ids.size(0), 1024):
+                    ids, mask = input_document_ids[i:i + 1024], attention_mask_document[i:i + 1024]
+                    out = self.doc_encoder(input_ids=ids, attention_mask=mask)
+                    chunks.append(self.last_token_pool(out.last_hidden_state, mask))
+            emb = torch.cat(chunks)
+            return emb[:n_pos], emb[n_pos:]
+
+    MultiNeg.__name__ = base.__name__
+    inbatch.EmbeddingModelFrozenDocEnc = MultiNeg
+
+
+def _hungarian_any_negatives(self, outputs, positive_embeddings, negative_flat):
+    """inbatch.HungarianContrastiveLoss._core_forward with the negatives pool of any size (copied; one line differs)."""
+    import torch.nn.functional as F
+    from src import dist_utils
+    if self.normalize_embeddings:
+        outputs = F.normalize(outputs, dim=-1)
+        positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+        negative_flat = F.normalize(negative_flat, dim=-1)
+    batch_size, k, d = outputs.shape
+    outputs = outputs.view(batch_size * k, d)
+    positive_embeddings = positive_embeddings.reshape(batch_size * k, d)
+    all_embeddings = torch.cat([positive_embeddings, negative_flat], dim=0)  # was negative.view(batch_size * k, d)
+    var_sizes = dist_utils.get_varsize(all_embeddings)
+    gather_kemb = dist_utils.varsize_gather(all_embeddings)
+    similarity = self.log_softmax(torch.einsum('bd,cd->bc', outputs / self.temperature, gather_kemb))
+    losses = []
+    assigned_gold = torch.empty(batch_size, k, dtype=torch.long)
+    local_start = 0 if dist_utils.get_rank() == 0 else int(var_sizes[:dist_utils.get_rank()].sum())
+    for i in range(batch_size):
+        start_idx = local_start + k * i
+        cost_matrix = similarity[k * i:k * (i + 1)][:, start_idx:start_idx + k]
+        row_ind, col_ind = self.linear_sum_assignment(cost_matrix.float().detach().cpu().numpy(), maximize=True)
+        assigned_gold[i, torch.as_tensor(row_ind)] = torch.as_tensor(col_ind, dtype=torch.long)
+        losses.append(-(cost_matrix[row_ind, col_ind]).mean())
+    self.last_assignment = assigned_gold.to(outputs.device)
+    self.last_stats = inbatch._hungarian_accuracy(similarity.detach(), assigned_gold.to(outputs.device), local_start, k)
+    return torch.stack(losses).mean()
 
 
 def one_label_batch(batch):
