@@ -35,6 +35,7 @@ ARGS="--project diverse_retrieval_repro --save_path $D/results/$LM/${DS}_inf --n
   --sample_rate_multiplier 1 --log_with wandb --seed 0 $C $EXTRA"
 echo "host $(hostname) start $(date) args: $ARGS"
 mkdir -p $D/results/$LM/${DS}_inf
+nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader -l 60 > $D/logs/gpumem_${SLURM_JOB_NAME}_${SLURM_JOB_ID}.csv &
 singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-  bash -c "source /ext3/env.sh; cd $W; accelerate launch --config_file $W/scripts/paper_repro/accelerate_fsdp_2gpu.yaml train_distributed.py $ARGS"
+  bash -c "source /ext3/env.sh; export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True; cd $W; accelerate launch --config_file $W/scripts/paper_repro/accelerate_fsdp_2gpu.yaml train_distributed.py $ARGS"
 echo "end $(date)"
