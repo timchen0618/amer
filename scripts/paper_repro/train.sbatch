@@ -32,10 +32,10 @@ ARGS="--project diverse_retrieval_repro --save_path $D/results/$LM/${DS}_inf --n
   --gradient_accumulation_steps 1 --weight_decay 0.01 --scheduler linear --max_grad_norm 5.0 \
   --embedding_model_dim 1536 --save_every_n_steps $SAVE --model_type EmbeddingModelSSVariableLeftPad \
   --save_only_improve --save_best_model --schedule_sampling --left_padding --normalize_embeddings \
-  --sample_rate_multiplier 1 --log_with wandb --seed 0 $C $EXTRA"
+  --sample_rate_multiplier 1 --log_with wandb --seed 0 --gradient_checkpointing $C $EXTRA"
 echo "host $(hostname) start $(date) args: $ARGS"
 mkdir -p $D/results/$LM/${DS}_inf
 nvidia-smi --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader -l 60 > $D/logs/gpumem_${SLURM_JOB_NAME}_${SLURM_JOB_ID}.csv &
 singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-  bash -c "source /ext3/env.sh; export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True; cd $W; accelerate launch --config_file $W/scripts/paper_repro/accelerate_fsdp_2gpu.yaml train_distributed.py $ARGS"
+  bash -c "source /ext3/env.sh; export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True; cd $W; accelerate launch --config_file $W/scripts/paper_repro/${ACC_CFG:-accelerate_fsdp_2gpu.yaml} train_distributed.py $ARGS"
 echo "end $(date)"

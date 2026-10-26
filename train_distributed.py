@@ -130,6 +130,20 @@ def train(configs):
                                 use_eos=configs.use_eos,
                                 model_type=configs.model_type,
                                 normalize_embeddings=configs.normalize_embeddings)
+    if getattr(configs, 'gradient_checkpointing', False):
+        # paper-repro: checkpoint every decoder layer with torch.utils.checkpoint (non-reentrant). HF's
+        # gradient_checkpointing_enable() is a no-op here because the paper's loop never calls model.train()
+        # (the model stays in eval mode for all of training, so LoRA dropout is also inactive). Recompute
+        # replays the RNG state, so outputs/gradients are unchanged; only memory goes down.
+        import torch.utils.checkpoint as _cp
+        _layers = [m for n, m in model.base_causallm.named_modules() if n.endswith('.layers') and isinstance(m, torch.nn.ModuleList)]
+        assert len(_layers) == 1, [n for n, _ in model.base_causallm.named_modules() if n.endswith('.layers')]
+        for _layer in _layers[0]:
+            _layer.forward = (lambda _f: (lambda *a, **k: _cp.checkpoint(_f, *a, use_reentrant=False, **k)))(_layer.forward)
+        # the paper's forward calls never pass use_cache, so in eval mode HF builds a KV cache that is updated in place and
+        # discarded; a checkpoint recompute would append to it twice. Turning the cache off does not change any output.
+        model.base_causallm.get_base_model().config.use_cache = False
+        logger.info('per-layer activation checkpointing enabled', n_layers=len(_layers[0]))
     model = model.to(accelerator.device)
 
     # optimize and scheduler    

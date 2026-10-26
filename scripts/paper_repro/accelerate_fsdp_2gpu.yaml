@@ -1,13 +1,13 @@
 # Paper-repro: 2-GPU FSDP. Same as the default config the paper's accelerate launch picked up
 # (FSDP1, transformer auto-wrap, fp16 -- train_distributed.py also forces fp16) except: no param
-# offload. Activation checkpointing ON: 8B at 50/GPU (257-token padded inputs) OOMs without it (smoke 20766576).
+# offload and no FSDP activation checkpointing (it does not wrap the custom EmbeddingModel; memory is handled by --gradient_checkpointing instead).
 compute_environment: LOCAL_MACHINE
 debug: false
 distributed_type: FSDP
 downcast_bf16: 'no'
 enable_cpu_affinity: false
 fsdp_config:
-  fsdp_activation_checkpointing: true
+  fsdp_activation_checkpointing: false
   fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
   fsdp_cpu_ram_efficient_loading: true
   fsdp_offload_params: false

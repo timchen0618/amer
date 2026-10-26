@@ -71,6 +71,7 @@ def get_training_args():
     
     # Debug and advanced options
     parser.add_argument("--debug", action="store_true", default=False, help="Enable debug mode. Not saving model.")
+    parser.add_argument("--gradient_checkpointing", action="store_true", default=False, help="paper-repro: torch.utils.checkpoint on every decoder layer (memory only; same math). Off = paper behaviour.")
     parser.add_argument("--model_id", type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="Model ID")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=int, default=0, help="Resume from epoch")
