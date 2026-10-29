@@ -17,6 +17,9 @@ inbatch.py are not edited. Every option defaults to off, so without them this is
                           the shared collator / document split / loss assume one, see _enable_multi_negatives.
   --io_proj_init random   (with --io_proj) nn.Linear's default init for the input/output layers, as in legacy
                           src/model.py, instead of identity (src/inbatch_proj.py).
+  --query_instruct_task t (or "paper") the query instruction ("Instruct: t\nQuery: q") in training and in-training eval; saved in
+                          the checkpoint's opt, which retrieval_inf.py then uses (2026-10-27, P3: the paper's prompt).
+  --save_best_dev_loss    keep checkpoint/best_dev_loss/: the lowest eval_loss_sr1 so far (legacy save_only_improve)
 
     tools/phaseC_train.sbatch with TRAIN_SCRIPT=finetuning_multi_paper.py and EXTRA="... --sampling_cap 0.8 ..."
 """
@@ -40,6 +43,10 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
                                  help="legacy --mix_one_label_shuffled: an extra k=1 step per training step")
         self.parser.add_argument("--io_proj_init", type=str, default="identity", choices=["identity", "random"],
                                  help="init of the --io_proj layers: identity (default) or nn.Linear default (legacy)")
+        self.parser.add_argument("--query_instruct_task", type=str, default=None,
+                                 help="query instruction for training and retrieval (default: finetuning_data's)")
+        self.parser.add_argument("--save_best_dev_loss", action="store_true",
+                                 help="save checkpoint/best_dev_loss whenever eval_loss_sr1 reaches a new minimum")
 
     def parse(self):
         opt = super().parse()  # ProjOptions binds the --io_proj class
@@ -55,7 +62,26 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
             _cap_sampling(opt.sampling_cap)
         if opt.one_label_step:
             _install_one_label_step()
+        if opt.query_instruct_task == "paper":  # shorthand: sbatch EXTRA strings cannot carry spaces
+            opt.query_instruct_task = PAPER_TASK
+        if opt.query_instruct_task:
+            _set_query_task(opt.query_instruct_task)
         return opt
+
+
+# The legacy stack's instruction (create_input_for_contrievers.py / gen_ret_and_eval.py, INF base model).
+PAPER_TASK = "Retrieve a diverse set of documents that covers multiple aspect of the query."
+
+
+def _set_query_task(task):
+    """finetuning_data builds every query as get_detailed_instruct(<its fixed task>, q); swap in `task`."""
+    from src import finetuning_data
+
+    def get_detailed_instruct(task_description, query):
+        return f"Instruct: {task}\nQuery: {query}"
+
+    finetuning_data.get_detailed_instruct = get_detailed_instruct
+    logger.warning(f"[query_instruct_task] {task!r}")
 
 
 def _cap_sampling(cap):
@@ -252,22 +278,26 @@ def _install_dev_loss_eval():
     evaluate() just built, and logs it as eval_loss_sr1 (wandb) and as a "[eval_loss_sr1] step S: v" line that
     tools/f_run.sh reads. evaluate() runs on the main process only, so the loss's cross-rank gather is replaced by
     the identity while it runs."""
-    from src import dist_utils
+    from src import dist_utils, utils
     orig_eval = finetuning_multi.evaluate
-    base = inbatch.EmbeddingModelFrozenDocEnc
+    # The eval model is recorded where evaluate() loads its weights (2026-10-27; was a subclass of
+    # EmbeddingModelFrozenDocEnc, which missed the --io_proj classes and single-query runs).
+    load_state = inbatch.load_model_state
 
-    class Recorded(base):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            _STATE["last_model"] = self
+    def load_model_state(model, state_dict, *a, **k):
+        _STATE["last_model"] = model
+        return load_state(model, state_dict, *a, **k)
 
-    Recorded.__name__ = base.__name__
-    inbatch.EmbeddingModelFrozenDocEnc = Recorded
+    inbatch.load_model_state = load_model_state
+
+    class _NoScheduler:
+        def state_dict(self):
+            return None
 
     def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
         out = orig_eval(opt, state_dict, eval_loader, accelerator, step, device)
         model = _STATE.pop("last_model", None)
-        if model is None or opt.training_mode != "multi":
+        if model is None:
             return out
         saved = (dist_utils.varsize_gather, dist_utils.get_varsize, dist_utils.get_rank)
         dist_utils.varsize_gather = lambda x, *a, **k: x
@@ -290,6 +320,11 @@ def _install_dev_loss_eval():
         if n:
             logger.warning(f"[eval_loss_sr1] step {step}: {tot / n:.5f}")
             accelerator.log({"eval_loss_sr1": tot / n}, step=step)
+            if getattr(opt, "save_best_dev_loss", False) and tot / n < _STATE.get("best_dev_loss", float("inf")):
+                _STATE["best_dev_loss"] = tot / n
+                utils.save_state_dict(state_dict, None, _NoScheduler(), step, opt,
+                                      opt.output_dir + opt.run_name, "best_dev_loss")
+                logger.warning(f"[best_dev_loss] step {step}: {tot / n:.5f} saved")
         del model
         torch.cuda.empty_cache()
         return out

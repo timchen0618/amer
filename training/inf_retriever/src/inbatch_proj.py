@@ -114,3 +114,28 @@ class EmbeddingModelDocEncProj(inbatch.EmbeddingModelDocEncNoProj):
             return super()._fed_input(vec, q_embeds, q_mask)
         x = F.normalize(vec.float(), dim=-1).to(self.in_proj.weight.dtype)
         return self.in_proj(x).to(q_embeds.dtype)
+
+
+class EmbeddingModelFrozenDocEncSingleQueryProj(inbatch.EmbeddingModelFrozenDocEncSingleQuery):
+    """Single-query frozen-doc-encoder model with the learned output layer only (Session F, 2026-10-27, P3-single).
+
+    The legacy src/model.py single-query runs still scored output_projection(h); there is nothing fed back, so no
+    input layer. Same forward hook as EmbeddingModelFrozenDocEncProj: every self.encoder call (training forward and
+    retrieval, where load_retriever returns model.encoder with this hook attached) pools a projected state.
+    Documents go through the separate frozen self.doc_encoder. --io_proj_init as in EmbeddingModelFrozenDocEncProj.
+    """
+
+    def __init__(self, opt, retriever=None, tokenizer=None):
+        super().__init__(opt, retriever, tokenizer)
+        assert getattr(opt, "io_proj_mode", "out") == "out", "single-query --io_proj has the output layer only"
+        d = self.embedding.weight.size(1)
+        self.out_proj = nn.Linear(d, d, bias=False)
+        if getattr(opt, "io_proj_init", "identity") == "identity":
+            with torch.no_grad():
+                self.out_proj.weight.copy_(torch.eye(d))
+        self.encoder.register_forward_hook(self._project_query_output)
+
+    def _project_query_output(self, module, args, output):
+        h = output.last_hidden_state
+        output.last_hidden_state = self.out_proj(h.to(self.out_proj.weight.dtype)).to(h.dtype)
+        return output

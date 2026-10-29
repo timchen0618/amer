@@ -28,6 +28,8 @@ case $DS in
 esac
 # STEPS_OVERRIDE / WARMUP_OVERRIDE (optional, 2026-10-22): a longer run on the same data (F's 10k-step runs).
 STEPS=${STEPS_OVERRIDE:-$STEPS}; WARMUP=${WARMUP_OVERRIDE:-$WARMUP}
+# FREQ_OVERRIDE (optional, 2026-10-27): eval/save frequency (F's P3 runs: 500, the legacy eval interval).
+FREQ=${FREQ_OVERRIDE:-$FREQ}
 # Dense schedules (phaseC_run.sh with DENSE=1) override the save steps; FREQ must divide them.
 SAVE_AT=${SAVE_AT_OVERRIDE:-$SAVE_AT}
 case $MODE in

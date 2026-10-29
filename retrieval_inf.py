@@ -68,6 +68,10 @@ def load_model_and_tokenizer(args):
         print(f"Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever")
         model, tokenizer, _ = load_retriever(checkpoint_dir)
         train_opt = getattr(model, "_train_opt", None)
+        if train_opt is not None and getattr(train_opt, "query_instruct_task", None):
+            # trained with finetuning_multi_paper.py --query_instruct_task (Session F, 2026-10-27): query as in training
+            print(f"query instruction from the checkpoint: {train_opt.query_instruct_task!r}")
+            args.query_instruct_task = train_opt.query_instruct_task
         if train_opt is not None and bool(getattr(train_opt, "eval_normalize_text", False)) != bool(args.normalize_text):
             # Training text-normalizes queries iff --eval_normalize_text (code audit 2026-09-28, C4).
             raise ValueError(f"checkpoint was trained with eval_normalize_text={train_opt.eval_normalize_text}, "

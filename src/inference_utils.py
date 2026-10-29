@@ -44,6 +44,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
                         if freeze_doc_encoder
                         else inbatch.EmbeddingModelDocEncNoProjSingleQuery
                     )
+                    if getattr(opt, "io_proj", False):  # output layer, single query (Session F P3-single, 2026-10-27)
+                        from training.inf_retriever.src import inbatch_proj
+                        model_class = inbatch_proj.EmbeddingModelFrozenDocEncSingleQueryProj
                 elif opt.training_mode == 'multi':
                     model_class = (
                         inbatch.EmbeddingModelFrozenDocEnc
@@ -79,6 +82,10 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
                 # find it via hasattr(retriever, 'doc_encoder') even though the
                 # query-encoder object itself is what's returned here.
                 retriever.doc_encoder = model.doc_encoder
+            if hasattr(model, 'out_proj'):
+                # P3-single (io_proj, output layer only): the encoder's forward hook calls model.out_proj. Register it
+                # on the returned encoder too, so the caller's .cuda()/.half() move it with the encoder.
+                retriever.query_out_proj = model.out_proj
         else:
             retriever = model
         retriever._is_multi_query = (opt.training_mode != 'standard_org_q')

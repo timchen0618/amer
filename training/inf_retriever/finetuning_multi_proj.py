@@ -41,9 +41,14 @@ class ProjOptions(Options):
         opt = super().parse()
         if opt.io_proj_mode != "both" and not opt.io_proj:
             self.parser.error("--io_proj_mode needs --io_proj")
-        if opt.io_proj:
+        if opt.io_proj and opt.training_mode == "standard_org_q":
+            # single query (Session F P3-single, 2026-10-27): output layer only, frozen doc encoder only
+            if not opt.freeze_doc_encoder or opt.io_proj_mode != "out":
+                self.parser.error("single-query --io_proj needs --freeze_doc_encoder and --io_proj_mode out")
+            inbatch.EmbeddingModelFrozenDocEncSingleQuery = inbatch_proj.EmbeddingModelFrozenDocEncSingleQueryProj
+        elif opt.io_proj:
             if opt.training_mode != "multi":
-                self.parser.error("--io_proj needs --training_mode multi")
+                self.parser.error("--io_proj needs --training_mode multi or standard_org_q")
             if opt.freeze_doc_encoder:
                 inbatch.EmbeddingModelFrozenDocEnc = inbatch_proj.EmbeddingModelFrozenDocEncProj
             else:

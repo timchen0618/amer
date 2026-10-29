@@ -33,11 +33,15 @@ PS_ARG=""; [ -n "${SAVE_PER_STEP:-}" ] && [ -n "${K:-}" ] && PS_ARG="--save_per_
 # Optional: SAVE_QEMB=<npy> also saves the query embeddings (for tools/geometry_eval.py).
 QE_ARG=""; [ -n "${SAVE_QEMB:-}" ] && QE_ARG="--save_query_embeddings ${SAVE_QEMB}"
 
+# Optional: RET_ENV=div runs in the training environment (div.ext3, has peft) for LoRA checkpoints; default nli.
+RET_ENV=${RET_ENV:-nli}
+ACT="conda activate nli;"; [ "$RET_ENV" = nli ] || ACT=""
+
 ELOG=sbatch_outputs/retrieve_${SLURM_JOB_NAME}.busycheck.log
 singularity exec --nv \
-            --overlay /scratch/hc3337/envs/nli.ext3:ro \
+            --overlay /scratch/hc3337/envs/${RET_ENV}.ext3:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-            /bin/bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python retrieval_inf.py \
+            /bin/bash -c "source /ext3/env.sh; $ACT cd /scratch/hc3337/projects/autoregressive; python retrieval_inf.py \
                 --model_name_or_path $CKPT \
                 --passages /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv \
                 --passages_embeddings '$EMB_DIR/*' \
