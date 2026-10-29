@@ -313,6 +313,15 @@ class DataHandler:
             self.train_dataset, self.dev_dataset = full_dataset['train'], full_dataset['test']
             self.group_data_by_length()
             
+    def use_external_dev(self, dev_dataset):
+        """F (2026-10-27): train on the whole dataset and use dev_dataset (--valid_path) for the validation loss,
+        instead of the 10% train_test_split above."""
+        self.train_dataset = self.dataset
+        if 'positive_embeddings' in dev_dataset[0]:
+            dev_dataset = dev_dataset.add_column('length', [len(inst['positive_embeddings']) for inst in dev_dataset])
+        self.dev_dataset = dev_dataset
+        self.group_data_by_length()
+
     def get_train_dev_dataloader(self, random_train_loader=False):
         if random_train_loader:
             return self.get_random_train_dataloader(), self.get_dev_dataloader()

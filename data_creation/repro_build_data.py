@@ -38,7 +38,13 @@ SRC = {
     },
 }
 LM_IDS = {'llama-1b': 'meta-llama/Llama-3.2-1B-Instruct', 'llama-3b': 'meta-llama/Llama-3.2-3B-Instruct',
-          'llama-8b': 'meta-llama/Llama-3.1-8B-Instruct', 'qwen3-4b': 'Qwen/Qwen3-4B-Instruct-2507'}
+          'llama-8b': 'meta-llama/Llama-3.1-8B-Instruct', 'qwen3-4b': 'Qwen/Qwen3-4B-Instruct-2507',
+          'inf': 'infly/inf-retriever-v1-1.5b'}  # F (2026-10-27): INF-Retriever as the query model
+# F (2026-10-27): session F's seeded split (training/inf_retriever/tools/build_seed_split.py, 5-8 unique golds) as extra
+# datasets; stage f_prep writes their raw files, then embed / hf run unchanged.
+F_SPLIT = f'{REPO}/data/training/clean_v3_hn_s0/qampari'
+for _name, _f in (('qampari_s0', 'train_data.jsonl'), ('qampari_s0dev', 'dev_data.jsonl')):
+    SRC[_name] = {'jsonl': f'{F_SPLIT}/{_f}', 'lengths': [5, 6, 7, 8], 'gold_key': 'ground_truths', 'q_key': 'question_text'}
 CORPUS_TSV = '/scratch/hc3337/wikipedia_chunks/chunks_v5.tsv'
 
 
@@ -107,6 +113,24 @@ def stage_filter(args):
         report[ds] = rep
         print(ds, json.dumps(rep), flush=True)
     json.dump(report, open(out / 'filter_report.json', 'w'), indent=1)
+
+
+def stage_f_prep(args):
+    """F: raw files for the seeded-split datasets in the layout stage_embed / stage_hf read. Golds are de-duplicated by
+    id in order (train is already; dev keeps answer repeats in its JSONL, and the paper's data has one slot per gold)."""
+    out = Path(args.out) / 'raw_data'; out.mkdir(parents=True, exist_ok=True)
+    for ds in args.datasets:
+        cfg = SRC[ds]; by_len = {L: [] for L in cfg['lengths']}
+        for d in read_jsonl(cfg['jsonl']):
+            seen, gs = set(), []
+            for g in d['ground_truths']:
+                if str(g['id']) not in seen:
+                    seen.add(str(g['id'])); gs.append({'id': g['id'], 'title': g['title'], 'text': g['text']})
+            by_len[len(gs)].append({cfg['q_key']: d[cfg['q_key']], 'golds': gs})
+        for L, rows in by_len.items():
+            write_jsonl([{cfg['q_key']: r[cfg['q_key']]} for r in rows], out / f'{ds}_train_question_only_{L}_ctxs.jsonl')
+            write_jsonl(rows, out / f'{ds}_train_{L}.jsonl')
+        print(ds, {L: len(v) for L, v in by_len.items()}, flush=True)
 
 
 # ---------------------------------------------------------------- embed
@@ -183,7 +207,7 @@ def stage_hf(args):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from create_input_for_contrievers import create_input_embeddings_for_contrastive  # paper code, unchanged
     from datasets import load_from_disk, concatenate_datasets
-    raw = Path(args.out) / 'raw_data'
+    raw = Path(args.raw) if args.raw else Path(args.out) / 'raw_data'
     for lm in args.lms:
         for ds in args.datasets:
             lens = SRC[ds]['lengths']
@@ -205,10 +229,11 @@ def stage_hf(args):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('stage', choices=['filter', 'embed', 'hf'])
+    ap.add_argument('stage', choices=['filter', 'embed', 'hf', 'f_prep'])
+    ap.add_argument('--raw', default=None, help='F: raw_data dir for stage hf (default <out>/raw_data)')
     ap.add_argument('--out', default=f'{REPO}/paper_repro_data')
     ap.add_argument('--datasets', nargs='+', default=['qampari', 'ambiguous_qe'])
     ap.add_argument('--lms', nargs='+', default=list(LM_IDS))
     ap.add_argument('--seed', type=int, default=0)
     a = ap.parse_args()
-    {'filter': stage_filter, 'embed': stage_embed, 'hf': stage_hf}[a.stage](a)
+    {'filter': stage_filter, 'embed': stage_embed, 'hf': stage_hf, 'f_prep': stage_f_prep}[a.stage](a)

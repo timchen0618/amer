@@ -103,6 +103,14 @@ def train(configs):
         one_label_data_handler = DataHandler(full_dataset, one_label_collator, configs.batch_size_training, 'train', int(accelerator.num_processes) * 2)
 
         
+    if getattr(configs, 'valid_path', None):
+        # F (2026-10-27): validation loss on a separate dev set; train on all of --train_path
+        valid_dataset = load_embeddings_dataset(dataset_path=configs.valid_path)
+        data_handler.use_external_dev(valid_dataset)
+        if configs.mix_one_label_shuffled:
+            one_label_data_handler.use_external_dev(valid_dataset)
+        logger.info('external validation set', valid_path=configs.valid_path, n_train=len(data_handler.train_dataset), n_dev=len(data_handler.dev_dataset))
+
     if configs.train_on_all_data:
         train_dataloader = data_handler.get_full_dataloader()
         valid_loss_dataloader = data_handler.get_full_dataloader()

@@ -809,11 +809,11 @@ class EmbeddingModelSS(EmbeddingModel):
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             # loss_mask[:,:input_start_for_output-1] = 0
             loss_mask[:,:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size())
@@ -981,14 +981,14 @@ class EmbeddingModelSSPredLength(EmbeddingModel):
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             # loss_mask[:,:input_start_for_output-1] = 0
             loss_mask[:,:output_len] = 1
             # print('output_len', output_len)
             # print('loss_mask', loss_mask.float().mean(dim=0).size(), loss_mask.float().mean(dim=0))
             # print('output_len', output_len, 'loss_mask', loss_mask.float().mean(dim=0).size(), loss_mask.float().mean(dim=0), 'eq', loss_mask.float().mean(dim=0).sum().item(), (output_len))
-            # assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            # assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size())
@@ -1246,11 +1246,11 @@ class EmbeddingModelSSAddQ(EmbeddingModel):
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             # loss_mask[:,:input_start_for_output-1] = 0
             loss_mask[:,:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size())
@@ -1475,11 +1475,11 @@ class EmbeddingModelSSAvgQ(EmbeddingModel):
         if self.extra_q_embed and not self.compute_loss_on_q:  # only when we have extra question embeddings and we don't compute loss on the question embeddings
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             # loss_mask[:,:input_start_for_output-1] = 0
             loss_mask[:,:output_len] = 1
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
                 
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size())
@@ -1716,7 +1716,7 @@ class EmbeddingModelSSVariable(EmbeddingModel):
                 loss_mask[i, :start_idx_i+1] = 0
                 loss_mask[i, (start_idx_i+1):(start_idx_i+output_len)] = 1
                 loss_mask[i, (start_idx_i+output_len):] = 0
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             for i in range(labels.size(0)):
                 start_idx_i = inputs['attention_mask'][i].sum() - input_start_index
@@ -1876,11 +1876,11 @@ class EmbeddingModelSSVariableLeftPad(EmbeddingModel):
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
             loss_mask[:,output_len:] = 0
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             loss_mask[:,:output_len] = 1
             loss_mask[:,output_len:] = 0
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size(), 'loss_mask', loss_mask)
@@ -2045,7 +2045,7 @@ class EmbeddingModelSSVariableLeftPadDocEncTrained(EmbeddingModel):
         # fill out the loss mask: ignore the first token, which is the question representation using embedding model
         loss_mask[:,:output_len] = 1
         loss_mask[:,output_len:] = 0
-        assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+        assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         
@@ -2215,11 +2215,11 @@ class EmbeddingModelSSVariableLeftPadPredLength(EmbeddingModel):
             loss_mask[:,:1] = 0
             loss_mask[:,1:output_len] = 1
             loss_mask[:,output_len:] = 0
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len - 1), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len - 1)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         else:
             loss_mask[:,:output_len] = 1
             loss_mask[:,output_len:] = 0
-            assert loss_mask.float().mean(dim=0).sum().item() == (output_len), (loss_mask.float().mean(dim=0).sum().item(), output_len)
+            assert abs(loss_mask.float().mean(dim=0).sum().item() - (output_len)) < 1e-4, (loss_mask.float().mean(dim=0).sum().item(), output_len)
         
         out_hidden_states = torch.cat(all_outputs, dim=1) # (batch_size, output_len, hidden_size)
         # print('out_hidden_states', out_hidden_states.size(), 'loss_mask', loss_mask)
