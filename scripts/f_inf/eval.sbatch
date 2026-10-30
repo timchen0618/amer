@@ -3,14 +3,14 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=200GB
 #SBATCH --time=06:00:00
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --partition=h200_courant,h200_public
 #SBATCH --gres=gpu:1
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/f_paper_data/logs/%x_%j.out
 # F paper-stack runs: test eval of finished runs (R's eval_embed_search.sbatch + eval_score.sbatch, INF query model).
 #   P1/P2 (paper code): query embeddings with gen_ret_and_eval.py from best_model (lowest dev loss)
-#   P3 (F stack): query embeddings from retrieval_inf.py (via QEMB_FROM=<npy> for that run, reshaped to 2-D here)
+#   P3 (F stack) and cal_* (F checkpoints scored for calibration): query embeddings from retrieval_inf.py (via QEMB_FROM=<npy> for that run, reshaped to 2-D here)
 # then top-500 search on the full 25.86M index (scripts/paper_repro/search.py) and round-robin / RRF scoring with the
 # paper's scorer (scripts/paper_repro/score.py), plus pairwise cosine of each question's query embeddings (qsim.py).
 # usage: sbatch --job-name=f_eval_<tag> eval.sbatch <tag> <run> [<run> ...]   (run = P1_inf_multi_SS_0 etc.)
@@ -25,7 +25,7 @@ QD=$D/eval/$TAG/qemb; mkdir -p $QD
 for run in "$@"; do
   case $run in *single*) mnt=1;; *) mnt=5;; esac
   case $run in
-    P3*) singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; python -c \"import numpy as np; a=np.load('$R/results/f_paper/$run/test_qemb.npy'); a=a.reshape(-1,a.shape[-1]); print('$run',a.shape); np.save('$QD/$run.npy',a.astype('float32'))\"";;
+    P3*|cal_*) singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; python -c \"import numpy as np; a=np.load('$R/results/f_paper/$run/test_qemb.npy'); a=a.reshape(-1,a.shape[-1]); print('$run',a.shape); np.save('$QD/$run.npy',a.astype('float32'))\"";;
     *) RD=$D/results/inf/qampari_inf/$run
        [ -f $RD/best_model_linear.pt ] || { echo "missing $RD"; exit 1; }
        singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd $W; \

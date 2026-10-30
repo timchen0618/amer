@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=08:00:00
 #SBATCH --mem=96GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/f_paper_data/logs/%x_%j.out
 # F paper-stack runs (reports/objective_audit_2026-10-13/F_paper_stack_runs_2026-10-27.md): data builds with
 # data_creation/repro_build_data.py (R's builder + F's 'inf' LM and seeded-split datasets).
