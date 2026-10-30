@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=00:40:00
 #SBATCH --mem=64GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200|b200
 #SBATCH --partition=h200_courant,h200_public,h200,b200
 #SBATCH --comment=preemption=yes;requeue=true

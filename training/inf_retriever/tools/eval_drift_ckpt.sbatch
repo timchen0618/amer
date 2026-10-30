@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=1:00:00
 #SBATCH --mem=64GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --job-name=eval_drift_ckpt
 #SBATCH --output=sbatch_outputs/evaldrift_%x.out
 

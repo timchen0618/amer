@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=8:00:00
 #SBATCH --mem=128GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
 #SBATCH --job-name=phaseC_train

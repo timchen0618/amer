@@ -59,7 +59,7 @@ base() { echo results/phaseC/full/$DS/${RUN}_s$1; }
 
 srun_py() {  # $1 log file, rest: python command (CPU job in the nli env)
   local out=$1; shift
-  srun --account=torch_pr_152_courant --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+  srun --account=torch_pr_152_echoi --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
     bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; $*" > $out 2>&1
 }
 submit() {  # $1 step $2 dev|test
@@ -75,7 +75,7 @@ score() {  # $1 step $2 dev|test
   local s=$1 set=$2 b data try; b=$(base $s); data=$DEV; [ $set = test ] && data=$TEST
   [ -s $b/$set/$DS.jsonl ] || { log "ERROR: s$s $set retrieval has no output (job $(cat $b/$set.job))"; return 1; }
   for try in 1 2 3; do
-    srun --account=torch_pr_152_courant --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
+    srun --account=torch_pr_152_echoi --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
       bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python eval.py --data_path $data --topk 100 10 --input-file $b/$set/$DS.jsonl" > $b/$set/eval_metrics.txt 2>&1
     grep -q MRecall $b/$set/eval_metrics.txt && break; sleep 60
   done
@@ -174,7 +174,7 @@ for s in $TSTEPS; do
   b=$(base $s)
   for set in dev test; do
     data=$DEV; [ $set = test ] && data=$TEST
-    [ -s $b/${set}_geom.json ] || srun --account=torch_pr_152_courant --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 \
+    [ -s $b/${set}_geom.json ] || srun --account=torch_pr_152_echoi --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 \
       singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python $T/geometry_eval.py --qemb $b/${set}_qemb.npy --emb_glob '$EMB/passages_*' --data $data --out $b/${set}_geom.json" > $b/${set}_geom.log 2>&1 \
       || log "ERROR: s$s $set geometry failed (see $b/${set}_geom.log); continuing"
   done

@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=4:00:00
 #SBATCH --mem=96GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200|l40s|b200
 #SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200,b200
 #SBATCH --comment=preemption=yes;requeue=true

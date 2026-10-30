@@ -5,7 +5,7 @@
 set -e
 cd /scratch/hc3337/projects/autoregressive
 IMG=/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
-ACC=torch_pr_152_courant
+ACC=torch_pr_152_echoi
 mkdir -p data/phaseA results/phaseA/base sbatch_outputs
 
 j1=$(sbatch --parsable --account=$ACC --time=00:30:00 --mem=32G --cpus-per-task=2 --job-name=phaseA_devsets \

@@ -139,7 +139,7 @@ for s in $STEPS; do
   fi
   [ -z "${EJ[$s]}" ] && EJ[$s]=$(sbatch --parsable --job-name=phaseC_eval_${RUN}_s$s \
       --export=ALL,CKPT=$ck,SET=$SET,DATA=data/phaseA/$SET.jsonl,OUT_DIR=$out,K=$K $T/cheap_eval_ckpt.sbatch)
-  [ -z "${DJ[$s]}" ] && DJ[$s]=$(sbatch --parsable --account=torch_pr_152_courant --time=00:40:00 --mem=48G --cpus-per-task=2 \
+  [ -z "${DJ[$s]}" ] && DJ[$s]=$(sbatch --parsable --account=torch_pr_152_echoi --time=00:40:00 --mem=48G --cpus-per-task=2 \
       --job-name=phaseC_drift_${RUN}_s$s --output=sbatch_outputs/phaseC_drift_${RUN}_s$s.out \
       --wrap "singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif bash -c 'source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python $T/param_drift.py --run_dir checkpoints/$DS/$RUN --steps $s --out results/param_drift/phaseC_$DS.jsonl'")
   log "step $s saved; cheap dev eval ${EJ[$s]}, drift ${DJ[$s]}"

@@ -62,7 +62,7 @@ evalf() {  # $1 data $2 results jsonl $3 metrics out
   # instead of redoing the 2-3 h embedding (code audit 2026-09-28, G11).
   local try
   for try in 1 2 3; do
-    srun --account=torch_pr_152_courant --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
+    srun --account=torch_pr_152_echoi --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
       bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python eval.py --data_path $1 --topk 100 10 $GOLD --input-file $2" > $3 2>&1
     grep -q MRecall $3 && return 0
     log "WARNING: scoring $2 failed (attempt $try of 3)"; sleep 60
@@ -74,7 +74,7 @@ geom() {  # $1 tag $2 base $3 corpus embedding dir; runs while the embeddings st
   for set in dev test; do
     data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
     [ -s $base/${set}_qemb.npy ] || { log "GEOM $tag $set: no query embeddings saved; skipped"; continue; }
-    srun --account=torch_pr_152_courant --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+    srun --account=torch_pr_152_echoi --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
       bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/geometry_eval.py --qemb $base/${set}_qemb.npy --emb_glob '$emb/passages_*' --data $data --out $base/${set}_geom.json" > $base/${set}_geom.log 2>&1 \
       && log "GEOM $tag $set: $(tail -1 $base/${set}_geom.log)" \
       || log "ERROR: $tag $set geometry failed (see $base/${set}_geom.log); continuing"
@@ -102,7 +102,7 @@ finish() {  # $1 tag $2 embed job $3 dev job $4 test job
     local ok=1
     for set in dev test; do
       local data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
-      srun --account=torch_pr_152_courant --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+      srun --account=torch_pr_152_echoi --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
         bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1
       local rc=$?; [ $rc = 0 ] || echo "srun returned $rc (output is validated below)" >> $base/${set}_kagg.log
       # judge by the output, not srun's return code: srun has returned nonzero for steps that COMPLETED 0:0

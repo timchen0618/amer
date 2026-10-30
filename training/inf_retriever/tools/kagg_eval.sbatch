@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=3:00:00
 #SBATCH --mem=48GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --job-name=kagg_eval
 #SBATCH --output=sbatch_outputs/%x.out
 # Score the per-step lists of kagg_retrieve.sbatch for every k in KS and both aggregations.

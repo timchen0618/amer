@@ -87,3 +87,24 @@ Reference: untrained INF-Retriever on the same test and full index, MRecall@100 
 - 2026-10-29: P3-multi finished (21158043, 33.6 h, 26,500 steps; best dev loss 2.004 at step 26,000). Query embedding (RET_ENV=div, K=5, best_dev_loss) 21332094, then eval (afterany; needs only the saved vectors).
 - 2026-10-29: P3-multi test eval done (21332095, 9.7 min): MRecall@100 RR 21.47 / RRF 22.98 all, 11.86 / 12.43 lowsim; @10 RRF 2.82 all. Query cosine 0.860 (adjacent 0.91 / 0.78 / 0.85 / 0.87; 0.6% of questions > 0.95). All six P runs evaluated.
 - 2026-10-29 summary (RRF, MRecall@100 all / lowsim): multi beats single in every pair on lowsim (P1 +2.3, P2 +1.7, P3 +3.4) and overall (P1 +0.4, P2 +1.5, P3 +1.7); with round-robin, multi trails single overall in P1/P2 and is level in P3. Data (P1 vs P2, paper code): R's production data ahead by 1.3–4.5 (multi) and 2.5–4.0 (single). Code (P3 vs P2, same s0 data): F stack ahead for multi (+0.4 all, +2.3 lowsim) and level for single (+0.2 / +0.6). Query vectors stay close in every multi run (mean pairwise cosine 0.84–0.86; step 2→3 the most distinct, 0.73–0.78). No run beats the untrained INF-Retriever (24.48, F's script; same-scorer base not yet run).
+
+## Follow-up (user 2026-10-29): hard negatives vs LoRA, on P3-multi first
+
+Gap to F's Stage A runs on the same s0 split (S0_multi test 30.1–31.1, S0_single 32.4, F's scorer) vs P3-multi 22.98 / P3-single 21.28 (paper scorer). S0_multi vs P3-multi options differ in: hard negatives (0.5 vs 0), full fine-tuning vs LoRA r64, lr 1e-5 vs 5e-5, 2,500 vs 26,500 steps, bidirectional vs causal attention, no output layer vs random-init layers, no one-gold step vs one-gold step, sampling 0→1 linear vs cap 0.8, F's prompt vs the paper prompt, and the scorer.
+
+| Run | Job | Change vs P3-multi |
+| --- | --- | --- |
+| P3_multi_hn | 21339901 | `--negative_hard_ratio 0.5` (as F's runs: half of each question's negatives from its 30 mined hard negatives) |
+| P3_multi_sft | 21339902 | full fine-tuning (no `--use_lora`), lr 1e-5 (F's full-FT lr; 5e-5 is the LoRA lr) |
+| P3_multi_hn_sft | 21339903 | both |
+
+Same 26,500 steps, eval every 500, lowest-dev-loss checkpoint. Calibration (same paper scorer, test): S0_multi step 2250 (21339910 → 21339916), S0_single step 2500 (21339912 → 21339917), untrained INF-Retriever (cal_base). Purpose: separate the scorer from the recipe in the 23 vs 30 gap.
+
+Single-query counterparts (user 2026-10-29: "the same things for P3-single too"), each queued `afterany` its multi run so F stays at ≤ 8 GPUs: P3_single_hn 21340020 (after 21339901; both resubmitted, see below), P3_single_sft 21340021 (after 21339902), P3_single_hn_sft 21340022 (after 21339903). Same changes vs P3-single as above.
+- 2026-10-29: calibration, untrained INF-Retriever through the paper scorer (21339920): MRecall@100 24.48 all / 9.60 lowsim, @10 2.26 — identical to F's script (24.48), so the two scorers agree on the base model.
+- 2026-10-29: calibration, S0_single step 2500 through the paper scorer (21339917): MRecall@100 32.39 all / 16.38 lowsim, @10 5.27 / 1.13 — identical to F's script (32.39). The scorer is not the gap: P3-single 21.28 vs S0_single 32.39 on the same s0 data, F stack and scorer is a recipe difference.
+- 2026-10-29: calibration, S0_multi step 2250 through the paper scorer (21339916): MRecall@100 RR 29.76 / RRF 30.32 all (F's script: 30.32), 15.25 / 14.69 lowsim; @10 RRF 4.14. Query cosine 0.883 (adjacent 0.92 / 0.96 / 0.97 / 0.97). Calibration done: scorers agree on all three; the P3 gap (22.98 vs 30.32 multi, 21.28 vs 32.39 single) is the recipe.
+- 2026-10-29: P3_multi_hn 21339901 killed by the system (CANCELLED by uid 0, SIGTERM, node gh125) at step 2,150 after 3.2 h (dev loss 2.62 → 2.50 at steps 1500/2000, no fault in the run). Resubmitted from scratch as 21350659; cancelled P3_single_hn 21340020 (its afterany would have started it now) and re-chained it as 21350660 after 21350659.
+- 2026-10-29 16:08: every job under this account was cancelled by root at once (CANCELLED by uid 0), including R's repro_llama runs, F's S0_const_10k and all six P3 variants (multi_sft / multi_hn_sft at ~5.1 h, multi_hn resubmit at 2.0 h; singles had not started). No reservation; partitions up. Looks administrative; not resubmitted pending the user.
+
+- 2026-10-29 23:20: the 16:08 cancel was the retirement of account torch_pr_152_courant. Resubmitted on torch_pr_152_echoi from step 0: P3_multi_hn 21396266, P3_multi_sft 21396267, P3_multi_hn_sft 21396268, P3_single_hn 21396269, P3_single_sft 21396270, P3_single_hn_sft 21396271 (singles afterany their multi).
