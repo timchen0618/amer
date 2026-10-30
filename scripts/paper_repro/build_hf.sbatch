@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=06:00:00
 #SBATCH --mem=96GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --partition=cpu_short
 #SBATCH --job-name=repro_hf
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/hf_%x_%j.out

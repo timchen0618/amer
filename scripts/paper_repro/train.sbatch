@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128GB
 #SBATCH --time=4-00:00:00
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --partition=h200_courant,h200_public
 #SBATCH --gres=gpu:2
