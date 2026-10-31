@@ -108,3 +108,12 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 - 2026-10-29 16:08: every job under this account was cancelled by root at once (CANCELLED by uid 0), including R's repro_llama runs, F's S0_const_10k and all six P3 variants (multi_sft / multi_hn_sft at ~5.1 h, multi_hn resubmit at 2.0 h; singles had not started). No reservation; partitions up. Looks administrative; not resubmitted pending the user.
 
 - 2026-10-29 23:20: the 16:08 cancel was the retirement of account torch_pr_152_courant. Resubmitted on torch_pr_152_echoi from step 0: P3_multi_hn 21396266, P3_multi_sft 21396267, P3_multi_hn_sft 21396268, P3_single_hn 21396269, P3_single_sft 21396270, P3_single_hn_sft 21396271 (singles afterany their multi).
+
+### Follow-up results (test, paper scorer, best_dev_loss checkpoint)
+
+| Run | @100 all RR / RRF | @100 lowsim RR / RRF | @10 all RR / RRF | @10 lowsim RR / RRF | query cosine (adjacent) |
+|---|---|---|---|---|---|
+| P3-multi (LoRA, no HN; reference) | 21.47 / 22.98 | 11.86 / 12.43 | 2.07 / 2.82 | 0.56 / 0.00 | 0.860 |
+| P3_multi_hn_sft (full FT, HN 0.5, lr 1e-5) | 18.64 / 22.03 | 19.21 / 19.21 | 7.53 / 2.64 | 7.91 / 1.13 | 0.607 (0.77/0.43/0.43/0.55) |
+
+- P3_multi_hn_sft (21396268, 26,500 steps, best dev loss 2.07 near the end; f_ret 21481859 FAILED at the CPU-FAISS step after saving test_qemb.npy, as expected; f_eval 21481860): @100 all slightly below P3-multi (RRF -0.95, RR -2.8), but lowsim +6.8 RRF / +7.4 RR and @10 RR +5.5; query vectors far more diverse (cosine 0.607 vs 0.860). Still below S0_multi (RRF 30.32) and the untrained base (24.48).
