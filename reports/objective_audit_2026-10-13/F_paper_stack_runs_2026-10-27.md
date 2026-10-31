@@ -118,7 +118,9 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 | P3_multi_sft (full FT, no HN, lr 1e-5) | 19.59 / 21.28 | 20.90 / 20.34 | 7.16 / 3.01 | 7.91 / 1.69 | 0.614 (0.78/0.44/0.43/0.57) |
 | P3-single (LoRA, no HN; reference) | 21.28 | 9.04 | 3.58 | 0.56 | – |
 | P3_single_hn_sft (full FT, HN 0.5, lr 1e-5) | 19.96 | 15.25 | 5.27 | 4.52 | – |
+| P3_single_sft (full FT, no HN, lr 1e-5) | 21.09 | 17.51 | 5.08 | 4.52 | – |
 
 - P3_multi_hn_sft (21396268, 26,500 steps, best dev loss 2.07 near the end; f_ret 21481859 FAILED at the CPU-FAISS step after saving test_qemb.npy, as expected; f_eval 21481860): @100 all slightly below P3-multi (RRF -0.95, RR -2.8), but lowsim +6.8 RRF / +7.4 RR and @10 RR +5.5; query vectors far more diverse (cosine 0.607 vs 0.860). Still below S0_multi (RRF 30.32) and the untrained base (24.48).
 - P3_multi_sft (21396267, f_eval 21484687): within ~1 point of P3_multi_hn_sft on every metric (RRF @100 all 21.28 vs 22.03, lowsim 20.34 vs 19.21; cosine 0.614 vs 0.607). So the shift vs P3-multi (lowsim +8, @10 RR +5, cosine 0.86 -> 0.61) comes from full fine-tuning at lr 1e-5, not from hard negatives; HN adds +0.75 RRF @100 all. P3_multi_hn (LoRA + HN) still training.
 - P3_single_hn_sft (21396271, 4.2 h; f_eval 21497338): same pattern as multi: @100 all -1.3 vs P3-single, lowsim +6.2, @10 +1.7. Multi vs single with full FT + HN (RRF): all 22.03 vs 19.96 (+2.1), lowsim 19.21 vs 15.25 (+4.0).
+- P3_single_sft (21396270, 4.3 h; f_eval 21501380): @100 all 21.09 (= P3-single 21.28), lowsim 17.51 (+8.5), @10 5.08 (+1.5). HN slightly hurts single (all -1.1, lowsim -2.3). Multi vs single with full FT, no HN (RRF): all 21.28 vs 21.09 (+0.2), lowsim 20.34 vs 17.51 (+2.8).
