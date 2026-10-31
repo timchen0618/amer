@@ -59,6 +59,9 @@ QUEUE=(
   "S0_10k|$S0 --loss_fn hungarian||finetuning_multi_paper.py|$S0ENV $LONG"
   "S0_cap_10k|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8||finetuning_multi_paper.py|$S0ENV $LONG"
   "S0_const_10k|$S0 --loss_fn hungarian --full_sampling||finetuning_multi_paper.py|$S0ENV $LONG"
+  # 2026-10-31 (user): S0_10k with sample_rate_multiplier 10 and no cap (rate min(10 t/T, 1.0)); compared with S0_cap_10k
+  # (multiplier 10, cap 0.8) on full dev, and the better one is the Stage B base.
+  "S0_mult10_10k|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1||finetuning_multi_paper.py|$S0ENV $LONG"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
