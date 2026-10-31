@@ -116,6 +116,7 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 | P3-multi (LoRA, no HN; reference) | 21.47 / 22.98 | 11.86 / 12.43 | 2.07 / 2.82 | 0.56 / 0.00 | 0.860 |
 | P3_multi_hn_sft (full FT, HN 0.5, lr 1e-5) | 18.64 / 22.03 | 19.21 / 19.21 | 7.53 / 2.64 | 7.91 / 1.13 | 0.607 (0.77/0.43/0.43/0.55) |
 | P3_multi_sft (full FT, no HN, lr 1e-5) | 19.59 / 21.28 | 20.90 / 20.34 | 7.16 / 3.01 | 7.91 / 1.69 | 0.614 (0.78/0.44/0.43/0.57) |
+| P3_multi_hn (LoRA, HN 0.5, lr 5e-5) | 18.27 / 22.60 | 7.91 / 11.30 | 2.26 / 2.82 | 0.00 / 0.00 | 0.854 (0.91/0.77/0.82/0.88) |
 | P3-single (LoRA, no HN; reference) | 21.28 | 9.04 | 3.58 | 0.56 | – |
 | P3_single_hn_sft (full FT, HN 0.5, lr 1e-5) | 19.96 | 15.25 | 5.27 | 4.52 | – |
 | P3_single_sft (full FT, no HN, lr 1e-5) | 21.09 | 17.51 | 5.08 | 4.52 | – |
@@ -124,3 +125,4 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 - P3_multi_sft (21396267, f_eval 21484687): within ~1 point of P3_multi_hn_sft on every metric (RRF @100 all 21.28 vs 22.03, lowsim 20.34 vs 19.21; cosine 0.614 vs 0.607). So the shift vs P3-multi (lowsim +8, @10 RR +5, cosine 0.86 -> 0.61) comes from full fine-tuning at lr 1e-5, not from hard negatives; HN adds +0.75 RRF @100 all. P3_multi_hn (LoRA + HN) still training.
 - P3_single_hn_sft (21396271, 4.2 h; f_eval 21497338): same pattern as multi: @100 all -1.3 vs P3-single, lowsim +6.2, @10 +1.7. Multi vs single with full FT + HN (RRF): all 22.03 vs 19.96 (+2.1), lowsim 19.21 vs 15.25 (+4.0).
 - P3_single_sft (21396270, 4.3 h; f_eval 21501380): @100 all 21.09 (= P3-single 21.28), lowsim 17.51 (+8.5), @10 5.08 (+1.5). HN slightly hurts single (all -1.1, lowsim -2.3). Multi vs single with full FT, no HN (RRF): all 21.28 vs 21.09 (+0.2), lowsim 20.34 vs 17.51 (+2.8).
+- P3_multi_hn (21396266, 34.5 h; f_eval 21508667): ~ P3-multi (RRF all 22.60 vs 22.98, lowsim 11.30 vs 12.43, cosine 0.854 vs 0.860). HN does nothing under LoRA either. Multi conclusion: LoRA -> full FT is the only change that matters (lowsim +8, cosine 0.86 -> 0.61); neither closes the gap to S0 (~30) or base (24.48).
