@@ -26,13 +26,15 @@ User-approved 2026-10-22. Run autonomously, in stages; each stage builds on the 
 | S0_10k | linear 0→1, 10000 | 10000: 46.03 / **31.64** | 9000: 32.02 | – |
 | S0_cap_10k | cap 0.8, 10000 | 7000: 46.28 / **31.07** | 10000: 30.89 | 9000: 31.26 |
 | S0_const_10k | constant 1.0, 10000 | 4000: 43.76 / **29.00** | 7000: 28.81 | 5000: 29.94, 10000: 28.06 |
+| S0_mult10_10k | multiplier 10, no cap (`min(10·t/T, 1)`), 10000 | 6000: 43.31 / **29.76** | 7000: 29.38 | 4000: 30.32, 10000: 28.44 |
 
 - At 2500 steps no multi schedule beats single (−2.1 to −3.0 test). At 10k, linear 0→1 (S0_10k) reaches 31.6–32.0, level with single (32.39, < 2 points = tie); the paper cap and constant schedules do not help at either length.
 - Dev and test disagree: 10k runs gain 5–8 dev points over 2500 but ≤ 1.7 test. S0_const_10k peaks on dev at step 4000 and drifts down after (41.64 at 10000).
 - Selection rules: the lowest-`eval_loss_sr1` checkpoint tests within 0.4 of the full-dev pick in every run (better in 3 of 6, worse in 2).
 - S0_const_10k was cancelled at step ~2,100 on 2026-10-29 when the Slurm account `torch_pr_152_courant` was retired, and was re-run from step 0 on `torch_pr_152_echoi` (job 21396564).
 - Paper's large / small test thirds (168 / 180 questions; `tools/fusion_eval.py`, `results/phaseC/fusion_S0_*test.json`), dev-selected step: single 15.48 / 49.44, multi 13.10 / 47.22, cap 13.69 / 45.00, const 13.69 / 45.56, 10k 20.83 / 42.78 (s9000 21.43), cap_10k 19.64 / 43.89 (s9000 22.62), const_10k 13.69 / 41.67. 10k with the linear ramp or the cap beats single on the large third by 4–7 points and loses ~6 on the small third.
-- Stage A winner on this split: S0_10k (linear 0→1, 10000 steps). Stages B–F not started.
+- S0_mult10_10k (added 2026-10-31, user): the paper's multiplier 10 without the 0.8 cap. Dev peaks at step 6000 and drifts down (like constant 1.0); test 29.76 at the dev-selected step (large / small 19.64 / 41.67; s4000 30.32, 16.67 / 44.44), below S0_cap_10k (31.07) on every rule, so the cap helps.
+- Stage A winner on this split: S0_10k (linear 0→1, 10000 steps). **Stage B base = S0_cap_10k** (user 2026-11-01: the higher-test of S0_cap_10k / S0_mult10_10k). Stage B queued 2026-11-01: S0_cap10k_onelabel, S0_cap10k_ioprojrand, S0_cap10k_onelabel_ioprojrand.
 
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 

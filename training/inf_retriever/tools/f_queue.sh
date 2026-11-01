@@ -62,10 +62,10 @@ QUEUE=(
   # 2026-10-31 (user): S0_10k with sample_rate_multiplier 10 and no cap (rate min(10 t/T, 1.0)); compared with S0_cap_10k
   # (multiplier 10, cap 0.8) on full dev, and the better one is the Stage B base.
   "S0_mult10_10k|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1||finetuning_multi_paper.py|$S0ENV $LONG"
-  # 2026-11-01 Stage B: one-label step x random-init io layers, on whichever of S0_cap_10k / S0_mult10_10k tests higher.
-  # held 2026-11-01 (user: pick base by test, after S0_mult10_10k test evals): "S0_cap10k_onelabel|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20"
-  # held 2026-11-01 (user: pick base by test, after S0_mult10_10k test evals): "S0_cap10k_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG"
-  # held 2026-11-01 (user: pick base by test, after S0_mult10_10k test evals): "S0_cap10k_onelabel_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-01 Stage B on S0_cap_10k (test 31.07 at its dev-selected step vs S0_mult10_10k 29.76; user: pick by test): one-label step x random-init io layers.
+  "S0_cap10k_onelabel|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_cap10k_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG"
+  "S0_cap10k_onelabel_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
