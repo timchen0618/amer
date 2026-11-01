@@ -120,6 +120,7 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 | P3-single (LoRA, no HN; reference) | 21.28 | 9.04 | 3.58 | 0.56 | – |
 | P3_single_hn_sft (full FT, HN 0.5, lr 1e-5) | 19.96 | 15.25 | 5.27 | 4.52 | – |
 | P3_single_sft (full FT, no HN, lr 1e-5) | 21.09 | 17.51 | 5.08 | 4.52 | – |
+| P3_single_hn (LoRA, HN 0.5, lr 5e-5) | 21.85 | 8.47 | 3.01 | 0.00 | – |
 
 - P3_multi_hn_sft (21396268, 26,500 steps, best dev loss 2.07 near the end; f_ret 21481859 FAILED at the CPU-FAISS step after saving test_qemb.npy, as expected; f_eval 21481860): @100 all slightly below P3-multi (RRF -0.95, RR -2.8), but lowsim +6.8 RRF / +7.4 RR and @10 RR +5.5; query vectors far more diverse (cosine 0.607 vs 0.860). Still below S0_multi (RRF 30.32) and the untrained base (24.48).
 - P3_multi_sft (21396267, f_eval 21484687): within ~1 point of P3_multi_hn_sft on every metric (RRF @100 all 21.28 vs 22.03, lowsim 20.34 vs 19.21; cosine 0.614 vs 0.607). So the shift vs P3-multi (lowsim +8, @10 RR +5, cosine 0.86 -> 0.61) comes from full fine-tuning at lr 1e-5, not from hard negatives; HN adds +0.75 RRF @100 all. P3_multi_hn (LoRA + HN) still training.
@@ -127,3 +128,5 @@ Single-query counterparts (user 2026-10-29: "the same things for P3-single too")
 - P3_single_sft (21396270, 4.3 h; f_eval 21501380): @100 all 21.09 (= P3-single 21.28), lowsim 17.51 (+8.5), @10 5.08 (+1.5). HN slightly hurts single (all -1.1, lowsim -2.3). Multi vs single with full FT, no HN (RRF): all 21.28 vs 21.09 (+0.2), lowsim 20.34 vs 17.51 (+2.8).
 - P3_multi_hn (21396266, 34.5 h; f_eval 21508667): ~ P3-multi (RRF all 22.60 vs 22.98, lowsim 11.30 vs 12.43, cosine 0.854 vs 0.860). HN does nothing under LoRA either. Multi conclusion: LoRA -> full FT is the only change that matters (lowsim +8, cosine 0.86 -> 0.61); neither closes the gap to S0 (~30) or base (24.48).
 - 2026-10-31 13:30: P3_single_hn 21396269 CANCELLED by uid 0 on gh129 at step 18,550 (other jobs unaffected); resubmitted from step 0 as 21529219.
+- 2026-10-31/11-01: P3_single_hn killed by root twice more (21529219 at step 16,850; 21543957 at 11,000; kills at :00:30 / :30:30, cause unknown). Fourth try 21564119 (8 h walltime, no partition) finished: 26,500 steps, 5.1 h; f_ret 21583562, f_eval 21583563.
+- P3_single_hn: @100 all 21.85 (P3-single 21.28, +0.6), lowsim 8.47 (-0.6), @10 3.01 (-0.6). As in multi, HN under LoRA changes nothing. All six variants done. Single conclusion matches multi: full FT lifts lowsim by 6-8, HN is ~0, and no variant reaches the base (24.48) or S0_single (32.39).
