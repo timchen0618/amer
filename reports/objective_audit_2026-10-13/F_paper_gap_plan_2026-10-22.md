@@ -36,6 +36,22 @@ User-approved 2026-10-22. Run autonomously, in stages; each stage builds on the 
 - S0_mult10_10k (added 2026-10-31, user): the paper's multiplier 10 without the 0.8 cap. Dev peaks at step 6000 and drifts down (like constant 1.0); test 29.76 at the dev-selected step (large / small 19.64 / 41.67; s4000 30.32, 16.67 / 44.44), below S0_cap_10k (31.07) on every rule, so the cap helps.
 - Stage A winner on this split: S0_10k (linear 0→1, 10000 steps). **Stage B base = S0_cap_10k** (user 2026-11-01: the higher-test of S0_cap_10k / S0_mult10_10k). Stage B queued 2026-11-01: S0_cap10k_onelabel, S0_cap10k_ioprojrand, S0_cap10k_onelabel_ioprojrand.
 
+**Stage B results (all 3 done, 2026-11-02).** Base S0_cap_10k (cap 0.8, multiplier 10, 10000 steps) on the S0 split; same scoring and checkpoint rules as Stage A (multi = MRecall@100 RRF k = 5; large / small = the paper's test distance thirds, `results/phaseC/fusion_S0_test.json`). Source: `results/phaseC/clean_v3_f_qampari_S0_cap10k_*.driver.out`.
+
+| Run | Change vs base | Dev-selected step: dev / test | Large / small | Loss-selected step: test | Other tested steps (test) |
+| --- | --- | --- | --- | --- | --- |
+| S0_cap_10k (base) | – | 7000: 46.28 / 31.07 | 19.64 / 43.89 | 10000: 30.89 | 9000: 31.26 |
+| S0_cap10k_onelabel | `--one_label_step` | 10000: **50.71 / 33.15** | **25.00** / 43.89 | 9000: 33.52 (25.60 / 44.44) | – |
+| S0_cap10k_ioprojrand | `--io_proj --io_proj_init random` | 7000: 28.26 / 12.62 | 7.14 / 18.33 | 5000: 12.81 | 8000: 12.05, 10000: 11.30 |
+| S0_cap10k_onelabel_ioprojrand | both | 10000: 37.01 / 19.96 | 14.29 / 27.22 | 7000: 19.02 | 8000: 19.21 |
+
+- The paper's one-gold step is the first change to beat the base clearly: +4.4 dev, +2.1 test (+2.5 at step 9000), and +5.4 on the large third with the small third unchanged. It is F's best multi run and the first above S0_single (32.39 test; < 2 points, so a tie by the plan's rule), with the large third 10 points above single (15.48).
+- Dev was still rising at step 10000 (49.49 / 50.18 / 50.55 / 50.71 at 7k–10k), so the setting is re-run at 20000 steps (S0_cap20k_onelabel, 2026-11-01, user) before Stage C.
+- Random-init linear input / output layers hurt badly: dev starts near zero (3.25 at step 1000, vs 37.05 with the one-gold step and no layers) and plateaus at ~28 dev / ~12.5 test. The one-gold step partly offsets it (37.01 / 19.96) but stays 13 test points below the one-gold run without layers. So the paper's projection layers are not part of the best recipe here; Stage F (learned input layers on the final recipe) is the remaining check.
+- The selection rules agree within 0.5 test in every run (loss-selected better in 2 of 3).
+- The driver's per-embedding (copy / best-single-query) scoring failed on the two io_proj runs; the RRF scores are unaffected.
+- Stage B winner: S0_cap10k_onelabel. Stages C–F not started.
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
