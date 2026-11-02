@@ -143,6 +143,9 @@ def train(configs):
         # the paper's forward calls never pass use_cache, so in eval mode HF builds a KV cache that is updated in place and
         # discarded; a checkpoint recompute would append to it twice. Turning the cache off does not change any output.
         model.base_causallm.get_base_model().config.use_cache = False
+        if getattr(configs, 'train_mode', False):
+            # load_model enables HF checkpointing, which only runs in train mode; avoid checkpointing each layer twice
+            model.base_causallm.get_base_model().gradient_checkpointing_disable()
         logger.info('per-layer activation checkpointing enabled', n_layers=len(_layers[0]))
     model = model.to(accelerator.device)
 
@@ -202,6 +205,8 @@ def train(configs):
             accelerator.print('resume_step', resume_step)
             
     for epoch in range(starting_epoch, configs.num_epochs):
+        if getattr(configs, 'train_mode', False):
+            model.train()  # paper-repro ablation: the paper never does this, so it trains in eval mode
         if configs.resume_from_checkpoint and epoch == starting_epoch and resume_step is not None:
             # We need to skip steps until we reach the resumed step only if we are not using a stateful dataloader
             if not configs.use_stateful_dataloader:
@@ -395,6 +400,8 @@ def train(configs):
                         gc.collect()
                         torch.cuda.empty_cache()
                         
+                    if getattr(configs, 'train_mode', False):
+                        model.train()  # paper-repro ablation: back to training mode after validation
                     ##############
                     # Model Saving
                     ##############
