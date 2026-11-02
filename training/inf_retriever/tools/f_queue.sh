@@ -9,6 +9,7 @@ MAXRUN=${MAXRUN:-3}
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/f-objective
 LONG="STEPS_OVERRIDE=10000 WARMUP_OVERRIDE=400 F_STEPS=1000,2000,2500,3000,4000,5000,6000,7000,8000,9000,10000 F_FINAL=10000 TRAIN_TIME=16:00:00"
 LONG20=${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=20:00:00}
+LONG20K="STEPS_OVERRIDE=20000 WARMUP_OVERRIDE=800 F_STEPS=2000,4000,6000,8000,10000,12000,14000,16000,18000,20000 F_FINAL=20000 TRAIN_TIME=30:00:00"
 S0="--train_data data/training/clean_v3_hn_s0/qampari/train_data.jsonl"
 S0ENV="F_DEV=data/phaseA/qampari_clean_v3_dev_s0.jsonl F_DATA_ROOT=data/training/clean_v3_hn_s0"
 BASE="--train_data data/training/clean_v3_hn/qampari/train_data.jsonl --negative_hard_ratio 0.5 --freeze_doc_encoder"
@@ -66,6 +67,9 @@ QUEUE=(
   "S0_cap10k_onelabel|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_cap10k_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG"
   "S0_cap10k_onelabel_ioprojrand|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --io_proj --io_proj_init random||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-01 (user): best Stage B setting (one-label step on S0_cap_10k; dev still rising at 10k) run longer: 20k steps,
+  # warmup 800, ramp saturates at 2k (0.1 T) under the 0.8 cap, ~23 h of training at 10k = 11.4 h.
+  "S0_cap20k_onelabel|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20K"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
