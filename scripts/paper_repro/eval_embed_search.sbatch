@@ -25,7 +25,7 @@ QD=$D/eval/$LM/$DS/qemb; mkdir -p $QD
 for c in $CONDS; do
   run=${LM}_${c}_0; RD=$D/results/$LM/${DS}_inf/$run
   [ -f $RD/best_model_linear.pt ] || { echo "missing $RD"; exit 1; }
-  if [ $c = single ]; then mnt=1; else mnt=$K; fi
+  if [[ $c == single* ]]; then mnt=1; else mnt=$K; fi
   singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd $W; \
     python gen_ret_and_eval.py --data_name $DN --training_data_name $TD --split dev --retriever inf --dev_data_path $Q --use_gpu --num_shards 16 \
       --base_model_id $MID --adapter_path $RD/best_model --linear_checkpoint_path $RD/best_model_linear.pt --base_model_type $LM \
