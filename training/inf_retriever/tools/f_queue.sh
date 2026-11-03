@@ -70,6 +70,10 @@ QUEUE=(
   # 2026-11-01 (user): best Stage B setting (one-label step on S0_cap_10k; dev still rising at 10k) run longer: 20k steps,
   # warmup 800, ramp saturates at 2k (0.1 T) under the 0.8 cap, ~23 h of training at 10k = 11.4 h.
   "S0_cap20k_onelabel|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20K"
+  # 2026-11-03 (user): step-matched single-query baselines for the one-gold run (S0_cap10k_onelabel, 10k steps, two
+  # optimizer updates per step). _2step: --one_label_step in single mode = a second update on an independent redraw
+  # (new gold / negatives) of the same questions (finetuning_multi_paper._install_single_redraw).
+  "S0_single_10k|$S0||finetuning_multi_paper.py|$S0ENV $LONG"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do

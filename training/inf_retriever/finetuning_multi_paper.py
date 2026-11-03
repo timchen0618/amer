@@ -13,6 +13,9 @@ inbatch.py are not edited. Every option defaults to off, so without them this is
                           against in-batch documents). The LR scheduler still steps once per training step, as in
                           the legacy loop. Difference from legacy: legacy drew the one-label batch from a separate
                           shuffled loader (other questions); here it reuses the current batch's questions.
+                          Single mode (--training_mode standard_org_q, k = 1 already): the extra step uses a second,
+                          independent draw of the same questions (new random gold and negatives), see
+                          _install_single_redraw.
   --negative_ctxs n > 1   n negatives per gold (default 1) for frozen multi-query runs with --loss_fn hungarian;
                           the shared collator / document split / loss assume one, see _enable_multi_negatives.
   --io_proj_init random   (with --io_proj) nn.Linear's default init for the input/output layers, as in legacy
@@ -31,7 +34,7 @@ import finetuning_multi_proj
 from src import inbatch
 
 logger = logging.getLogger(__name__)
-_STATE = {"batch": None, "n": 0, "loss_sum": 0.0}
+_STATE = {"batch": None, "batch2": None, "n": 0, "loss_sum": 0.0}
 
 
 class PaperOptions(finetuning_multi_proj.ProjOptions):
@@ -62,6 +65,8 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
             _cap_sampling(opt.sampling_cap)
         if opt.one_label_step:
             _install_one_label_step()
+            if opt.training_mode == "standard_org_q":
+                _install_single_redraw()
         if opt.query_instruct_task == "paper":  # shorthand: sbatch EXTRA strings cannot carry spaces
             opt.query_instruct_task = PAPER_TASK
         if opt.query_instruct_task:
@@ -228,6 +233,7 @@ class _BatchRecorder:
 
     def __iter__(self):
         for b in self._loader:
+            _STATE["batch2"] = b.pop("_redraw", None)  # single mode: the second draw (see _install_single_redraw)
             _STATE["batch"] = b
             yield b
 
@@ -249,7 +255,12 @@ def _install_one_label_step():
             def step_with_one_label(*a, **kw):
                 out = step(*a, **kw)
                 optimizer.zero_grad()
-                loss, _ = model(**one_label_batch(_STATE["batch"]), stats_prefix="train/one_label")
+                if _STATE["batch2"] is not None:  # single mode: same questions, independently redrawn gold / negatives
+                    extra = {key: v.to(acc.device) if isinstance(v, torch.Tensor) else v
+                             for key, v in _STATE["batch2"].items()}
+                else:
+                    extra = one_label_batch(_STATE["batch"])
+                loss, _ = model(**extra, stats_prefix="train/one_label")
                 acc.backward(loss)
                 step(*a, **kw)
                 _STATE["n"] += 1
@@ -267,6 +278,52 @@ def _install_one_label_step():
         return acc
 
     finetuning_multi.build_accelerator = build_accelerator
+
+
+class _RedrawDataset(torch.utils.data.Dataset):
+    """Each item = two independent draws of the same training question (Dataset.__getitem__ picks a random gold and
+    random negatives on every call)."""
+
+    def __init__(self, base):
+        self.base = base
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, i):
+        return self.base[i], self.base[i]
+
+
+def _install_single_redraw():
+    """--one_label_step in single mode (2026-11-03, user: step-matched single baseline with two updates per step).
+
+    A single-query batch already has k = 1, so one_label_batch would return the same batch and the extra update would
+    repeat the first. Instead the train loader yields, for the same questions, a second independently drawn batch
+    (new random gold and negatives); the extra update uses it. Sampler, batch size and drop_last are unchanged."""
+    from torch.utils.data import DataLoader, RandomSampler
+
+    prepare_data = finetuning_multi.prepare_data
+
+    def prepare_data_redraw(opt, tokenizer):
+        train_loader, eval_loader = prepare_data(opt, tokenizer)
+        collate = train_loader.collate_fn
+
+        def collate_redraw(items):
+            batch = collate([a for a, _ in items])
+            batch["_redraw"] = collate([b for _, b in items])
+            if _STATE.get("redraw_logged", 0) < 3:  # smoke check: the two draws should differ for most questions
+                _STATE["redraw_logged"] = _STATE.get("redraw_logged", 0) + 1
+                same = sum(a["gold"] == b["gold"] for a, b in items)
+                logger.warning(f"[single_redraw] batch of {len(items)}: same gold in both draws for {same}; "
+                               f"q0 gold1={items[0][0]['gold'][:60]!r} gold2={items[0][1]['gold'][:60]!r}")
+            return batch
+
+        ds = _RedrawDataset(train_loader.dataset)
+        loader = DataLoader(ds, sampler=RandomSampler(ds), batch_size=train_loader.batch_size, drop_last=True,
+                            num_workers=0, pin_memory=False, collate_fn=collate_redraw)
+        return loader, eval_loader
+
+    finetuning_multi.prepare_data = prepare_data_redraw
 
 
 def _install_dev_loss_eval():
