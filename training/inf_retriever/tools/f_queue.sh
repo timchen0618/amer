@@ -74,6 +74,7 @@ QUEUE=(
   # optimizer updates per step). _2step: --one_label_step in single mode = a second update on an independent redraw
   # (new gold / negatives) of the same questions (finetuning_multi_paper._install_single_redraw).
   "S0_single_10k|$S0||finetuning_multi_paper.py|$S0ENV $LONG"
+  "S0_single_10k_2step|$S0 --one_label_step||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
