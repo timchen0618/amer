@@ -52,6 +52,18 @@ User-approved 2026-10-22. Run autonomously, in stages; each stage builds on the 
 - The driver's per-embedding (copy / best-single-query) scoring failed on the two io_proj runs; the RRF scores are unaffected.
 - Stage B winner: S0_cap10k_onelabel. Stages C–F not started.
 
+**One-gold step at 20,000 steps (S0_cap20k_onelabel, 2026-11-03).** Same flags as S0_cap10k_onelabel, run twice as long (warmup 800, ramp saturating at step 2000 under the 0.8 cap, lr decay over 20k; a fresh run, not a continuation). Full dev every 2000 steps: 39.89 / 45.02 / 47.99 / **49.29** / 48.92 / 48.88 / 48.31 / 48.80 / 49.13 / 49.04 (2k–20k).
+
+| Step | Why tested | Dev | Test | Large / small |
+| --- | --- | --- | --- | --- |
+| 8000 | dev-selected | 49.29 | **33.15** | 23.21 / 46.11 |
+| 12000 | lowest dev loss | 48.88 | 32.77 | 25.00 / 45.56 |
+| 18000 | 2nd by dev | 49.13 | 31.83 | 24.40 / 43.89 |
+| 20000 | final | 49.04 | 32.39 | 24.40 / 44.44 |
+
+- Twice the steps does not help: dev plateaus at ~49 from step 8000 (below the 10k run's 50.71) and test at the dev-selected step equals the 10k run (33.15 vs 33.15; 10k run's s9000 33.52). Large third 23–25 in both. The 10k run's rising dev at its end came from its own lr decay / schedule, not from under-training.
+- So the Stage B best stays S0_cap10k_onelabel (10k steps), the cheaper base for Stage C.
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
