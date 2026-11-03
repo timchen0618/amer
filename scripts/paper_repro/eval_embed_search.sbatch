@@ -10,7 +10,7 @@
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/eval_%x_%j.out
 # Paper-repro eval steps 1-2 for one LM x dataset: query embeddings with fe0bd78 gen_ret_and_eval.py (--save_embeddings,
 # same args as run_eval.sh) for every finished run, then top-500 search on the full 25.86M index.
-# usage: sbatch --job-name=repro_eval_<lm>_<ds> eval_embed_search.sbatch <lm> <ds: qampari|ambiguous_qe> [cond ...]
+# usage: sbatch --job-name=repro_eval_<lm>_<ds> eval_embed_search.sbatch <lm> <ds: qampari|ambiguous_qe> [cond ...] (SEED=<n> env selects run suffix, default 0)
 set -euo pipefail
 LM=$1; DS=$2; shift 2; CONDS=${*:-single multi_SS multi_sampling}
 W=/scratch/hc3337/projects/autoregressive/.claude/worktrees/paper-repro
@@ -23,7 +23,7 @@ if [ $DS = qampari ]; then DN=qampari_5_to_8; TD=qampari; Q=$R/data/questions/qa
 else DN=ambiguous_qe; TD=ambiguous_qe; Q=$R/data/questions/ambiguous_qe_dev_question_only_2_to_5_ctxs.jsonl; K=2; fi
 QD=$D/eval/$LM/$DS/qemb; mkdir -p $QD
 for c in $CONDS; do
-  run=${LM}_${c}_0; RD=$D/results/$LM/${DS}_inf/$run
+  run=${LM}_${c}_${SEED:-0}; RD=$D/results/$LM/${DS}_inf/$run
   [ -f $RD/best_model_linear.pt ] || { echo "missing $RD"; exit 1; }
   if [[ $c == single* ]]; then mnt=1; else mnt=$K; fi
   singularity exec --nv --overlay /scratch/hc3337/envs/div.ext3:ro $IMG bash -c "source /ext3/env.sh; cd $W; \
