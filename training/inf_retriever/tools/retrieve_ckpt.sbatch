@@ -6,7 +6,8 @@
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_echoi
 #SBATCH --comment=preemption=yes;requeue=true
-#SBATCH --gres=gpu:h200:1
+#SBATCH --constraint=h200|l40s|b200
+#SBATCH --gres=gpu:1
 #SBATCH --job-name=retrieve_ckpt
 #SBATCH --output=sbatch_outputs/retrieve_%x.out
 
