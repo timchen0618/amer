@@ -174,7 +174,7 @@ for s in $TSTEPS; do
   b=$(base $s)
   for set in dev test; do
     data=$DEV; [ $set = test ] && data=$TEST
-    [ -s $b/${set}_geom.json ] || srun --account=torch_pr_152_echoi --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 \
+    [ -s $b/${set}_geom.json ] || srun --account=torch_pr_152_echoi --time=02:00:00 --mem=96G --cpus-per-task=16 \
       singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python $T/geometry_eval.py --qemb $b/${set}_qemb.npy --emb_glob '$EMB/passages_*' --data $data --out $b/${set}_geom.json" > $b/${set}_geom.log 2>&1 \
       || log "ERROR: s$s $set geometry failed (see $b/${set}_geom.log); continuing"
   done

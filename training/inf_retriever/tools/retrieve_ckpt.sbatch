@@ -5,10 +5,8 @@
 #SBATCH --time=3:00:00
 #SBATCH --mem=64GB
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --constraint=h200|l40s|b200
-#SBATCH --partition=h200_courant,l40s_courant,h200_public,l40s_public,h200,b200
 #SBATCH --comment=preemption=yes;requeue=true
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --job-name=retrieve_ckpt
 #SBATCH --output=sbatch_outputs/retrieve_%x.out
 
