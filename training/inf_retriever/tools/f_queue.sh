@@ -79,6 +79,9 @@ QUEUE=(
   # negatives only, ratio 0.0 overrides BASE 0.5); causal query-encoder attention (--force_causal, also used at retrieval).
   "S0_cap10k_onelabel_nohn|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --negative_hard_ratio 0.0||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_cap10k_onelabel_causal|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # Single-query partners of the D runs (user 2026-11-04), on S0_single_10k_2step (same two updates per step).
+  "S0_single_10k_2step_nohn|$S0 --one_label_step --negative_hard_ratio 0.0||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_single_10k_2step_causal|$S0 --one_label_step --force_causal||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
