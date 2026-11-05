@@ -73,11 +73,15 @@ The S0 single baseline ran 2,500 steps; the one-gold multi run ran 10,000 steps 
 | S0_single (2.5k) | 2500 | 39.16 | 32.39 | 15.48 / 49.44 |
 | S0_single_10k | 10000 (dev-selected) | 47.46 | **35.59** | 22.62 / 50.00 |
 | S0_single_10k | 9000 (lowest dev loss) | 46.60 | 35.78 | 22.62 / 50.56 |
-| S0_single_10k_2step | pending | | | |
+| S0_single_10k_2step | 10000 (dev-selected) | 51.93 | **35.03** | 25.00 / 50.00 |
+| S0_single_10k_2step | 8000 (lowest dev loss) | 51.24 | 35.78 | 25.00 / 49.44 |
+| S0_single_10k_2step | 9000 (2nd by dev) | 51.65 | 34.84 | 24.40 / 49.44 |
 | S0_cap10k_onelabel (multi) | 10000 | 50.71 | 33.15 | 25.00 / 43.89 |
 
 - At matched steps the single baseline beats the best multi run on full test (35.59 vs 33.15). Multi's remaining edge is the large third (25.00 vs 22.62, 2.4 points on ~168 questions), and it loses 6 points on the small third.
 - Most of the earlier multi-over-single large-third gap (25.00 vs 15.48) came from training length, not from multiple queries.
+- With the second (redrawn-gold) update too, single matches the one-gold multi run on every axis or beats it: dev 51.93 vs 50.71, test 35.03 vs 33.15, large third 25.00 vs 25.00, small third 50.00 vs 43.89. The multi run's large-third edge disappears at matched updates; the second update helps single on dev (+4.5) and the large third (+2.4) but not on full test (35.03 vs 35.59).
+- Stage D (no hard negatives, causal attention) therefore runs on both the multi base and S0_single_10k_2step (user 2026-11-04); C / E / F wait.
 
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
