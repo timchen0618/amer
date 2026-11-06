@@ -110,5 +110,69 @@
     75.67
    ]
   }
+ },
+ "S0_single_10k_2step_nohn_s10000": {
+  "single": {
+   "test": [
+    34.09,
+    62.94
+   ],
+   "test_large": [
+    24.4,
+    51.97
+   ],
+   "test_small": [
+    48.33,
+    74.41
+   ]
+  }
+ },
+ "S0_single_10k_2step_nohn_s8000": {
+  "single": {
+   "test": [
+    34.65,
+    63.19
+   ],
+   "test_large": [
+    23.21,
+    51.5
+   ],
+   "test_small": [
+    49.44,
+    74.49
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_s10000": {
+  "single": {
+   "test": [
+    35.22,
+    62.89
+   ],
+   "test_large": [
+    25.0,
+    53.48
+   ],
+   "test_small": [
+    49.44,
+    73.45
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_s5000": {
+  "single": {
+   "test": [
+    35.03,
+    62.9
+   ],
+   "test_large": [
+    23.81,
+    51.9
+   ],
+   "test_small": [
+    49.44,
+    73.95
+   ]
+  }
  }
 }

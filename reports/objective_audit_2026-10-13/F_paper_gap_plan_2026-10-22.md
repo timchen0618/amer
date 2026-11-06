@@ -83,6 +83,24 @@ The S0 single baseline ran 2,500 steps; the one-gold multi run ran 10,000 steps 
 - With the second (redrawn-gold) update too, single matches the one-gold multi run on every axis or beats it: dev 51.93 vs 50.71, test 35.03 vs 33.15, large third 25.00 vs 25.00, small third 50.00 vs 43.89. The multi run's large-third edge disappears at matched updates; the second update helps single on dev (+4.5) and the large third (+2.4) but not on full test (35.03 vs 35.59).
 - Stage D (no hard negatives, causal attention) therefore runs on both the multi base and S0_single_10k_2step (user 2026-11-04); C / E / F wait.
 
+### Stage D results (all 4 done, 2026-11-05)
+
+Run before Stage C (user 2026-11-04), each on both bases: multi = S0_cap10k_onelabel, single = S0_single_10k_2step. Same scoring and checkpoint rules as Stage B; large / small thirds from `results/phaseC/fusion_S0_test.json` (multi, RRF k = 5) and `fusion_S0_single_test.json`.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps (test) |
+|---|---|---|---|
+| Multi base (S0_cap10k_onelabel) | 10000: 50.71 / 33.15 | 25.00 / 43.89 | 9000: 33.52 |
+| Multi, no hard negatives | 8000: 49.69 / 32.39 | 24.40 / 43.89 | 10000: 32.02, 9000 (loss): 32.39 |
+| Multi, causal attention | 10000: 50.63 / 33.52 | 27.38 / 44.44 | 9000 (loss): 34.09 (26.19 / 46.67) |
+| Single base (S0_single_10k_2step) | 10000: 51.93 / 35.03 | 25.00 / 50.00 | 8000 (loss): 35.78 |
+| Single, no hard negatives | 10000: 50.75 / 34.09 | 24.40 / 48.33 | 8000 (loss): 34.65 |
+| Single, causal attention | 10000: 51.16 / 35.22 | 25.00 / 49.44 | 5000 (loss): 35.03 |
+
+- Every change is within the < 2-point tie band on dev and on test, for both bases.
+- Hard negatives help slightly and consistently: removing them costs ~1 dev and ~1 test in both multi and single.
+- Causal attention is neutral: single 35.22 vs 35.03 test, multi 33.52 vs 33.15 (large third +2.4, within noise on 168 questions).
+- Single stays ahead of multi under every D setting (test 34.1–35.2 vs 32.0–34.1). Bidirectional attention with hard negatives stays the recipe.
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
