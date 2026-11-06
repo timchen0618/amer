@@ -4,9 +4,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --mem=96GB
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --constraint=h200
-#SBATCH --partition=h200_courant,h200_public
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --job-name=repro_embed
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/embed_%j.out
 # Paper-repro data build, stage 2: strip + embed golds, seeded random negatives (see data_creation/repro_build_data.py)

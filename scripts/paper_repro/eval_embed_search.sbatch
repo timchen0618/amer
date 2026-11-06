@@ -4,9 +4,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --mem=160GB
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --constraint=h200
-#SBATCH --partition=h200_courant,h200_public
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/eval_%x_%j.out
 # Paper-repro eval steps 1-2 for one LM x dataset: query embeddings with fe0bd78 gen_ret_and_eval.py (--save_embeddings,
 # same args as run_eval.sh) for every finished run, then top-500 search on the full 25.86M index.

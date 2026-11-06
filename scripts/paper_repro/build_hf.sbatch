@@ -4,7 +4,6 @@
 #SBATCH --time=06:00:00
 #SBATCH --mem=96GB
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --partition=cpu_short
 #SBATCH --job-name=repro_hf
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/hf_%x_%j.out
 # Paper-repro data build, stage 3: per-LM tokenized HF datasets (paper's create_input_embeddings_for_contrastive). usage: sbatch build_hf.sbatch <lm> [<lm> ...]

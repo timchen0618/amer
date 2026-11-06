@@ -4,9 +4,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --mem=160GB
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --constraint=h200
-#SBATCH --partition=h200_courant,h200_public
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:h200:1
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/searchold_%x_%j.out
 # Like-for-like with the paper's tables: search repro query embeddings against the paper's old 21.12M index
 # (fe0bd78 gen_ret_and_eval uses embeddings_root/inf/qampari_embeddings for both QAMPARI and AmbigQA).

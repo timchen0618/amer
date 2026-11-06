@@ -5,9 +5,7 @@
 #SBATCH --mem=128GB
 #SBATCH --time=4-00:00:00
 #SBATCH --account=torch_pr_152_echoi
-#SBATCH --constraint=h200
-#SBATCH --partition=h200_courant,h200_public
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:h200:2
 #SBATCH --output=/scratch/hc3337/projects/autoregressive/paper_repro_data/logs/train_%x_%j.out
 # Paper-repro training (fe0bd78 train_distributed.py, unchanged). usage:
 #   sbatch --job-name=repro_<lm>_<ds>_<cond> train.sbatch <lm> <ds: qampari|ambiguous_qe> <cond: single|multi_SS|multi_sampling> [extra args]
