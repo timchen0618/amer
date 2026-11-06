@@ -26,6 +26,9 @@ training and generate() build the next fed token.
 --io_proj_mode (default both; saved in opt, so load_retriever rebuilds the same layers) keeps one layer only:
   - in:  input layer only; queries are scored on the encoder's own state h (as the base class);
   - out: output layer only; fed vectors enter raw, as the base class with --fed_norm none (norm ~195).
+  - mlp_in (frozen class only, Stage F 2026-11-06): 2-layer MLP input layer, no output layer. A fed vector enters as
+    in_proj(x + mlp(x)), x = normalize(v), mlp = Linear -> GELU -> Linear with the last Linear zero-initialized,
+    so step 0 equals the "in" mode (identity init) and the MLP learns a residual on top of it.
 """
 import torch
 import torch.nn as nn
@@ -40,7 +43,7 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
         super().__init__(opt, retriever, tokenizer)
         assert getattr(opt, "fed_norm", "none") == "none", "--io_proj replaces --fed_norm; set only one"
         self.io_proj_mode = getattr(opt, "io_proj_mode", "both")
-        assert self.io_proj_mode in ("both", "in", "out"), self.io_proj_mode
+        assert self.io_proj_mode in ("both", "in", "out", "mlp_in"), self.io_proj_mode
         d = self.embedding.weight.size(1)
         with torch.no_grad():
             s = self.embedding.weight.float().norm(dim=-1).mean().item()
@@ -48,11 +51,16 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
         # --io_proj_init random (2026-10-22, paper-gap plan): keep nn.Linear's default init, as the legacy
         # src/model.py projections did, instead of identity / s * identity.
         identity = getattr(opt, "io_proj_init", "identity") == "identity"
-        if self.io_proj_mode in ("both", "in"):
+        if self.io_proj_mode in ("both", "in", "mlp_in"):
             self.in_proj = nn.Linear(d, d, bias=False)
             if identity:
                 with torch.no_grad():
                     self.in_proj.weight.copy_(torch.eye(d) * s)
+        if self.io_proj_mode == "mlp_in":
+            self.in_mlp = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, d))
+            with torch.no_grad():  # zero residual at step 0
+                self.in_mlp[2].weight.zero_()
+                self.in_mlp[2].bias.zero_()
         if self.io_proj_mode in ("both", "out"):
             self.out_proj = nn.Linear(d, d, bias=False)
             if identity:
@@ -69,6 +77,8 @@ class EmbeddingModelFrozenDocEncProj(inbatch.EmbeddingModelFrozenDocEnc):
         if self.io_proj_mode == "out":
             return super()._fed_input(vec, q_embeds, q_mask)
         x = F.normalize(vec.float(), dim=-1).to(self.in_proj.weight.dtype)
+        if self.io_proj_mode == "mlp_in":
+            x = x + self.in_mlp(x)
         return self.in_proj(x).to(q_embeds.dtype)
 
 

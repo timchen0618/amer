@@ -33,8 +33,9 @@ class ProjOptions(Options):
             help="learned input layer on fed vectors + output layer on queries (src/inbatch_proj.py)",
         )
         self.parser.add_argument(
-            "--io_proj_mode", type=str, default="both", choices=["both", "in", "out"],
-            help="with --io_proj: both layers (default), the input layer only, or the output layer only",
+            "--io_proj_mode", type=str, default="both", choices=["both", "in", "out", "mlp_in"],
+            help="with --io_proj: both layers (default), the input layer only, the output layer only, or a "
+                 "2-layer MLP input layer and no output layer (mlp_in; frozen multi only)",
         )
 
     def parse(self):
@@ -49,6 +50,8 @@ class ProjOptions(Options):
         elif opt.io_proj:
             if opt.training_mode != "multi":
                 self.parser.error("--io_proj needs --training_mode multi or standard_org_q")
+            if opt.io_proj_mode == "mlp_in" and not opt.freeze_doc_encoder:
+                self.parser.error("--io_proj_mode mlp_in is implemented for --freeze_doc_encoder only")
             if opt.freeze_doc_encoder:
                 inbatch.EmbeddingModelFrozenDocEnc = inbatch_proj.EmbeddingModelFrozenDocEncProj
             else:
