@@ -18,6 +18,7 @@ inbatch.py are not edited. Every option defaults to off, so without them this is
                           _install_single_redraw.
   --negative_ctxs n > 1   n negatives per gold (default 1) for frozen multi-query runs with --loss_fn hungarian;
                           the shared collator / document split / loss assume one, see _enable_multi_negatives.
+                          Frozen single-query runs: n negatives per question, see _enable_single_negatives.
   --io_proj_init random   (with --io_proj) nn.Linear's default init for the input/output layers, as in legacy
                           src/model.py, instead of identity (src/inbatch_proj.py).
   --query_instruct_task t (or "paper") the query instruction ("Instruct: t\nQuery: q") in training and in-training eval; saved in
@@ -57,10 +58,13 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
             self.parser.error(f"--sampling_cap must be in (0, 1], got {opt.sampling_cap}")
         if opt.io_proj_init != "identity" and not opt.io_proj:
             self.parser.error("--io_proj_init needs --io_proj")
-        if opt.training_mode == "multi" and opt.negative_ctxs > 1:
+        if opt.negative_ctxs > 1:
             if not opt.freeze_doc_encoder:
                 self.parser.error("--negative_ctxs > 1 is implemented for the frozen doc encoder only")
-            _enable_multi_negatives(opt.negative_ctxs)
+            if opt.training_mode == "multi":
+                _enable_multi_negatives(opt.negative_ctxs)
+            else:
+                _enable_single_negatives(opt.negative_ctxs)
         if opt.sampling_cap < 1.0:
             _cap_sampling(opt.sampling_cap)
         if opt.one_label_step:
@@ -176,6 +180,73 @@ def _enable_multi_negatives(n):
 
     MultiNeg.__name__ = base.__name__
     inbatch.EmbeddingModelFrozenDocEnc = MultiNeg
+
+
+def _enable_single_negatives(n):
+    """--negative_ctxs n > 1 in single mode (2026-11-09, Stage C single partners): n negatives per question.
+
+    The dataset already draws n negatives per question and CollatorMulti tokenizes golds + all negatives, so a
+    training batch has b * (1 + n) passages. Two places assume one negative per question, overridden here:
+      1. EmbeddingModelFrozenDocEncSingleQuery.encode_documents splits the passages in half: in training mode the
+         split is now 1 : n (encoded under no_grad in chunks of 1024); in eval mode (finetuning_multi.evaluate) the
+         original split is kept, so the in-training metrics are computed exactly as before;
+      2. ContrastiveLoss views the negatives as (b * k, d): replaced by a pool of any size (label i = gold i)."""
+
+    class ContrastiveAnyNeg(inbatch.ContrastiveLoss):
+        def forward(self, outputs, positive_embeddings, negative_embeddings, stats_prefix="", iter_stats=None):
+            import torch.nn.functional as F
+            from src import dist_utils
+            iter_stats = {} if iter_stats is None else iter_stats
+            b, k, d = outputs.shape
+            if self.normalize_embeddings:
+                outputs = F.normalize(outputs, dim=-1)
+                positive_embeddings = F.normalize(positive_embeddings, dim=-1)
+                negative_embeddings = F.normalize(negative_embeddings, dim=-1)
+            outputs = outputs.reshape(b * k, d)
+            all_embeddings = torch.cat([positive_embeddings.reshape(b * k, d), negative_embeddings.reshape(-1, d)])
+            var_sizes = dist_utils.get_varsize(all_embeddings)
+            start = 0 if dist_utils.get_rank() == 0 else var_sizes[:dist_utils.get_rank()].sum()
+            labels = torch.arange(b * k, device=outputs.device).long() + start
+            gather_kemb = dist_utils.varsize_gather(all_embeddings)
+            similarity = torch.einsum("bd,cd->bc", outputs / self.temperature, gather_kemb)
+            loss = self.ce_loss(similarity, labels)
+            acc = 100 * (similarity.argmax(dim=-1) == labels).float().mean()
+            iter_stats[f"{stats_prefix}/accuracy"] = (acc, b)
+            iter_stats[f"{stats_prefix}/stdq"] = (torch.std(outputs, dim=0).mean().item(), b)
+            iter_stats[f"{stats_prefix}/stdk"] = (torch.std(all_embeddings, dim=0).mean().item(), b)
+            iter_stats[f"{stats_prefix}/loss"] = (loss.mean().item(), b)
+            iter_stats[f"{stats_prefix}/n_docs"] = (float(gather_kemb.size(0)), b)
+            return loss.mean(), iter_stats
+
+    base = inbatch.EmbeddingModelFrozenDocEncSingleQuery
+
+    class SingleNeg(base):
+        def __init__(self, opt, *args, **kwargs):
+            super().__init__(opt, *args, **kwargs)
+            assert type(self.loss_fct) is inbatch.ContrastiveLoss, type(self.loss_fct).__name__
+            new = ContrastiveAnyNeg.__new__(ContrastiveAnyNeg)
+            new.__dict__.update(self.loss_fct.__dict__)
+            self.loss_fct = new
+
+        def encode_documents(self, input_document_ids, attention_mask_document):
+            if not self.training:
+                return super().encode_documents(input_document_ids, attention_mask_document)
+            n_pos = input_document_ids.size(0) // (1 + n)
+            assert n_pos * (1 + n) == input_document_ids.size(0), (input_document_ids.size(0), n)
+            chunks = []
+            with torch.no_grad():
+                for i in range(0, input_document_ids.size(0), 1024):
+                    ids, mask = input_document_ids[i:i + 1024], attention_mask_document[i:i + 1024]
+                    out = self.doc_encoder(input_ids=ids, attention_mask=mask)
+                    chunks.append(self.last_token_pool(out.last_hidden_state, mask))
+            emb = torch.cat(chunks)
+            if _STATE.get("single_neg_logged", 0) < 2:
+                _STATE["single_neg_logged"] = _STATE.get("single_neg_logged", 0) + 1
+                logger.warning(f"[single_negatives] {n_pos} golds + {emb.size(0) - n_pos} negatives (n = {n})")
+            return emb[:n_pos], emb[n_pos:]
+
+    SingleNeg.__name__ = base.__name__
+    inbatch.EmbeddingModelFrozenDocEncSingleQuery = SingleNeg
 
 
 def _hungarian_any_negatives(self, outputs, positive_embeddings, negative_flat):
