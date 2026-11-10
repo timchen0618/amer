@@ -121,8 +121,10 @@ def _enable_multi_negatives(n):
          golds + all negatives (still golds first, then negatives in example order);
       2. encode_documents splits the passage embeddings in half: the frozen class's split is now 1 : n;
       3. HungarianContrastiveLoss views the negatives as (batch * k, d): its subclass reshapes them to (-1, d).
-    The dataset already draws negative_ctxs * k negatives per question (finetuning_data.Dataset)."""
+    The dataset already draws negative_ctxs * k negatives per question (finetuning_data.Dataset).
+    one_label_batch (--one_label_step) reads _STATE["neg_per_gold"] and keeps n negatives per question."""
     from src import finetuning_data
+    _STATE["neg_per_gold"] = n
 
     class CollatorMultiNeg(finetuning_data.CollatorDocEncMultiQuery):
         def __call__(self, batch):
@@ -282,11 +284,17 @@ def one_label_batch(batch):
     """k = 1 version of a CollatorDocEncMultiQuery batch: per question one random gold and one of its negatives."""
     q = batch["q_tokens"]
     bsz, n = q.size(0), batch["k_tokens"].size(0)
-    k = n // (2 * bsz)
+    m = _STATE.get("neg_per_gold", 1)                             # --negative_ctxs (multi): m negatives per gold
+    k = n // ((1 + m) * bsz)
+    assert k * (1 + m) * bsz == n, (n, bsz, m)
     dev = batch["k_tokens"].device
     j = torch.randint(k, (bsz,), device=dev)
-    pos = torch.arange(bsz, device=dev) * k + j                   # gold rows (first half)
-    neg = bsz * k + torch.arange(bsz, device=dev) * k + torch.randint(k, (bsz,), device=dev)
+    pos = torch.arange(bsz, device=dev) * k + j                   # gold rows (first bsz * k)
+    if m == 1:
+        neg = bsz * k + torch.arange(bsz, device=dev) * k + torch.randint(k, (bsz,), device=dev)
+    else:  # keep m of the question's k * m negatives (rows in example order), so the 1 : m split still holds
+        pick = torch.stack([torch.randperm(k * m, device=dev)[:m] for _ in range(bsz)])   # (bsz, m)
+        neg = (bsz * k + torch.arange(bsz, device=dev).unsqueeze(1) * k * m + pick).reshape(-1)
     rows = torch.cat([pos, neg])
     out = {key: batch[key] for key in ("q_tokens", "q_mask", "q_position_ids")}
     out["k_tokens"], out["k_mask"] = batch["k_tokens"][rows], batch["k_mask"][rows]
