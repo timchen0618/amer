@@ -101,6 +101,22 @@ Run before Stage C (user 2026-11-04), each on both bases: multi = S0_cap10k_onel
 - Causal attention is neutral: single 35.22 vs 35.03 test, multi 33.52 vs 33.15 (large third +2.4, within noise on 168 questions).
 - Single stays ahead of multi under every D setting (test 34.1–35.2 vs 32.0–34.1). Bidirectional attention with hard negatives stays the recipe.
 
+### Losses and learned layers on the causal base (all 3 done, 2026-11-09)
+
+Base S0_cap10k_onelabel_causal (user 2026-11-06: causal kept for multi). Each run changes one thing: `--loss_fn hungarian_seq` (output t may not match a gold fed before it), `--loss_fn hungarian_seq_used` (only already-used golds are negatives), or `--io_proj` (learned input + output layers, identity init, plain Hungarian). Restarted from step 0 on 2026-11-09 after the /scratch quota failure. Same scoring as Stage D; "(loss)" = lowest dev loss at rate 1.0.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Causal base | 10000: 50.63 / 33.52 | 27.38 / 44.44 | 9000 (loss): 34.09 (26.19 / 46.67); 8000: 33.52 (25.60 / 45.00) |
+| + hungarian_seq | 8000 (= loss): 50.71 / 32.39 | 25.00 / 43.89 | 10000: 32.39 (25.00 / 43.89) |
+| + hungarian_seq_used | 8000 (= loss): 51.36 / 32.58 | 25.00 / 45.00 | 10000: 32.96 (25.60 / 47.22) |
+| + io_proj (identity) | 8000: 50.67 / 32.39 | 23.81 / 43.89 | 9000 (loss): 32.02 (23.81 / 45.00); 10000: 32.02 (23.81 / 44.44) |
+
+- All three tie with the base (< 2 points) and none is higher on test; each is 1–3.6 below on the large third. seq_used has the best dev (51.36), which does not carry to test.
+- No combo run (it needed ioproj and a seq loss each to improve). The final step (10000) was tested in every run.
+- Follow-up (user 2026-11-09): the same four runs without the cap schedule (linear 0 → 1 over 10k, as S0_10k, the Stage A test winner): S0_10k_onelabel_causal{,_seq,_seqused,_ioproj}. Multi Stage C waits on them; single Stage C partners (temperature 0.01 / 0.02 / 0.03, 15 negatives) run meanwhile.
+- The driver's per-embedding scoring fails on these S0 runs (row-count assertion in perstep_eval.py); RRF scores are unaffected.
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
