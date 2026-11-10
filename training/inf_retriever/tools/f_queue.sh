@@ -107,6 +107,8 @@ QUEUE=(
   # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t001|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.01||finetuning_multi_paper.py|$S0ENV $LONG20"
   # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t002|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.02||finetuning_multi_paper.py|$S0ENV $LONG20"
   # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t003|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # HOLD: multi more negatives (user 2026-11-10: 3 per gold; 15 ran ~20 s/step = ~55 h, smoke 22495776), 30 h walltime:
+  # HOLD: "S0_cap10k_onelabel_causal_neg3|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --negative_ctxs 3||finetuning_multi_paper.py|$S0ENV ${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=30:00:00}"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
