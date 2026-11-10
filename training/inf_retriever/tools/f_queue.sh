@@ -118,6 +118,8 @@ for e in "${QUEUE[@]}"; do
   while [ "$(squeue -h -u $USER -o %j | grep -c '^phaseC_clean_v3_f_qampari_')" -ge $MAXRUN ]; do sleep 300; done
   env $envs CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh $mode 1e-5 $run "$BASE $extra" \
     >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
-  sleep 30; log "started $run ($(cat results/phaseC/$run.trainjob 2>/dev/null))"
+  # wait for the job id (or the driver to die) before counting slots again, so a slow sbatch cannot exceed MAXRUN
+  drv=$!; for i in $(seq 60); do [ -s results/phaseC/$run.trainjob ] && break; kill -0 $drv 2>/dev/null || break; sleep 10; done
+  log "started $run ($(cat results/phaseC/$run.trainjob 2>/dev/null))"
 done
 log "queue empty"

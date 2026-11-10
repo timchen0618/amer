@@ -50,7 +50,10 @@ if [ -s "$state" ]; then TJ=$(cat "$state"); else
   # --fed_norm token); data, checkpoints, scoring and results stay on the main checkout.
   TS=$T/phaseC_train.sbatch; [ -n "${CODE_ROOT:-}" ] && TS=$CODE_ROOT/$T/phaseC_train.sbatch
   TJ=$(DS=$DS MODE=$MODE LR=$LR RUN_NAME=$RUN EXTRA="$EXTRA" SAVE_AT_OVERRIDE="$STEPS" DATA_ROOT=$F_DATA_ROOT \
-       sbatch --parsable --export=ALL ${TRAIN_TIME:+--time=$TRAIN_TIME} --job-name=phaseC_$RUN $TS) || { log "ERROR: training submit failed"; exit 1; }
+       sbatch --parsable --export=ALL ${TRAIN_TIME:+--time=$TRAIN_TIME} --job-name=phaseC_$RUN $TS) || {
+    # an sbatch reply timeout can still create the job (2026-11-10): adopt it instead of leaving an orphan
+    sleep 60; TJ=$(squeue -h -u $USER -n phaseC_$RUN -o %i | head -1)
+    [ -n "$TJ" ] || { log "ERROR: training submit failed"; exit 1; }; log "sbatch reported failure but job $TJ exists; adopting it"; }
   echo "$TJ" > "$state"; log "submitted training job $TJ (frozen F run; mode=$MODE lr=$LR extra='$EXTRA'${CODE_ROOT:+ code=$CODE_ROOT@$(git -C $CODE_ROOT rev-parse --short HEAD)})"
 fi
 TLOG=sbatch_outputs/phaseC_$RUN.out
