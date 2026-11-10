@@ -95,6 +95,11 @@ QUEUE=(
   "S0_single_10k_2step_causal_t003|$S0 --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
   # 15 negatives per question (single mode: finetuning_multi_paper._enable_single_negatives, smoke 22489815 passed).
   "S0_single_10k_2step_causal_neg15|$S0 --one_label_step --force_causal --negative_ctxs 15||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-09: seq / seq_used / ioproj on the causal base all tie or trail on test (32.39 / 32.58 / 32.39 vs 33.52), so
+  # no combo; Stage C multi runs go on S0_cap10k_onelabel_causal itself.
+  "S0_cap10k_onelabel_causal_t001|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.01||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_cap10k_onelabel_causal_t002|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.02||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_cap10k_onelabel_causal_t003|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
