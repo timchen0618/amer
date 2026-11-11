@@ -117,6 +117,22 @@ Base S0_cap10k_onelabel_causal (user 2026-11-06: causal kept for multi). Each ru
 - Follow-up (user 2026-11-09): the same four runs without the cap schedule (linear 0 → 1 over 10k, as S0_10k, the Stage A test winner): S0_10k_onelabel_causal{,_seq,_seqused,_ioproj}. Multi Stage C waits on them; single Stage C partners (temperature 0.01 / 0.02 / 0.03, 15 negatives) run meanwhile.
 - The driver's per-embedding scoring fails on these S0 runs (row-count assertion in perstep_eval.py); RRF scores are unaffected.
 
+### Stage C single partners: temperature (3 done, 2026-11-11)
+
+Base S0_single_10k_2step_causal (temperature 0.05). Each run changes only `--temperature`. Single runs score MRecall@100 (dev / test); "(loss)" = lowest dev loss at rate 1.0.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Single base (t 0.05) | 10000: 51.16 / 35.22 | 25.00 / 49.44 | 5000 (loss): 35.03 (23.81 / 49.44) |
+| t 0.01 | 10000: 57.42 / 36.35 | 28.57 / 47.22 | 9000: 35.78 (26.79 / 47.78); 2500 (loss): 31.45 (21.43 / 46.11) |
+| **t 0.02** | **9000: 58.85 / 40.11** | **27.98 / 54.44** | 10000: 40.11 (27.98 / 55.56); 3000 (loss): 36.72 (19.64 / 53.89) |
+| t 0.03 | 10000: 57.06 / 36.72 | 27.98 / 50.00 | 9000: 37.10 (28.57 / 50.00); 5000 (loss): 38.79 (27.38 / 53.89) |
+
+- Every lower temperature raises dev by 6–8 points. On test only 0.02 clears the 2-point bar: +4.9 (40.11 vs 35.22), +3.0 large, +5.0 small. 0.01 (+1.1) and 0.03 (+1.5) tie with the base.
+- The three temperatures tie with each other on dev (57.1–58.9); 0.02 has the best dev and the best test, so it is the single winner.
+- The loss-selected steps come early (2500–5000) and trail the dev-selected ones except for 0.03 (38.79 at 5000, best of that run).
+- Multi temperature runs (held) go next once the no-cap multi base is decided; 0.02 is the value to beat.
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
