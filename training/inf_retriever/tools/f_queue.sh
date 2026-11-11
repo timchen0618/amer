@@ -104,18 +104,22 @@ QUEUE=(
   "S0_single_10k_2step_causal_neg15|$S0 --one_label_step --force_causal --negative_ctxs 15||finetuning_multi_paper.py|$S0ENV $LONG20"
   # 2026-11-09: seq / seq_used / ioproj on the causal base all tie or trail on test (32.39 / 32.58 / 32.39 vs 33.52), so
   # no combo; Stage C multi runs go on S0_cap10k_onelabel_causal itself.
-  # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t001|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.01||finetuning_multi_paper.py|$S0ENV $LONG20"
-  # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t002|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.02||finetuning_multi_paper.py|$S0ENV $LONG20"
-  # HOLD (2026-11-09, base depends on the no-cap runs): "S0_cap10k_onelabel_causal_t003|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
-  # HOLD: multi more negatives (user 2026-11-10: 3 per gold; 15 ran ~20 s/step = ~55 h, smoke 22495776), 30 h walltime:
-  # HOLD: "S0_cap10k_onelabel_causal_neg3|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --negative_ctxs 3||finetuning_multi_paper.py|$S0ENV ${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=30:00:00}"
+  # 2026-11-11: no-cap causal base ties the cap base (test 32.77 vs 33.52 at the dev-selected step; dev 49.78 vs 50.63);
+  # tie -> simpler setting (no schedule flags), so multi Stage C runs on S0_10k_onelabel_causal. t002 first (single winner).
+  "S0_10k_onelabel_causal_t002|$S0 --loss_fn hungarian --one_label_step --force_causal --temperature 0.02||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_t001|$S0 --loss_fn hungarian --one_label_step --force_causal --temperature 0.01||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_t003|$S0 --loss_fn hungarian --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # multi more negatives (user 2026-11-10: 3 per gold; 15 ran ~20 s/step = ~55 h, smoke 22495776), 30 h walltime:
+  "S0_10k_onelabel_causal_neg3|$S0 --loss_fn hungarian --one_label_step --force_causal --negative_ctxs 3||finetuning_multi_paper.py|$S0ENV ${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=30:00:00}"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
   IFS='|' read -r r extra root script envs <<< "$e"; run=clean_v3_f_qampari_$r
   mode=multi; case $r in *single*) mode=single ;; esac
   [ -s results/phaseC/$run.trainjob ] && continue
-  while [ "$(squeue -h -u $USER -o %j | grep -c '^phaseC_clean_v3_f_qampari_')" -ge $MAXRUN ]; do sleep 300; done
+  # a failed/timed-out squeue counts as full (slow Slurm 2026-11-10 would otherwise read as 0 running)
+  nrun() { local q; q=$(timeout 120 squeue -h -u $USER -o %j) || { echo 999; return; }; echo "$q" | grep -c '^phaseC_clean_v3_f_qampari_'; }
+  while [ "$(nrun)" -ge $MAXRUN ]; do sleep 300; done
   env $envs CODE_ROOT=$root TRAIN_SCRIPT=${script:-finetuning_multi.py} setsid nohup bash training/inf_retriever/tools/f_run.sh $mode 1e-5 $run "$BASE $extra" \
     >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
   # wait for the job id (or the driver to die) before counting slots again, so a slow sbatch cannot exceed MAXRUN
