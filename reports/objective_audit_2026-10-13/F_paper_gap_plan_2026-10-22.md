@@ -133,6 +133,29 @@ Base S0_single_10k_2step_causal (temperature 0.05). Each run changes only `--tem
 - The loss-selected steps come early (2500–5000) and trail the dev-selected ones except for 0.03 (38.79 at 5000, best of that run).
 - Multi temperature runs (held) go next once the no-cap multi base is decided; 0.02 is the value to beat.
 
+### No-cap multi base, its variants, and multi temperature (2026-11-12)
+
+The four causal runs repeated without `--sampling_saturate_frac 0.1 --sampling_cap 0.8` (default linear 0 → 1 ramp over 10k; user 2026-11-09), then multi temperature on the winning base. RRF k=5 dev / test.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Cap base (reference) | 10000: 50.63 / 33.52 | 27.38 / 44.44 | |
+| **No-cap base** | 9000 (= loss): 49.78 / 32.77 | 25.00 / 45.56 | 8000: 33.90 (25.00 / 47.78); 10000: 32.58 (25.00 / 45.00) |
+| + hungarian_seq | 10000: 51.04 / 33.15 | 23.81 / 45.56 | 9000 (loss): 33.15 (23.81 / 47.22) |
+| + hungarian_seq_used | 10000: 51.08 / 33.90 | 25.00 / 46.67 | 9000 (loss): 34.65 (25.60 / 47.78) |
+| + io_proj (identity) | 7000: 49.61 / 34.27 | 25.00 / 47.78 | 9000 (loss): 31.83 (23.21 / 44.44); 10000: 30.89 (22.62 / 44.44) |
+| t 0.01 | 8000: 53.44 / 36.16 | 26.19 / 52.22 | 10000 (loss): 34.27 (23.81 / 50.00) |
+| **t 0.02** | **6000: 54.05 / 37.10** | **27.98 / 50.56** | 10000 (loss): 32.20 (25.60 / 43.33) |
+| t 0.03 | failed on a wandb init timeout before step 1000; resubmitted 2026-11-12 | | |
+| 3 negatives per gold | running | | |
+
+Single partner, 15 negatives per gold (MRecall@100): 10000 (= loss): 46.20 / 34.09, large 23.81 / small 47.78, against the single base 51.16 / 35.22. Dev drops 5, so it does not count.
+
+- No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
+- On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
+- Temperature 0.02 lifts multi +4.3 (37.10) and 0.01 +3.4 (36.16), mostly on the small third. Both peak early and fall off by step 10000 (0.02: 37.10 at 6000 → 32.20 at 10000), so the dev-selected step matters at low temperature.
+- Temperature lifts single (+4.9) about as much as multi, so the gap stays (single 40.11 vs multi 37.10 at 0.02). User 2026-11-12: keep iterating at 0.05. Queued: seq + io_proj and seq_used + io_proj (combos of the positive ties), io_proj input-only and MLP input (multi), io_proj output-only (single partner).
+
 **Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
 
 **Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
