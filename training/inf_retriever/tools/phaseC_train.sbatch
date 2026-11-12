@@ -44,9 +44,10 @@ D=/scratch/hc3337/projects/autoregressive/$DATA_ROOT/$DS
 # CODE_ROOT: checkout whose training code runs (default the main one). Data and checkpoints stay
 # relative to the main checkout, so a worktree's code can train without touching its own tree.
 CODE_ROOT=${CODE_ROOT:-/scratch/hc3337/projects/autoregressive}
+# TRAIN_OVERLAY (optional, session N 2026-11-12): overlay name under /scratch/hc3337/envs (nemotron = transformers 5); default div
 
 singularity exec --nv \
-            --overlay /scratch/hc3337/envs/div.ext3:ro \
+            --overlay /scratch/hc3337/envs/${TRAIN_OVERLAY:-div}.ext3:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
             /bin/bash -c "
 source /ext3/env.sh

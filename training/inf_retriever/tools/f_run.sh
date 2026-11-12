@@ -18,7 +18,8 @@ cd /scratch/hc3337/projects/autoregressive
 MODE=$1; LR=$2; RUN=$3; EXTRA=${4:-}
 DS=qampari; T=training/inf_retriever/tools
 LOG=results/phaseC/phaseC.log
-EMB=wikipedia_embeddings/qampari/shared_frozen_base_512
+# F_EMB (optional, session N 2026-11-12): corpus embedding of another frozen retriever (e.g. Nemotron); default inf-retriever's
+EMB=${F_EMB:-wikipedia_embeddings/qampari/shared_frozen_base_512}
 # F_DEV / F_DATA_ROOT (optional, 2026-10-23): full-dev file and training data root (its dev_data.jsonl is the in-training
 # eval set) for the seeded 90/10 splits (tools/build_seed_split.py), e.g. data/phaseA/qampari_clean_v3_dev_s0.jsonl and
 # data/training/clean_v3_hn_s0.

@@ -27,12 +27,18 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             # Default to INF-Retriever model
             retriever_model_id = "infly/inf-retriever-v1-1.5b"
             
-        tokenizer = load_hf(transformers.AutoTokenizer, retriever_model_id, trust_remote_code=True)
-        cfg = load_hf(transformers.AutoConfig, retriever_model_id, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        cfg.pad_token_id = tokenizer.pad_token_id
-        tokenizer.padding_side = "right"
+        # --retriever (finetuning_multi_nemo.py, session N 2026-11-12); older checkpoints have none = inf-retriever
+        retriever_kind = getattr(opt, "retriever", "inf")
+        if retriever_kind == "nemotron":
+            from training.inf_retriever.src import nemotron
+            tokenizer = nemotron.load_tokenizer()
+        else:
+            tokenizer = load_hf(transformers.AutoTokenizer, retriever_model_id, trust_remote_code=True)
+            cfg = load_hf(transformers.AutoConfig, retriever_model_id, trust_remote_code=True)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            cfg.pad_token_id = tokenizer.pad_token_id
+            tokenizer.padding_side = "right"
 
         if hasattr(opt, "run_name"):
             if hasattr(opt, "training_mode"):
@@ -65,6 +71,8 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         else:
             raise NotImplementedError("run_name not specified")
 
+        if retriever_kind == "nemotron":
+            model_class = nemotron.nemotron_class(model_class)
         print(f"Using model class: {model_class}, retriever_model_id: {retriever_model_id}")
         pretrained_dict = pretrained_dict["model"]
 
@@ -95,6 +103,8 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         # --force_causal (query encoder only): multi-query generate() reads it from the model; the
         # single-query path calls the bare encoder, so retrieval_inf.embed_queries_single reads this.
         retriever._force_causal = getattr(opt, "force_causal", False)
+        # retriever_kind "nemotron": retrieval_inf.py formats queries as 'query: <q>' and mean-pools (single query)
+        retriever._retriever = retriever_kind
 
 
     else:

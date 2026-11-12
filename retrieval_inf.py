@@ -96,9 +96,15 @@ def load_model_and_tokenizer(args):
     model.eval()
     model = model.cuda()
     if not args.no_fp16:
-        model = model.half()
+        # Nemotron checkpoints (session N): bf16, the model's native dtype and the training compute dtype
+        model = model.to(torch.bfloat16) if getattr(model, "_retriever", "inf") == "nemotron" else model.half()
 
     return model, tokenizer, use_finetuned
+
+
+def _nemotron():
+    from training.inf_retriever.src import nemotron
+    return nemotron
 
 
 def _maybe_normalize_text(q: str, args) -> str:
@@ -129,6 +135,8 @@ def embed_queries_single(args, queries, model, tokenizer):
         # checkpoints trained with --force_causal embed queries with causal attention, as in training
         causal_kw = {"is_causal": True} if getattr(model, "_force_causal", False) else {}
         outputs = model(**batch_dict, **causal_kw)
+        if nemo:  # Nemotron (--retriever nemotron): mean pooling, as in training
+            return _nemotron().mean_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
     # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
@@ -137,6 +145,9 @@ def embed_queries_single(args, queries, model, tokenizer):
     model.eval()
     embeddings, batch_question = [], []
     max_length = 1024
+    nemo = getattr(model, "_retriever", "inf") == "nemotron"
+    if nemo:
+        get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
 
     for q in queries:
         if args.lowercase:
@@ -251,6 +262,8 @@ def embed_queries_multi(args, queries, model, tokenizer):
     # base model's 'Given a web search query, ...' instruction, which training never used.
     task = args.query_instruct_task
     max_length = 1024
+    if getattr(model, "_retriever", "inf") == "nemotron":  # 'query: <q>'; generate() pools with the model's mean pool
+        get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
     if args.max_new_tokens is None:
         raise ValueError("max_new_tokens must be set explicitly for multi-query embedding -- see retrieval_inf.py's --max_new_tokens help text.")
     max_new_tokens = args.max_new_tokens
@@ -295,6 +308,8 @@ def embed_queries_multi(args, queries, model, tokenizer):
             q_position_ids.to(device),
             max_new_tokens=max_new_tokens,
         )
+        if batch_emb.dtype == torch.bfloat16:  # Nemotron runs in bf16, which numpy lacks
+            batch_emb = batch_emb.float()
         return batch_emb.cpu().numpy()
 
     for q in queries:

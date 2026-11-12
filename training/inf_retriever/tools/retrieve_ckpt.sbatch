@@ -32,6 +32,8 @@ PS_ARG=""; [ -n "${SAVE_PER_STEP:-}" ] && [ -n "${K:-}" ] && PS_ARG="--save_per_
 # Optional: SAVE_QEMB=<npy> also saves the query embeddings (for tools/geometry_eval.py).
 QE_ARG=""; [ -n "${SAVE_QEMB:-}" ] && QE_ARG="--save_query_embeddings ${SAVE_QEMB}"
 
+# Optional (session N 2026-11-12): CODE_ROOT=<worktree> runs its retrieval_inf.py; PROJ_SIZE = embedding size
+# (default 1536, inf-retriever; Nemotron 2048, with RET_ENV=nemotron).
 # Optional: RET_ENV=div runs in the training environment (div.ext3, has peft) for LoRA checkpoints; default nli.
 RET_ENV=${RET_ENV:-nli}
 ACT="conda activate nli;"; [ "$RET_ENV" = nli ] || ACT=""
@@ -40,13 +42,13 @@ ELOG=sbatch_outputs/retrieve_${SLURM_JOB_NAME}.busycheck.log
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/${RET_ENV}.ext3:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-            /bin/bash -c "source /ext3/env.sh; $ACT cd /scratch/hc3337/projects/autoregressive; python retrieval_inf.py \
+            /bin/bash -c "source /ext3/env.sh; $ACT cd /scratch/hc3337/projects/autoregressive; python ${CODE_ROOT:+$CODE_ROOT/}retrieval_inf.py \
                 --model_name_or_path $CKPT \
                 --passages /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv \
                 --passages_embeddings '$EMB_DIR/*' \
                 --data $DATA \
                 --output_dir $OUT_DIR \
-                --projection_size 1536 \
+                --projection_size ${PROJ_SIZE:-1536} \
                 --per_gpu_batch_size 4 \
                 --n_docs 500 \
                 --num_shards 16 \

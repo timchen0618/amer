@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --tasks-per-node=1
+#SBATCH --time=4:00:00
+#SBATCH --mem=96GB
+#SBATCH --account=torch_pr_152_echoi
+#SBATCH --comment=preemption=yes;requeue=true
+#SBATCH --constraint=h200|l40s|b200
+#SBATCH --gres=gpu:1
+#SBATCH --job-name=nemo_embed_corpus
+#SBATCH --output=sbatch_outputs/nemo_embed_corpus_%a.out
+
+# Session N (2026-11-12): base Nemotron-3.5-Embed-1B corpus embedding, one shard per array task
+# (tools/nemo_embed_corpus.py; skips shards already written, so a requeued / re-submitted task is safe).
+#   sbatch --array=0-31%6 training/inf_retriever/tools/nemo_embed_corpus.sbatch     (from the main checkout)
+CODE_ROOT=${CODE_ROOT:-/scratch/hc3337/projects/autoregressive/.claude/worktrees/n-nemotron}
+OUT=${OUT:-wikipedia_embeddings/qampari/nemotron_frozen_base_512}
+singularity exec --nv --overlay /scratch/hc3337/envs/nemotron.ext3:ro \
+    /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
+    /bin/bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; \
+      python $CODE_ROOT/training/inf_retriever/tools/nemo_embed_corpus.py --output_dir $OUT \
+        --shard_id $SLURM_ARRAY_TASK_ID --num_shards 32 --passage_maxlength 512 ${EXTRA:-}"
