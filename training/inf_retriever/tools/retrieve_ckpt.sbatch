@@ -37,12 +37,13 @@ QE_ARG=""; [ -n "${SAVE_QEMB:-}" ] && QE_ARG="--save_query_embeddings ${SAVE_QEM
 # Optional: RET_ENV=div runs in the training environment (div.ext3, has peft) for LoRA checkpoints; default nli.
 RET_ENV=${RET_ENV:-nli}
 ACT="conda activate nli;"; [ "$RET_ENV" = nli ] || ACT=""
+OFF=""; [ "$RET_ENV" = nemotron ] && OFF="export HF_HUB_OFFLINE=1;"  # its hub client cannot download (session N)
 
 ELOG=sbatch_outputs/retrieve_${SLURM_JOB_NAME}.busycheck.log
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/${RET_ENV}.ext3:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-            /bin/bash -c "source /ext3/env.sh; $ACT cd /scratch/hc3337/projects/autoregressive; python ${CODE_ROOT:+$CODE_ROOT/}retrieval_inf.py \
+            /bin/bash -c "source /ext3/env.sh; $OFF $ACT cd /scratch/hc3337/projects/autoregressive; python ${CODE_ROOT:+$CODE_ROOT/}retrieval_inf.py \
                 --model_name_or_path $CKPT \
                 --passages /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv \
                 --passages_embeddings '$EMB_DIR/*' \

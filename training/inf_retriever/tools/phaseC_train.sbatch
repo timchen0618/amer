@@ -51,6 +51,7 @@ singularity exec --nv \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
             /bin/bash -c "
 source /ext3/env.sh
+${TRAIN_OVERLAY:+export HF_HUB_OFFLINE=1  # nemotron overlay: its hub client cannot download; weights are cached}
 cd /scratch/hc3337/projects/autoregressive
 echo \"code: $CODE_ROOT $(git -C $CODE_ROOT rev-parse --short HEAD)\"
 accelerate launch --config_file $CODE_ROOT/training/inf_retriever/accelerate_config_2gpu_fsdp_nooffload.yaml --main_process_port $PORT $CODE_ROOT/training/inf_retriever/$TRAIN_SCRIPT \
