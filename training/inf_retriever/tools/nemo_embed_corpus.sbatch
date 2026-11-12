@@ -18,6 +18,6 @@ CODE_ROOT=${CODE_ROOT:-/scratch/hc3337/projects/autoregressive/.claude/worktrees
 OUT=${OUT:-wikipedia_embeddings/qampari/nemotron_frozen_base_512}
 singularity exec --nv --overlay /scratch/hc3337/envs/nemotron.ext3:ro \
     /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
-    /bin/bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; \
+    /bin/bash -c "source /ext3/env.sh; export HF_HUB_OFFLINE=1; cd /scratch/hc3337/projects/autoregressive; \
       python $CODE_ROOT/training/inf_retriever/tools/nemo_embed_corpus.py --output_dir $OUT \
         --shard_id $SLURM_ARRAY_TASK_ID --num_shards 32 --passage_maxlength 512 ${EXTRA:-}"

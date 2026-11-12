@@ -61,6 +61,7 @@ def embed(texts, model, tok, maxlen, max_tokens):
         nb += 1
         if nb % 200 == 0:
             print(f"{i}/{len(order)} ({i / (time.time() - t0):.0f}/s)", flush=True)
+    print(f"embedded {len(order)} in {time.time() - t0:.0f} s ({len(order) / (time.time() - t0):.0f}/s)", flush=True)
     return out
 
 
