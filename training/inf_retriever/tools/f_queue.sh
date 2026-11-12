@@ -111,6 +111,14 @@ QUEUE=(
   "S0_10k_onelabel_causal_t003|$S0 --loss_fn hungarian --one_label_step --force_causal --temperature 0.03||finetuning_multi_paper.py|$S0ENV $LONG20"
   # multi more negatives (user 2026-11-10: 3 per gold; 15 ran ~20 s/step = ~55 h, smoke 22495776), 30 h walltime:
   "S0_10k_onelabel_causal_neg3|$S0 --loss_fn hungarian --one_label_step --force_causal --negative_ctxs 3||finetuning_multi_paper.py|$S0ENV ${LONG/TRAIN_TIME=16:00:00/TRAIN_TIME=30:00:00}"
+  # 2026-11-12 (user): temperature 0.02 helps single and multi alike (+4.9 / +4.3) and does not close the gap, so
+  # keep iterating at 0.05 on the no-cap bases. Combos of the tied-but-positive no-cap changes (seq +0.4, seq_used +1.1,
+  # ioproj +1.5 test), then Stage F rest: io_proj input-only / MLP input (multi) and output-only (single partner).
+  "S0_10k_onelabel_causal_seq_ioproj|$S0 --loss_fn hungarian_seq --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_sequsedioproj|$S0 --loss_fn hungarian_seq_used --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_ioproj_in|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --io_proj_mode in||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_ioproj_mlpin|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --io_proj_mode mlp_in||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_single_10k_2step_causal_ioproj_out|$S0 --one_label_step --force_causal --io_proj --io_proj_mode out||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
