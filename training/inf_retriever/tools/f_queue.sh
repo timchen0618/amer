@@ -123,6 +123,10 @@ QUEUE=(
   # (--lr in EXTRA overrides f_run.sh's 1e-5; argparse keeps the last). Multi first, then its single partner.
   "S0_10k_onelabel_causal_lr2e5|$S0 --loss_fn hungarian --one_label_step --force_causal --lr 2e-5||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_single_10k_2step_causal_lr2e5|$S0 --one_label_step --force_causal --lr 2e-5||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-13 (user): be comprehensive on the cap base (best large third, 27.38): io_proj combined with the seq / seq_used
+  # objectives (cap counterparts of the no-cap combos); cap + MLP input follows if the no-cap mlp_in run ties.
+  "S0_cap10k_onelabel_causal_seq_ioproj|$S0 --loss_fn hungarian_seq --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_cap10k_onelabel_causal_sequsedioproj|$S0 --loss_fn hungarian_seq_used --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
