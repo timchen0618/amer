@@ -150,6 +150,7 @@ The four causal runs repeated without `--sampling_saturate_frac 0.1 --sampling_c
 | 3 negatives per gold | 10000: 49.98 / 33.15 | 24.40 / 45.56 | 9000 (loss): 33.33 (23.81 / 45.56) |
 | + seq + io_proj | 10000: 50.51 / 31.26 | 23.81 / 45.56 | 8000: 33.33; 9000 (loss): 31.64 |
 | + seq_used + io_proj | 8000: 51.36 / 33.52 | 25.00 / 46.11 | 9000 (loss): 32.58; 10000: 33.52 |
+| + io_proj input-only (`--io_proj_mode in`) | 9000: 50.06 / 30.70 | 23.21 / 42.22 | others testing |
 
 Single partner, 15 negatives per gold (MRecall@100): 10000 (= loss): 46.20 / 34.09, large 23.81 / small 47.78, against the single base 51.16 / 35.22. Dev drops 5, so it does not count.
 
