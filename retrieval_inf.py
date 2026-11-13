@@ -338,12 +338,27 @@ def main(args):
         raise AssertionError("No data paths found")
     print("Loading data from data_paths", data_paths)
 
-    # Load model
-    model, tokenizer, use_finetuned = load_model_and_tokenizer(args)
+    # Two-stage retrieval (session N, 2026-11-12): an environment whose faiss has no GPU support (the Nemotron
+    # overlay) embeds the queries with --embed_only (saved to --save_query_embeddings, then exit); the nli
+    # environment then searches with --load_query_embeddings (no model; (n, k, d) = multi-query, (n, d) = single).
+    if args.embed_only and not args.save_query_embeddings:
+        raise ValueError("--embed_only needs --save_query_embeddings")
+    loaded_qemb = None
+    if args.load_query_embeddings:
+        loaded_qemb = np.load(args.load_query_embeddings)
+        model, tokenizer, use_finetuned = None, None, True
+        print(f"Loaded query embeddings {loaded_qemb.shape} from {args.load_query_embeddings} (no model)")
+    else:
+        # Load model
+        model, tokenizer, use_finetuned = load_model_and_tokenizer(args)
+    is_multi = (loaded_qemb.ndim == 3) if loaded_qemb is not None else (
+        use_finetuned and getattr(model, '_is_multi_query', False))
 
     # Load passages
-    passages = load_passages(args.passages)
-    passage_id_map = {x["id"]: x for x in passages}
+    passage_id_map = None
+    if not args.embed_only:
+        passages = load_passages(args.passages)
+        passage_id_map = {x["id"]: x for x in passages}
 
     # Inference
     for path in data_paths:
@@ -354,7 +369,12 @@ def main(args):
         print("start embedding queries")
         queries = [ex.get("question") or ex.get("question_text") or "" for ex in data]
 
-        if use_finetuned:
+        if loaded_qemb is not None:
+            assert loaded_qemb.shape[0] == len(queries), (loaded_qemb.shape, len(queries))
+            if is_multi and args.max_new_tokens is not None:
+                assert loaded_qemb.shape[1] == args.max_new_tokens, (loaded_qemb.shape, args.max_new_tokens)
+            questions_embedding = loaded_qemb
+        elif use_finetuned:
             assert tokenizer is not None
             if getattr(model, '_is_multi_query', False):
                 if args.max_new_tokens is None:
@@ -397,8 +417,10 @@ def main(args):
             os.makedirs(os.path.dirname(args.save_query_embeddings) or ".", exist_ok=True)
             np.save(args.save_query_embeddings, np.asarray(questions_embedding, dtype=np.float32))
             print(f"Saved query embeddings {questions_embedding.shape} to {args.save_query_embeddings}")
+            if args.embed_only:
+                return
 
-        if use_finetuned and getattr(model, '_is_multi_query', False) and args.save_per_step:
+        if is_multi and args.save_per_step:
             # Search with all k embeddings in one pass over the index (exact IndexFlatIP, so each
             # list equals a separate search) and save every embedding's own ranked list, plus the
             # passages they contain, so any k' <= k and any aggregation can be scored offline
@@ -435,7 +457,7 @@ def main(args):
             all_results = [[flat[qi * k_emb + ki] for qi in range(n_q)] for ki in range(k_emb)]
             agg_fn = aggregate_rrf if args.agg_func == "rrf" else aggregate_round_robin
             top_ids_and_scores = agg_fn(all_results, args.n_docs)
-        elif use_finetuned and getattr(model, '_is_multi_query', False):
+        elif is_multi:
             k_emb = questions_embedding.shape[1]
             all_results = []
             for ki in range(k_emb):
@@ -557,5 +579,11 @@ if __name__ == "__main__":
         help="Also save the query embeddings (.npy, float32) and continue with retrieval as usual; "
              "read by training/inf_retriever/tools/geometry_eval.py.",
     )
+    parser.add_argument("--embed_only", action="store_true",
+                        help="Save the query embeddings (--save_query_embeddings) and exit, without loading passages "
+                             "or searching (first stage of two-stage retrieval).")
+    parser.add_argument("--load_query_embeddings", type=str, default=None,
+                        help="Search with these saved query embeddings (.npy) instead of loading a model "
+                             "(second stage); --model_name_or_path is then only a label.")
     args = parser.parse_args()
     main(args)

@@ -40,11 +40,32 @@ ACT="conda activate nli;"; [ "$RET_ENV" = nli ] || ACT=""
 OFF=""; [ "$RET_ENV" = nemotron ] && OFF="export HF_HUB_OFFLINE=1;"  # its hub client cannot download (session N)
 
 ELOG=sbatch_outputs/retrieve_${SLURM_JOB_NAME}.busycheck.log
+# RET_ENV=nemotron: two stages (its faiss is CPU-only; a faiss-gpu-cu12 wheel had no kernels for these GPUs). The
+# nemotron overlay embeds the queries (--embed_only), then the nli environment runs the usual faiss search on them
+# (--load_query_embeddings), so the search is the same code and environment as for inf-retriever runs.
+LOADQ=""
+if [ "$RET_ENV" = nemotron ]; then
+  QE_FILE=${SAVE_QEMB:-$OUT_DIR/qemb.npy}
+  singularity exec --nv --overlay /scratch/hc3337/envs/nemotron.ext3:ro \
+      /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
+      /bin/bash -c "source /ext3/env.sh; $OFF cd /scratch/hc3337/projects/autoregressive; python ${CODE_ROOT:+$CODE_ROOT/}retrieval_inf.py \
+          --model_name_or_path $CKPT --data $DATA --output_dir $OUT_DIR --per_gpu_batch_size 4 \
+          --embed_only --save_query_embeddings $QE_FILE $K_ARG" 2>&1 | tee $ELOG
+  rc=${PIPESTATUS[0]}
+  if [ $rc -ne 0 ]; then
+    if grep -q "busy or unavailable" $ELOG && [ "${SLURM_RESTART_COUNT:-0}" -lt 2 ]; then
+      echo "CUDA device busy on $(hostname); requeueing (restart ${SLURM_RESTART_COUNT:-0})"; rm -f $ELOG
+      scontrol requeue $SLURM_JOB_ID; sleep 60
+    fi
+    rm -f $ELOG; exit $rc
+  fi
+  RET_ENV=nli; ACT="conda activate nli;"; OFF=""; QE_ARG=""; LOADQ="--load_query_embeddings $QE_FILE"
+fi
 singularity exec --nv \
             --overlay /scratch/hc3337/envs/${RET_ENV}.ext3:ro \
             /share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif \
             /bin/bash -c "source /ext3/env.sh; $OFF $ACT cd /scratch/hc3337/projects/autoregressive; python ${CODE_ROOT:+$CODE_ROOT/}retrieval_inf.py \
-                --model_name_or_path $CKPT \
+                --model_name_or_path $CKPT $LOADQ \
                 --passages /scratch/hc3337/wikipedia_chunks/chunks_v5.tsv \
                 --passages_embeddings '$EMB_DIR/*' \
                 --data $DATA \
