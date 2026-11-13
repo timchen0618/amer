@@ -30,8 +30,8 @@ class NemoOptions(finetuning_multi_paper.PaperOptions):
                 self.parser.error("--retriever nemotron is implemented for --freeze_doc_encoder only")
             if getattr(opt, "force_causal", False):
                 self.parser.error("--retriever nemotron with --force_causal is not implemented yet (bidirectional first)")
-            if getattr(opt, "io_proj", False):
-                self.parser.error("--retriever nemotron with --io_proj is not implemented")
+            # --io_proj (2026-11-13): ProjOptions (in super().parse()) has already bound inbatch's frozen classes to
+            # the inbatch_proj classes, so the Nemotron wrap below sits on top of them (load_retriever does the same).
             from src import nemotron
             for name in ("EmbeddingModelFrozenDocEnc", "EmbeddingModelFrozenDocEncSingleQuery"):
                 setattr(inbatch, name, nemotron.nemotron_class(getattr(inbatch, name)))
