@@ -119,6 +119,10 @@ QUEUE=(
   "S0_10k_onelabel_causal_ioproj_in|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --io_proj_mode in||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_10k_onelabel_causal_ioproj_mlpin|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --io_proj_mode mlp_in||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_single_10k_2step_causal_ioproj_out|$S0 --one_label_step --force_causal --io_proj --io_proj_mode out||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-13 creative (all ties at 0.05 so far; combos do not add up): learning rate 2e-5 on the no-cap bases
+  # (--lr in EXTRA overrides f_run.sh's 1e-5; argparse keeps the last). Multi first, then its single partner.
+  "S0_10k_onelabel_causal_lr2e5|$S0 --loss_fn hungarian --one_label_step --force_causal --lr 2e-5||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_single_10k_2step_causal_lr2e5|$S0 --one_label_step --force_causal --lr 2e-5||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do
