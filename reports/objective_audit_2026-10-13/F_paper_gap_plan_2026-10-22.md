@@ -153,6 +153,8 @@ The four causal runs repeated without `--sampling_saturate_frac 0.1 --sampling_c
 
 Single partner, 15 negatives per gold (MRecall@100): 10000 (= loss): 46.20 / 34.09, large 23.81 / small 47.78, against the single base 51.16 / 35.22. Dev drops 5, so it does not count.
 
+Single partner, io_proj output-only (identity init, `--io_proj --io_proj_mode out`; single mode supports output only): 10000: 50.92 / 35.97, large 26.19 / small 50.00 (9000: 35.78, 25.60 / 50.56), against the single base 51.16 / 35.22 (large 25.00 / small 49.44). A tie (+0.75).
+
 - No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
 - On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
 - Temperature 0.02 lifts multi +4.3 (37.10) and 0.01 +3.4 (36.16), mostly on the small third. Both peak early and fall off by step 10000 (0.02: 37.10 at 6000 → 32.20 at 10000), so the dev-selected step matters at low temperature.
