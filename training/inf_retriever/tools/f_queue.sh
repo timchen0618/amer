@@ -127,6 +127,8 @@ QUEUE=(
   # objectives (cap counterparts of the no-cap combos); cap + MLP input follows if the no-cap mlp_in run ties.
   "S0_cap10k_onelabel_causal_seq_ioproj|$S0 --loss_fn hungarian_seq --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_cap10k_onelabel_causal_sequsedioproj|$S0 --loss_fn hungarian_seq_used --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --io_proj||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # no-cap mlp_in tied (9000: 49.45 / 31.45 vs 49.78 / 32.77), so its cap counterpart (user 2026-11-13):
+  "S0_cap10k_onelabel_causal_ioproj_mlpin|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --io_proj --io_proj_mode mlp_in||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do

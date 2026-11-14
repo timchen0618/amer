@@ -150,11 +150,25 @@ The four causal runs repeated without `--sampling_saturate_frac 0.1 --sampling_c
 | 3 negatives per gold | 10000: 49.98 / 33.15 | 24.40 / 45.56 | 9000 (loss): 33.33 (23.81 / 45.56) |
 | + seq + io_proj | 10000: 50.51 / 31.26 | 23.81 / 45.56 | 8000: 33.33; 9000 (loss): 31.64 |
 | + seq_used + io_proj | 8000: 51.36 / 33.52 | 25.00 / 46.11 | 9000 (loss): 32.58; 10000: 33.52 |
-| + io_proj input-only (`--io_proj_mode in`) | 9000: 50.06 / 30.70 | 23.21 / 42.22 | others testing |
+| + io_proj input-only (`--io_proj_mode in`) | 9000: 50.06 / 30.70 | 23.21 / 42.22 | |
+| + io_proj 2-layer MLP input (`--io_proj_mode mlp_in`) | 9000 (= loss): 49.45 / 31.45 | 23.81 / 44.44 | 8000: 32.96; 10000: 31.26 (24.40 / 42.78) |
+| lr 2e-5 (creative) | 10000: 49.00 / 31.64 | 23.81 / 44.44 | 9000 (loss): 32.02 |
 
 Single partner, 15 negatives per gold (MRecall@100): 10000 (= loss): 46.20 / 34.09, large 23.81 / small 47.78, against the single base 51.16 / 35.22. Dev drops 5, so it does not count.
 
 Single partner, io_proj output-only (identity init, `--io_proj --io_proj_mode out`; single mode supports output only): 10000: 50.92 / 35.97, large 26.19 / small 50.00 (9000: 35.78, 25.60 / 50.56; 7000 (loss): 35.22), against the single base 51.16 / 35.22 (large 25.00 / small 49.44). A tie (+0.75).
+
+Single partner, lr 2e-5: 10000: 51.12 / 33.71, large 24.40 / small 47.22 (9000: 34.46; 8000 (loss): 33.52), against the single base 51.16 / 35.22. A tie (−1.5); lr 2e-5 lowers single and multi alike (multi −1.1).
+
+Cap base, io_proj combined with the seq objectives (user 2026-11-13: be comprehensive on cap, the best large third; base 10000: 50.63 / 33.52, large 27.38 / small 44.44):
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test |
+|---|---|---|---|
+| cap + seq + io_proj | 10000: 49.29 / 32.58 | 25.00 / 44.44 | 6000 (loss): 33.15; 9000: 32.58 |
+| cap + seq_used + io_proj | 10000: 50.14 / 33.33 | 23.21 / 47.22 | 6000 (loss): 34.09; 9000: 33.33 |
+| cap + io_proj MLP input | queued 2026-11-14 (job 23148293); no-cap mlp_in tied | | |
+
+Both cap combos tie on full test (−0.9, −0.2) but lose 2.4 / 4.2 on the large third, like every cap variant before them (seq 25.00, seq_used 25.00, io_proj 23.81).
 
 - No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
 - On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
