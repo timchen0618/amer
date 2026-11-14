@@ -140,6 +140,7 @@ def embed_queries_single(args, queries, model, tokenizer):
             return _nemotron().mean_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
         if nemo:  # Nemotron --force_causal: causal encoder (config) + last-token pooling, as in training
             assert model.config.is_causal is True, "causal Nemotron checkpoint loaded with a bidirectional encoder"
+            return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
     # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
