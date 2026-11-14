@@ -97,17 +97,49 @@ def mean_pool(last_hidden_states, attention_mask):
     return (last_hidden_states * m).sum(1) / m.sum(1).clamp(min=1)
 
 
+def make_causal(lm):
+    """Causal self-attention for a loaded backbone: Ministral3Model.forward builds its mask with create_causal_mask,
+    which falls back to a bidirectional mask only when config.is_causal is False (masking_utils, transformers 5.20);
+    the attention modules already have is_causal = True. Only this backbone's config object is changed."""
+    lm.config.is_causal = True
+    return lm
+
+
 class NemotronMixin:
-    """Put first in the bases of an inbatch model class: Nemotron backbone + tokenizer, mean pooling."""
+    """Put first in the bases of an inbatch model class: Nemotron backbone + tokenizer, mean pooling.
+
+    --force_causal (session N, 2026-11-14): the QUERY encoder (self.encoder) becomes causal and its embeddings are
+    the last token's hidden state (last-token pooling, as with inf-retriever); the frozen doc encoder stays
+    bidirectional with mean pooling, so documents keep matching the precomputed frozen corpus embeddings.
+    The inf path's per-call is_causal=True kwarg is not used (self.force_causal is reset to False): with
+    transformers 5 it would reach SDPA together with the padding mask; the config switch does it instead.
+    """
 
     def __init__(self, opt, retriever=None, tokenizer=None):
         opt.retriever_model_id = NEMOTRON_ID  # saved in the checkpoint's opt
+        self._nemo_causal = bool(getattr(opt, "force_causal", False))
+        self._encoding_docs = False
         super().__init__(opt, retriever, tokenizer)
+        if self._nemo_causal:
+            make_causal(self.encoder.get_base_model() if hasattr(self.encoder, "get_base_model") else self.encoder)
+            self.force_causal = False  # no per-call is_causal kwarg (query_attention_kwargs); see the docstring
+            doc = getattr(self, "doc_encoder", None)
+            assert doc is None or doc.config.is_causal is False, "doc encoder must stay bidirectional"
+            logger.warning("[nemotron] causal query encoder + last-token pooling; doc encoder bidirectional + mean")
 
     def _load_retriever(self, model_id):
         return load_backbone(), load_tokenizer()
 
+    def encode_documents(self, *a, **kw):
+        self._encoding_docs = True
+        try:
+            return super().encode_documents(*a, **kw)
+        finally:
+            self._encoding_docs = False
+
     def last_token_pool(self, last_hidden_states, attention_mask):  # name kept: the shared code calls it
+        if self._nemo_causal and not self._encoding_docs:
+            return super().last_token_pool(last_hidden_states, attention_mask)
         return mean_pool(last_hidden_states, attention_mask)
 
 

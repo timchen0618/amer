@@ -133,10 +133,13 @@ def embed_queries_single(args, queries, model, tokenizer):
         for k, v in batch_dict.items():
             batch_dict[k] = v.to(model.device)
         # checkpoints trained with --force_causal embed queries with causal attention, as in training
-        causal_kw = {"is_causal": True} if getattr(model, "_force_causal", False) else {}
+        # (Nemotron: causality is in the encoder's config, set by NemotronMixin; no per-call kwarg)
+        causal_kw = {"is_causal": True} if getattr(model, "_force_causal", False) and not nemo else {}
         outputs = model(**batch_dict, **causal_kw)
-        if nemo:  # Nemotron (--retriever nemotron): mean pooling, as in training
+        if nemo and not getattr(model, "_force_causal", False):  # Nemotron: mean pooling, as in training
             return _nemotron().mean_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
+        if nemo:  # Nemotron --force_causal: causal encoder (config) + last-token pooling, as in training
+            assert model.config.is_causal is True, "causal Nemotron checkpoint loaded with a bidirectional encoder"
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
     # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
