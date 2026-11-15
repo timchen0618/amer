@@ -6,7 +6,7 @@
 #SBATCH --mem=128GB
 #SBATCH --account=torch_pr_152_echoi
 #SBATCH --comment=preemption=yes;requeue=true
-#SBATCH --constraint=h200|l40s|b200
+#SBATCH --constraint=h200|l40s   # not b200: div.ext3 torch 2.5.1+cu121 has no sm_100 kernels
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=qwen3_base_eval
 #SBATCH --output=sbatch_outputs/qwen3_base_eval.out
