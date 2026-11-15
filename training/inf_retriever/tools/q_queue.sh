@@ -5,7 +5,7 @@
 #   setsid nohup bash .claude/worktrees/n-nemotron/training/inf_retriever/tools/q_queue.sh >> results/phaseC/q_queue.out 2>&1 &
 cd /scratch/hc3337/projects/autoregressive
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/n-nemotron/training/inf_retriever/tools
-MAXRUN=${MAXRUN:-4}
+MAXGPU=${MAXGPU:-8}   # training GPUs of this queue (was MAXRUN=4 jobs x 2 GPUs)
 LIN="--loss_fn hungarian --one_label_step"
 CAP="--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step"
 SGL="--one_label_step"
@@ -42,9 +42,11 @@ while true; do
     [ -f results/phaseC/clean_v3_n_qampari_$suf.driver.out ] && continue
     left=$((left + 1))
     [ -n "$req" ] && [ ! -e "$req" ] && continue
-    active=$(squeue -u $USER -h -o "%j" | grep -c "^phaseC_clean_v3_n_qampari_")
-    [ "$active" -ge "$MAXRUN" ] && break
-    log "launch $suf ($envs) [$active active]"
+    # GPU-aware (2026-11-15): sum the GPUs of this queue's training jobs; N_1GPU entries need 1, others 2
+    active=$(squeue -u $USER -h -o "%j %b" | awk '$1 ~ /^phaseC_clean_v3_n_qampari_/ {n=split($2,a,":"); g+=a[n]} END {print g+0}')
+    need=2; case "$envs" in *N_1GPU=1*) need=1 ;; esac
+    [ $((active + need)) -gt "$MAXGPU" ] && break
+    log "launch $suf ($envs) [$active GPUs active]"
     env $envs bash $WT/n_launch.sh $suf qwen3 "$flags"
     left=$((left - 1)); sleep 90   # let the driver submit its training job before counting again
   done
