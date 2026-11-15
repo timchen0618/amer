@@ -136,9 +136,21 @@ QUEUE=(
   "S0_10k_onelabel_causal_seed1|$S0 --loss_fn hungarian --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_10k_onelabel_causal_seed2|$S0 --loss_fn hungarian --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
   "S0_10k_onelabel_causal_ioproj_seed1|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
-  "S0_10k_onelabel_causal_ioproj_seed2|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
-  "S0_single_10k_2step_causal_seed1|$S0 --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
-  "S0_single_10k_2step_causal_seed2|$S0 --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # "S0_10k_onelabel_causal_ioproj_seed2|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # "S0_single_10k_2step_causal_seed1|$S0 --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # "S0_single_10k_2step_causal_seed2|$S0 --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  # 2026-11-15 (user): the _seedN runs above shared ~44 of ~46 epochs of batch order with seed 0
+  # (GoldLengthGroupedBatchSampler seeded Random(seed + epoch)). finetuning_multi_paper.py now mixes the seed in
+  # (Random(seed * 1000003 + epoch), seed 0 unchanged); rerun all 8 as _rseedN. The old entries stay as a record
+  # (all started already or superseded; the unstarted ones are commented out).
+  "S0_cap10k_onelabel_causal_rseed1|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_cap10k_onelabel_causal_rseed2|$S0 --loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_rseed1|$S0 --loss_fn hungarian --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_rseed2|$S0 --loss_fn hungarian --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_ioproj_rseed1|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_10k_onelabel_causal_ioproj_rseed2|$S0 --loss_fn hungarian --one_label_step --force_causal --io_proj --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_single_10k_2step_causal_rseed1|$S0 --one_label_step --force_causal --seed 1||finetuning_multi_paper.py|$S0ENV $LONG20"
+  "S0_single_10k_2step_causal_rseed2|$S0 --one_label_step --force_causal --seed 2||finetuning_multi_paper.py|$S0ENV $LONG20"
 )
 log() { echo "[$(date '+%F %T')] [F queue] $*" | tee -a results/phaseC/phaseC.log; }
 for e in "${QUEUE[@]}"; do

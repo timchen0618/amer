@@ -176,6 +176,8 @@ Cap base, test full / large / small: seed 0 (10000, dev-selected) 33.52 / 27.38 
 
 **Caveat (found 2026-11-15):** `GoldLengthGroupedBatchSampler` orders batches with `Random(seed + epoch)`, so seed s epoch k uses seed 0's epoch k + s batch grouping (first-batch fingerprints confirm it); over ~46 epochs the seeds share ~44 epochs of batch groupings, shifted. Gold shuffles, negatives and dropout do differ. These are partial seeds and likely understate the spread. f_queue stopped pending the user's decision.
 
+**Fix and rerun (user, 2026-11-15).** `finetuning_multi_paper.py` now swaps in a subclass that orders batches with `Random(seed * 1000003 + epoch)` (`_install_seed_mixed_sampler`); seed 0 gives `Random(epoch)`, the old order, so every seed-0 run is unchanged. Single mode uses `RandomSampler` (seeded from `--seed` via torch) and was never affected. All 8 seed runs rerun as `_rseed1` / `_rseed2`. The old `_seedN` no-cap and no-cap io_proj seed 1 runs had finished training and complete their test retrievals; they are kept only as a record of partial seeds.
+
 - No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
 - On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
 - Temperature 0.02 lifts multi +4.3 (37.10) and 0.01 +3.4 (36.16), mostly on the small third. Both peak early and fall off by step 10000 (0.02: 37.10 at 6000 → 32.20 at 10000), so the dev-selected step matters at low temperature.

@@ -468,7 +468,32 @@ def _install_dev_loss_eval():
     finetuning_multi.evaluate = evaluate
 
 
+def _install_seed_mixed_sampler():
+    """Mix --seed into the multi-mode batch order (2026-11-15, seed reruns).
+
+    finetuning_data.GoldLengthGroupedBatchSampler seeds its per-epoch RNG with seed + epoch, so seed s epoch k
+    replays seed 0 epoch k + s and seeds 1 and 2 share ~44 of ~46 epochs of batches with seed 0. This subclass
+    uses Random(seed * 1000003 + epoch): seed 0 gives Random(epoch), exactly the old order, so every seed-0 run
+    is unchanged; other seeds get batch orders unrelated to seed 0's. Single mode uses RandomSampler and is
+    not affected."""
+    import random
+    from src import finetuning_data
+    base = finetuning_data.GoldLengthGroupedBatchSampler
+
+    class SeedMixedBatchSampler(base):
+        def __iter__(self):
+            saved_seed = self.seed
+            self.seed = saved_seed * 1000003  # base draws Random(self.seed + self.epoch)
+            try:
+                yield from base.__iter__(self)
+            finally:
+                self.seed = saved_seed
+
+    finetuning_data.GoldLengthGroupedBatchSampler = SeedMixedBatchSampler
+
+
 if __name__ == "__main__":
     finetuning_multi.Options = PaperOptions
     _install_dev_loss_eval()
+    _install_seed_mixed_sampler()
     finetuning_multi.main()
