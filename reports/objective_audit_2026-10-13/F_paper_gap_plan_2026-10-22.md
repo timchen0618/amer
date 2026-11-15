@@ -166,9 +166,15 @@ Cap base, io_proj combined with the seq objectives (user 2026-11-13: be comprehe
 |---|---|---|---|
 | cap + seq + io_proj | 10000: 49.29 / 32.58 | 25.00 / 44.44 | 6000 (loss): 33.15; 9000: 32.58 |
 | cap + seq_used + io_proj | 10000: 50.14 / 33.33 | 23.21 / 47.22 | 6000 (loss): 34.09; 9000: 33.33 |
-| cap + io_proj MLP input | queued 2026-11-14 (job 23148293); no-cap mlp_in tied | | |
+| cap + io_proj MLP input | 8000: 50.79 / 33.15 | 23.81 / 45.00 | 10000 (loss): 33.71 (24.40 / 46.67) |
 
-Both cap combos tie on full test (−0.9, −0.2) but lose 2.4 / 4.2 on the large third, like every cap variant before them (seq 25.00, seq_used 25.00, io_proj 23.81).
+Both cap combos and cap + MLP input tie on full test (−0.9, −0.2, −0.4) but lose 2.4 / 4.2 / 3.6 on the large third, like every cap variant before them (seq 25.00, seq_used 25.00, io_proj 23.81).
+
+### Seed reruns (2026-11-14, user): seeds 1 and 2 of the cap, no-cap, no-cap io_proj and single bases
+
+Cap base, test full / large / small: seed 0 (10000, dev-selected) 33.52 / 27.38 / 44.44; seed 1 (9000 dev-selected) 31.26 / 23.21 / 42.78, (10000) 31.45 / 24.40 / 42.78; seed 2 (9000 dev-selected) 33.90 / 25.60 / 44.44, (10000) 34.09 / 25.60 / 44.44. At step 10000 the three seeds give large 27.38 / 24.40 / 25.60 (mean 25.8) and full 33.52 / 31.45 / 34.09: seed 0's large third was the high draw, and the spread across seeds (3 on large, 2.6 on full) is as wide as every difference between the 0.05 variants.
+
+**Caveat (found 2026-11-15):** `GoldLengthGroupedBatchSampler` orders batches with `Random(seed + epoch)`, so seed s epoch k uses seed 0's epoch k + s batch grouping (first-batch fingerprints confirm it); over ~46 epochs the seeds share ~44 epochs of batch groupings, shifted. Gold shuffles, negatives and dropout do differ. These are partial seeds and likely understate the spread. f_queue stopped pending the user's decision.
 
 - No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
 - On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
