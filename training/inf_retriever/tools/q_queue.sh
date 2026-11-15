@@ -13,6 +13,10 @@ QHN="N_DATA_ROOT=data/training/clean_v3_hn_s0_qwen3"
 HNREADY=data/training/clean_v3_hn_s0_qwen3/qampari/train_data.jsonl
 READY=results/phaseC/q_smoke_ok   # written by hand after the 30-step smokes pass (corpus embedded, retrieval works)
 QUEUE=(
+  # 2026-11-15: the 2-GPU single runs were cancelled by Torch's low-GPU-utilization policy (steps 9425 / 8075);
+  # singles rerun on 1 GPU x batch 100 (N_1GPU=1, same global batch)
+  "qw3_S0_single_10k_2step_1gpu|$SGL|N_1GPU=1|$READY"
+  "qw3_S0_single_10k_2step_lr5e6_1gpu|$SGL|N_LR=5e-6 N_1GPU=1|$READY"
   # round 1: F's recipe (inf-mined S0 hard negatives, lr 1e-5)
   "qw3_S0_single_10k_2step|$SGL||$READY"
   "qw3_S0_10k_onelabel|$LIN||$READY"
@@ -23,11 +27,11 @@ QUEUE=(
   "qw3_S0_cap10k_onelabel_lr5e6|$CAP|N_LR=5e-6|$READY"
   # round 2b: hard negatives mined with base Qwen3-Embedding
   "qw3_S0qhn_10k_onelabel|$LIN|$QHN|$HNREADY"
-  "qw3_S0qhn_single_10k_2step|$SGL|$QHN|$HNREADY"
+  "qw3_S0qhn_single_10k_2step_1gpu|$SGL|$QHN N_1GPU=1|$HNREADY"
   "qw3_S0qhn_cap10k_onelabel|$CAP|$QHN|$HNREADY"
   # round 2c: learned input / output layers (identity init); single has the output layer only
   "qw3_S0_10k_onelabel_ioproj|$LIN --io_proj||$READY"
-  "qw3_S0_single_10k_2step_ioproj_out|$SGL --io_proj --io_proj_mode out||$READY"
+  "qw3_S0_single_10k_2step_ioproj_out_1gpu|$SGL --io_proj --io_proj_mode out|N_1GPU=1|$READY"
   "qw3_S0_cap10k_onelabel_ioproj|$CAP --io_proj||$READY"
 )
 log() { echo "[$(date '+%F %T')] $*"; }

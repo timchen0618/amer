@@ -9,6 +9,8 @@
 # N_LR (default 1e-5): learning rate. N_DATA_ROOT (default data/training/clean_v3_hn_s0): training data root (its
 # qampari/train_data.jsonl trains, its qampari/dev_data.jsonl is the in-training eval set), e.g. the
 # Nemotron-mined hard negatives data/training/clean_v3_hn_s0_nemo (2026-11-13). Full dev / test unchanged.
+# N_1GPU=1 (2026-11-15): train on 1 H200 with per-GPU batch 100 instead of 2 x 50 (Qwen3 single runs: Torch's
+# low-GPU-utilization policy cancelled the 2-GPU ones at ~2h15m).
 set -eu
 WT=/scratch/hc3337/projects/autoregressive/.claude/worktrees/n-nemotron
 cd /scratch/hc3337/projects/autoregressive
@@ -33,6 +35,10 @@ if [ "$RET" = nemotron ]; then
 elif [ "$RET" = qwen3 ]; then  # 2026-11-15: Qwen3-Embedding-0.6B; div.ext3 trains, nli retrieves (as inf-retriever)
   export PROJ_SIZE=1024 F_EMB=wikipedia_embeddings/qampari/qwen3emb06_frozen_base_512
   FLAGS="$FLAGS --retriever qwen3"
+fi
+if [ -n "${N_1GPU:-}" ]; then  # 2026-11-15: one GPU, per-GPU batch 100 (same global batch / gathered negative pool, same FSDP policy)
+  export ACCEL_CONFIG=$WT/training/inf_retriever/accelerate_config_1gpu_fsdp.yaml TRAIN_GRES=gpu:h200:1
+  FLAGS="$FLAGS --per_gpu_batch_size 100 --per_gpu_eval_batch_size 100"
 fi
 setsid nohup bash $WT/training/inf_retriever/tools/f_run.sh $mode $LR $run "$BASE $S0 $FLAGS" \
   >> results/phaseC/$run.driver.out 2>&1 < /dev/null &
