@@ -5,6 +5,8 @@
                          mean pooling, 'query: ' / 'passage: ' inputs without BOS / EOS, bidirectional. Frozen doc
                          encoder only (--freeze_doc_encoder). Needs the nemotron.ext3 overlay (transformers 5).
                          With --force_causal: causal query encoder + last-token pooling (docs unchanged).
+  --retriever qwen3      Qwen/Qwen3-Embedding-0.6B (src/qwen3emb.py): causal, last-token pooling, as the inf path;
+                         queries 'Instruct: <task>\nQuery:<q>'. Frozen doc encoder only. div.ext3 (transformers 4.56).
 
 The choice is saved in the checkpoint's opt (opt.retriever, opt.retriever_model_id); src/inference_utils.load_retriever
 reads it at retrieval time.
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 class NemoOptions(finetuning_multi_paper.PaperOptions):
     def initialize(self):
         super().initialize()
-        self.parser.add_argument("--retriever", type=str, default="inf", choices=["inf", "nemotron"],
+        self.parser.add_argument("--retriever", type=str, default="inf", choices=["inf", "nemotron", "qwen3"],
                                  help="retriever backbone (query model and frozen doc encoder); default inf-retriever")
 
     def parse(self):
@@ -38,6 +40,16 @@ class NemoOptions(finetuning_multi_paper.PaperOptions):
                 setattr(inbatch, name, nemotron.nemotron_class(getattr(inbatch, name)))
             nemotron.use_nemotron_text_format()
             logger.warning(f"[retriever] {nemotron.NEMOTRON_ID}")
+        elif opt.retriever == "qwen3":
+            if not opt.freeze_doc_encoder:
+                self.parser.error("--retriever qwen3 is implemented for --freeze_doc_encoder only")
+            if opt.force_causal:
+                self.parser.error("--retriever qwen3 is causal already; drop --force_causal")
+            from src import qwen3emb
+            for name in ("EmbeddingModelFrozenDocEnc", "EmbeddingModelFrozenDocEncSingleQuery"):
+                setattr(inbatch, name, qwen3emb.qwen3_class(getattr(inbatch, name)))
+            qwen3emb.use_qwen3_text_format()
+            logger.warning(f"[retriever] {qwen3emb.QWEN3_ID}")
         return opt
 
 

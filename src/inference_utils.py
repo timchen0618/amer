@@ -73,6 +73,9 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
 
         if retriever_kind == "nemotron":
             model_class = nemotron.nemotron_class(model_class)
+        elif retriever_kind == "qwen3":  # Qwen3-Embedding-0.6B (session N, 2026-11-15): inf path, own model id
+            from training.inf_retriever.src import qwen3emb
+            model_class = qwen3emb.qwen3_class(model_class)
         print(f"Using model class: {model_class}, retriever_model_id: {retriever_model_id}")
         pretrained_dict = pretrained_dict["model"]
 
@@ -103,7 +106,8 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
         # --force_causal (query encoder only): multi-query generate() reads it from the model; the
         # single-query path calls the bare encoder, so retrieval_inf.embed_queries_single reads this.
         retriever._force_causal = getattr(opt, "force_causal", False)
-        # retriever_kind "nemotron": retrieval_inf.py formats queries as 'query: <q>' and mean-pools (single query)
+        # retriever_kind "nemotron": retrieval_inf.py formats queries as 'query: <q>' and mean-pools (single query);
+        # "qwen3": queries 'Instruct: <task>\nQuery:<q>' (no space), bf16
         retriever._retriever = retriever_kind
 
 

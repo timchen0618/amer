@@ -2,7 +2,7 @@
 # Session N (2026-11-12): launch one F-style frozen QAMPARI S0 run with the worktree's f_run.sh (CODE_ROOT = this
 # worktree; data, checkpoints and results on the main checkout). Same recipe and env as F's f_queue.sh entries
 # (BASE + S0 + S0ENV + LONG20), plus the retriever:
-#   bash n_launch.sh <run suffix> <inf|nemotron> "<extra flags>"
+#   bash n_launch.sh <run suffix> <inf|nemotron|qwen3> "<extra flags>"
 # e.g. bash n_launch.sh nemo_S0_cap10k_onelabel nemotron "--loss_fn hungarian --sampling_saturate_frac 0.1 --sampling_cap 0.8 --one_label_step"
 # Runs whose suffix contains "single" use mode single. Run name: clean_v3_n_qampari_<suffix> (not counted by f_queue).
 # SMOKE=1: 30 steps, save/eval at 30, 1 h walltime, run name with a _smoke suffix.
@@ -30,6 +30,9 @@ export CODE_ROOT=$WT TRAIN_SCRIPT=finetuning_multi_nemo.py
 if [ "$RET" = nemotron ]; then
   export TRAIN_OVERLAY=nemotron RET_ENV=nemotron PROJ_SIZE=2048 F_EMB=wikipedia_embeddings/qampari/nemotron_frozen_base_512
   FLAGS="$FLAGS --retriever nemotron"
+elif [ "$RET" = qwen3 ]; then  # 2026-11-15: Qwen3-Embedding-0.6B; div.ext3 trains, nli retrieves (as inf-retriever)
+  export PROJ_SIZE=1024 F_EMB=wikipedia_embeddings/qampari/qwen3emb06_frozen_base_512
+  FLAGS="$FLAGS --retriever qwen3"
 fi
 setsid nohup bash $WT/training/inf_retriever/tools/f_run.sh $mode $LR $run "$BASE $S0 $FLAGS" \
   >> results/phaseC/$run.driver.out 2>&1 < /dev/null &

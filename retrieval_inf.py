@@ -97,7 +97,8 @@ def load_model_and_tokenizer(args):
     model = model.cuda()
     if not args.no_fp16:
         # Nemotron checkpoints (session N): bf16, the model's native dtype and the training compute dtype
-        model = model.to(torch.bfloat16) if getattr(model, "_retriever", "inf") == "nemotron" else model.half()
+        # (and Qwen3-Embedding checkpoints, 2026-11-15: bf16 as in training)
+        model = model.to(torch.bfloat16) if getattr(model, "_retriever", "inf") in ("nemotron", "qwen3") else model.half()
 
     return model, tokenizer, use_finetuned
 
@@ -105,6 +106,11 @@ def load_model_and_tokenizer(args):
 def _nemotron():
     from training.inf_retriever.src import nemotron
     return nemotron
+
+
+def _qwen3():
+    from training.inf_retriever.src import qwen3emb
+    return qwen3emb
 
 
 def _maybe_normalize_text(q: str, args) -> str:
@@ -141,6 +147,8 @@ def embed_queries_single(args, queries, model, tokenizer):
         if nemo:  # Nemotron --force_causal: causal encoder (config) + last-token pooling, as in training
             assert model.config.is_causal is True, "causal Nemotron checkpoint loaded with a bidirectional encoder"
             return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
+        if getattr(model, "_retriever", "inf") == "qwen3":  # bf16 (numpy has none)
+            return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
     # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
@@ -152,6 +160,8 @@ def embed_queries_single(args, queries, model, tokenizer):
     nemo = getattr(model, "_retriever", "inf") == "nemotron"
     if nemo:
         get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
+    if getattr(model, "_retriever", "inf") == "qwen3":  # 'Instruct: <task>\nQuery:<q>' (no space)
+        get_detailed_instruct = _qwen3().get_detailed_instruct
 
     for q in queries:
         if args.lowercase:
@@ -268,6 +278,8 @@ def embed_queries_multi(args, queries, model, tokenizer):
     max_length = 1024
     if getattr(model, "_retriever", "inf") == "nemotron":  # 'query: <q>'; generate() pools with the model's mean pool
         get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
+    if getattr(model, "_retriever", "inf") == "qwen3":  # 'Instruct: <task>\nQuery:<q>' (no space)
+        get_detailed_instruct = _qwen3().get_detailed_instruct
     if args.max_new_tokens is None:
         raise ValueError("max_new_tokens must be set explicitly for multi-query embedding -- see retrieval_inf.py's --max_new_tokens help text.")
     max_new_tokens = args.max_new_tokens
