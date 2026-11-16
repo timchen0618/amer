@@ -11,7 +11,8 @@ Columns (mean over questions; seeds averaged, ± = sd over seeds):
              (data/qampari/test531_{large,small}_distance_indices_inf.txt, the thirds fusion_eval.py reports).
   q-q        mean pairwise cosine between a question's k = 5 embeddings (multi only; the repro report's
              "pairwise cosine")
-  gold-gold  mean pairwise cosine between a question's gold passages (the same for every row)
+  gold-gold  mean pairwise cosine between a question's gold passages (one passage per gold cluster), full / large /
+             small third; the same for every row (all share base INF-Retriever's document embeddings)
   q-random   mean cosine between query embeddings and 20k random corpus passages (scale reference). Base
              INF-Retriever's space is anisotropic (q-random 0.58, gold-random 0.74); trained query embeddings sit
              near 0, so raw q-target is not comparable between base and trained models.
@@ -69,6 +70,9 @@ def run_stats(d, rows, thirds):
     g = [r["gold_pair_cos"] for r in rows.values() if r.get("gold_pair_cos") is not None]
     out["qq"] = float(np.mean(q)) if q else None
     out["gg"] = float(np.mean(g)) if g else None
+    for part, idx in thirds.items():
+        gp = [rows[i]["gold_pair_cos"] for i in idx if rows.get(i, {}).get("gold_pair_cos") is not None]
+        out["gg_" + part] = float(np.mean(gp)) if gp else None
     out["qr"] = json.load(open(d + "/test_geom.json"))["query_rand_cos"]
     for part in ("all",) + tuple(thirds):
         out["lift_" + part] = out[part] - out["qr"]
@@ -81,13 +85,13 @@ def main():
     p.add_argument("--json", default=None)
     a = p.parse_args()
     thirds = {s: [int(x) for x in open(f).read().split()] for s, f in SUB.items()}
-    lines = ["| Model | Seeds | q-target full | q-target large | q-target small | q-random | lift full | lift large | lift small | q-q (k=5) | gold-gold |",
-             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| Model | Seeds | q-target full | q-target large | q-target small | q-random | lift full | lift large | lift small | q-q (k=5) | gold-gold full | gold-gold large | gold-gold small |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     js = {}
     for label, _grp, dirs in ROWS:
         res = [run_stats(d, r, thirds) for d, r in ((d, per_query(d)) for d in dirs()) if r]
         if not res:
-            lines.append(f"| {label} | 0 | not available |" + " |" * 8)
+            lines.append(f"| {label} | 0 | not available |" + " |" * 10)
             continue
 
         def cell(k, res=res):
@@ -97,7 +101,7 @@ def main():
             return f"{np.mean(v):.3f}" + (f" ± {np.std(v, ddof=1):.3f}" if len(v) > 1 else "")
 
         js[label] = res
-        lines.append(f"| {label} | {len(res)} | {cell('all')} | {cell('large')} | {cell('small')} | {cell('qr')} | {cell('lift_all')} | {cell('lift_large')} | {cell('lift_small')} | {cell('qq')} | {cell('gg')} |")
+        lines.append(f"| {label} | {len(res)} | {cell('all')} | {cell('large')} | {cell('small')} | {cell('qr')} | {cell('lift_all')} | {cell('lift_large')} | {cell('lift_small')} | {cell('qq')} | {cell('gg')} | {cell('gg_large')} | {cell('gg_small')} |")
     txt = "\n".join(lines)
     print(txt)
     if a.md:
