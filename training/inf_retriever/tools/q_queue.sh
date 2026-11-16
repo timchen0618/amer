@@ -12,6 +12,7 @@ SGL="--one_label_step"
 QHN="N_DATA_ROOT=data/training/clean_v3_hn_s0_qwen3"
 HNREADY=data/training/clean_v3_hn_s0_qwen3/qampari/train_data.jsonl
 READY=results/phaseC/q_smoke_ok   # written by hand after the 30-step smokes pass (corpus embedded, retrieval works)
+OLREADY=results/phaseC/olshuf_smoke_ok   # written by hand after the --one_label_shuffled smokes pass
 QUEUE=(
   # 2026-11-15: the 2-GPU single runs were cancelled by Torch's low-GPU-utilization policy (steps 9425 / 8075);
   # singles rerun on 1 GPU x batch 100 (N_1GPU=1, same global batch)
@@ -33,12 +34,23 @@ QUEUE=(
   "qw3_S0_10k_onelabel_ioproj|$LIN --io_proj||$READY"
   "qw3_S0_single_10k_2step_ioproj_out_1gpu|$SGL --io_proj --io_proj_mode out|N_1GPU=1|$READY"
   "qw3_S0_cap10k_onelabel_ioproj|$CAP --io_proj||$READY"
+  # 2026-11-16 (user): the legacy one-gold step (--one_label_shuffled: the second update uses other, randomly drawn
+  # questions instead of the current batch's) on the best multi runs + their singles; inf and Qwen3. 5th field =
+  # retriever (default qwen3). inf: F's S0_single_10k_2step / S0_10k_onelabel / S0_cap10k_onelabel /
+  # S0_cap10k_onelabel_causal (large third 27.38) / S0_single_10k_2step_causal.
+  "S0_cap10k_onelabel_causal_olshuf|$CAP --force_causal --one_label_shuffled||$OLREADY|inf"
+  "S0_single_10k_2step_causal_olshuf|$SGL --force_causal --one_label_shuffled||$OLREADY|inf"
+  "qw3_S0_cap10k_onelabel_olshuf|$CAP --one_label_shuffled||$OLREADY|qwen3"
+  "qw3_S0_single_10k_2step_1gpu_olshuf|$SGL --one_label_shuffled|N_1GPU=1|$OLREADY|qwen3"
+  "S0_single_10k_2step_olshuf|$SGL --one_label_shuffled||$OLREADY|inf"
+  "S0_cap10k_onelabel_olshuf|$CAP --one_label_shuffled||$OLREADY|inf"
+  "S0_10k_onelabel_olshuf|$LIN --one_label_shuffled||$OLREADY|inf"
 )
 log() { echo "[$(date '+%F %T')] $*"; }
 while true; do
   left=0
   for e in "${QUEUE[@]}"; do
-    IFS='|' read -r suf flags envs req <<< "$e"
+    IFS='|' read -r suf flags envs req ret <<< "$e"
     [ -f results/phaseC/clean_v3_n_qampari_$suf.driver.out ] && continue
     left=$((left + 1))
     [ -n "$req" ] && [ ! -e "$req" ] && continue
@@ -47,7 +59,7 @@ while true; do
     need=2; case "$envs" in *N_1GPU=1*) need=1 ;; esac
     [ $((active + need)) -gt "$MAXGPU" ] && break
     log "launch $suf ($envs) [$active GPUs active]"
-    env $envs bash $WT/n_launch.sh $suf qwen3 "$flags"
+    env $envs bash $WT/n_launch.sh $suf ${ret:-qwen3} "$flags"
     left=$((left - 1)); sleep 90   # let the driver submit its training job before counting again
   done
   [ $left -eq 0 ] && { log "queue empty"; exit 0; }
