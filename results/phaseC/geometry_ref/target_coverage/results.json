@@ -1,0 +1,380 @@
+{
+ "Base INF-Retriever (no training)": [
+  {
+   "dir": "results/phaseC/geometry_ref/base_inf_retriever",
+   "k": 1,
+   "q_random": 0.581195592880249,
+   "closest_all": 0.7316812825741741,
+   "hungarian_all": 0.7316812825741741,
+   "closest_large": 0.7026558450999714,
+   "hungarian_large": 0.7026558450999714,
+   "closest_small": 0.762766166859203,
+   "hungarian_small": 0.762766166859203
+  }
+ ],
+ "F single (S0_single_10k_2step_causal)": [
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_single_10k_2step_causal_s10000",
+   "k": 1,
+   "q_random": -0.01030178926885128,
+   "closest_all": 0.2599150606846742,
+   "hungarian_all": 0.2599150606846742,
+   "closest_large": 0.23208598652854562,
+   "hungarian_large": 0.23208598652854562,
+   "closest_small": 0.29348128537336987,
+   "hungarian_small": 0.29348128537336987
+  }
+ ],
+ "F multi, cap": [
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_cap10k_onelabel_causal_s10000",
+   "k": 5,
+   "q_random": -0.008067497983574867,
+   "closest_all": 0.27003127226356954,
+   "hungarian_all": 0.2512007382629955,
+   "closest_large": 0.24663614594776714,
+   "hungarian_large": 0.23309779007519996,
+   "closest_small": 0.30046187821361753,
+   "hungarian_small": 0.27633237085408635
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_cap10k_onelabel_causal_rseed1_s8000",
+   "k": 5,
+   "q_random": -0.007134417537599802,
+   "closest_all": 0.2732572552595435,
+   "hungarian_all": 0.2548189929383061,
+   "closest_large": 0.24912159827848276,
+   "hungarian_large": 0.2353955717491252,
+   "closest_small": 0.30183364264667034,
+   "hungarian_small": 0.2794178780996137
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_cap10k_onelabel_causal_rseed2_s9000",
+   "k": 5,
+   "q_random": -0.007762006483972073,
+   "closest_all": 0.2693743483424748,
+   "hungarian_all": 0.2497607942972255,
+   "closest_large": 0.24736204840952442,
+   "hungarian_large": 0.2326661691380044,
+   "closest_small": 0.29870566750566163,
+   "hungarian_small": 0.2752180034087764
+  }
+ ],
+ "F multi, no-cap": [
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_s9000",
+   "k": 5,
+   "q_random": -0.008690888993442059,
+   "closest_all": 0.2716989831371047,
+   "hungarian_all": 0.2535750997479016,
+   "closest_large": 0.24776985678112223,
+   "hungarian_large": 0.23302279536922774,
+   "closest_small": 0.3031823202553723,
+   "hungarian_small": 0.28032652524610363
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_rseed1_s9000",
+   "k": 5,
+   "q_random": -0.005819481331855059,
+   "closest_all": 0.2751541838555013,
+   "hungarian_all": 0.25736497266817904,
+   "closest_large": 0.250648558139801,
+   "hungarian_large": 0.23657121624620187,
+   "closest_small": 0.3067555839402808,
+   "hungarian_small": 0.2855263841234975
+  }
+ ],
+ "F multi, no-cap io_proj": [
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_ioproj_s7000",
+   "k": 5,
+   "q_random": -0.009404588490724564,
+   "closest_all": 0.2730003231101566,
+   "hungarian_all": 0.25932583899680955,
+   "closest_large": 0.24760297477422727,
+   "hungarian_large": 0.23777190571473467,
+   "closest_small": 0.30428190496232776,
+   "hungarian_small": 0.2866279861165418
+  }
+ ],
+ "Repro llama-1b single": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_single_0",
+   "k": 1,
+   "q_random": -0.004939336329698563,
+   "closest_all": 0.24792533211511772,
+   "hungarian_all": 0.24792533211511772,
+   "closest_large": 0.2161126349016004,
+   "hungarian_large": 0.2161126349016004,
+   "closest_small": 0.28486604661577275,
+   "hungarian_small": 0.28486604661577275
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_single_1",
+   "k": 1,
+   "q_random": -0.005494401790201664,
+   "closest_all": 0.24637529756102128,
+   "hungarian_all": 0.24637529756102128,
+   "closest_large": 0.21442821534028986,
+   "hungarian_large": 0.21442821534028986,
+   "closest_small": 0.28464549597766664,
+   "hungarian_small": 0.28464549597766664
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_single_2",
+   "k": 1,
+   "q_random": -0.0066849235445261,
+   "closest_all": 0.24701177925634393,
+   "hungarian_all": 0.24701177925634393,
+   "closest_large": 0.2143227764338787,
+   "hungarian_large": 0.2143227764338787,
+   "closest_small": 0.28369461841260396,
+   "hungarian_small": 0.28369461841260396
+  }
+ ],
+ "Repro llama-1b amer": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_amer_0",
+   "k": 5,
+   "q_random": -0.001447829301469028,
+   "closest_all": 0.2559445352835507,
+   "hungarian_all": 0.2430956817798583,
+   "closest_large": 0.22740649518423847,
+   "hungarian_large": 0.21605173205690725,
+   "closest_small": 0.2899462758253018,
+   "hungarian_small": 0.275523282877273
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_amer_1",
+   "k": 5,
+   "q_random": -0.0017722367774695158,
+   "closest_all": 0.25567574061719933,
+   "hungarian_all": 0.243430363347582,
+   "closest_large": 0.22723806973191954,
+   "hungarian_large": 0.21697364667696611,
+   "closest_small": 0.2873073269509607,
+   "hungarian_small": 0.2729773874084155
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-1b_amer_2",
+   "k": 5,
+   "q_random": -0.002662022365257144,
+   "closest_all": 0.2544112561951109,
+   "hungarian_all": 0.24085378714836256,
+   "closest_large": 0.22563959043362133,
+   "hungarian_large": 0.21428239684610162,
+   "closest_small": 0.2888578839600086,
+   "hungarian_small": 0.27212855261233115
+  }
+ ],
+ "Repro llama-3b single": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_single_0",
+   "k": 1,
+   "q_random": 0.0012220456264913082,
+   "closest_all": 0.2471919611987365,
+   "hungarian_all": 0.2471919611987365,
+   "closest_large": 0.21492230783527097,
+   "hungarian_large": 0.21492230783527097,
+   "closest_small": 0.281343778471152,
+   "hungarian_small": 0.281343778471152
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_single_1",
+   "k": 1,
+   "q_random": -0.004003511741757393,
+   "closest_all": 0.24697416120694632,
+   "hungarian_all": 0.24697416120694632,
+   "closest_large": 0.21369249453502043,
+   "hungarian_large": 0.21369249453502043,
+   "closest_small": 0.2834648923741447,
+   "hungarian_small": 0.2834648923741447
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_single_2",
+   "k": 1,
+   "q_random": -0.0036940849386155605,
+   "closest_all": 0.24967244512396258,
+   "hungarian_all": 0.24967244512396258,
+   "closest_large": 0.2176587608243738,
+   "hungarian_large": 0.2176587608243738,
+   "closest_small": 0.2853446088731289,
+   "hungarian_small": 0.2853446088731289
+  }
+ ],
+ "Repro llama-3b amer": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_amer_0",
+   "k": 5,
+   "q_random": 1.5564914065180346e-05,
+   "closest_all": 0.2580121567160621,
+   "hungarian_all": 0.24596214529456617,
+   "closest_large": 0.22974278019475086,
+   "hungarian_large": 0.2191964742683229,
+   "closest_small": 0.29198267662690747,
+   "hungarian_small": 0.2781287987613016
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_amer_1",
+   "k": 5,
+   "q_random": 0.0005825365660712123,
+   "closest_all": 0.26154979013201207,
+   "hungarian_all": 0.24849472316981708,
+   "closest_large": 0.2310104470788723,
+   "hungarian_large": 0.2207289339885825,
+   "closest_small": 0.2960734810680151,
+   "hungarian_small": 0.2801061642252737
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-3b_amer_2",
+   "k": 5,
+   "q_random": 0.0019356978591531515,
+   "closest_all": 0.2613829458641018,
+   "hungarian_all": 0.2483220880153096,
+   "closest_large": 0.23251972019317604,
+   "hungarian_large": 0.22284043500466005,
+   "closest_small": 0.2947159363577763,
+   "hungarian_small": 0.2782116978118817
+  }
+ ],
+ "Repro qwen3-4b single": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_single_0",
+   "k": 1,
+   "q_random": -0.005929222796112299,
+   "closest_all": 0.2511651631534142,
+   "hungarian_all": 0.2511651631534142,
+   "closest_large": 0.21800343226641417,
+   "hungarian_large": 0.21800343226641417,
+   "closest_small": 0.2887225326978498,
+   "hungarian_small": 0.2887225326978498
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_single_1",
+   "k": 1,
+   "q_random": -0.006761955562978983,
+   "closest_all": 0.2489227629398222,
+   "hungarian_all": 0.2489227629398222,
+   "closest_large": 0.2165861221562539,
+   "hungarian_large": 0.2165861221562539,
+   "closest_small": 0.28260256689455776,
+   "hungarian_small": 0.28260256689455776
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_single_2",
+   "k": 1,
+   "q_random": -0.004825754091143608,
+   "closest_all": 0.2491014467520734,
+   "hungarian_all": 0.2491014467520734,
+   "closest_large": 0.21911219913246377,
+   "hungarian_large": 0.21911219913246377,
+   "closest_small": 0.2850366857316759,
+   "hungarian_small": 0.2850366857316759
+  }
+ ],
+ "Repro qwen3-4b amer": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_amer_0",
+   "k": 5,
+   "q_random": -0.0037623585667461157,
+   "closest_all": 0.25605811480881746,
+   "hungarian_all": 0.24363850436669734,
+   "closest_large": 0.22730936280207797,
+   "hungarian_large": 0.21717678429558873,
+   "closest_small": 0.29227450705236857,
+   "hungarian_small": 0.27681584614846444
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_amer_1",
+   "k": 5,
+   "q_random": -0.002944536507129669,
+   "closest_all": 0.25528376820986554,
+   "hungarian_all": 0.2439347208037327,
+   "closest_large": 0.22730474657423438,
+   "hungarian_large": 0.21797283670111073,
+   "closest_small": 0.28719793433944385,
+   "hungarian_small": 0.27347489649222956
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_qwen3-4b_amer_2",
+   "k": 5,
+   "q_random": -0.0033947709016501904,
+   "closest_all": 0.25953185205082996,
+   "hungarian_all": 0.24686056248871732,
+   "closest_large": 0.23191132737944523,
+   "hungarian_large": 0.22143734703283935,
+   "closest_small": 0.29368658868802916,
+   "hungarian_small": 0.2783959296428495
+  }
+ ],
+ "Repro llama-8b single": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_single_0",
+   "k": 1,
+   "q_random": -0.007154096849262714,
+   "closest_all": 0.25797492416887746,
+   "hungarian_all": 0.25797492416887746,
+   "closest_large": 0.2248156184685372,
+   "hungarian_large": 0.2248156184685372,
+   "closest_small": 0.29635034849246344,
+   "hungarian_small": 0.29635034849246344
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_single_1",
+   "k": 1,
+   "q_random": -0.0073952809907495975,
+   "closest_all": 0.2563795862182722,
+   "hungarian_all": 0.2563795862182722,
+   "closest_large": 0.22480147014859886,
+   "hungarian_large": 0.22480147014859886,
+   "closest_small": 0.29297604523599147,
+   "hungarian_small": 0.29297604523599147
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_single_2",
+   "k": 1,
+   "q_random": -0.007382040377706289,
+   "closest_all": 0.2606366949117341,
+   "hungarian_all": 0.2606366949117341,
+   "closest_large": 0.22925850562751293,
+   "hungarian_large": 0.22925850562751293,
+   "closest_small": 0.2982794574565358,
+   "hungarian_small": 0.2982794574565358
+  }
+ ],
+ "Repro llama-8b amer": [
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_amer_0",
+   "k": 5,
+   "q_random": -0.00327271968126297,
+   "closest_all": 0.2703114592535123,
+   "hungarian_all": 0.256655941982166,
+   "closest_large": 0.2454397932936748,
+   "hungarian_large": 0.23523985195372785,
+   "closest_small": 0.3019870056874222,
+   "hungarian_small": 0.2839349443713824
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_amer_1",
+   "k": 5,
+   "q_random": -0.0040261149406433105,
+   "closest_all": 0.26868559932248515,
+   "hungarian_all": 0.25464080681712165,
+   "closest_large": 0.243893504320156,
+   "hungarian_large": 0.23346264152565882,
+   "closest_small": 0.2999782858623399,
+   "hungarian_small": 0.281658547040489
+  },
+  {
+   "dir": "results/phaseC/geometry_ref/repro_llama-8b_amer_2",
+   "k": 5,
+   "q_random": -0.0048052240163087845,
+   "closest_all": 0.2683325287010766,
+   "hungarian_all": 0.25369476728323714,
+   "closest_large": 0.24207016745848314,
+   "hungarian_large": 0.23147755825803393,
+   "closest_small": 0.301414429065254,
+   "hungarian_small": 0.28204177419344584
+  }
+ ]
+}
