@@ -41,6 +41,8 @@ QUEUE=(
   # 2026-11-16 17:11 the /scratch quota hit 100% and killed the first three (and qw3_S0_cap10k_onelabel_ioproj at
   # step ~4000); no resume, so they rerun from scratch under new names (_v2), the dead runs' files left as they are.
   "S0_cap10k_onelabel_causal_olshuf_v2|$CAP --force_causal --one_label_shuffled||$OLREADY|inf"
+  # 2026-11-17 (user): second seed of the causal cap olshuf run (F's 27.38 large third did not reproduce on reseed)
+  "S0_cap10k_onelabel_causal_olshuf_rseed1|$CAP --force_causal --one_label_shuffled --seed 1||$OLREADY|inf"
   "S0_single_10k_2step_causal_olshuf_v2|$SGL --force_causal --one_label_shuffled||$OLREADY|inf"
   "qw3_S0_cap10k_onelabel_olshuf_v2|$CAP --one_label_shuffled||$OLREADY|qwen3"
   "qw3_S0_cap10k_onelabel_ioproj_v2|$CAP --io_proj||$READY"
