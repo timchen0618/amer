@@ -194,3 +194,17 @@ for s in $TSTEPS; do
   [ -d $(ck $s) ] && rm -rf -- $(ck $s) && log "deleted step $s after test (kept: best test $best_test, dev-selected $dev_sel)"
 done
 log "RUN DONE (dev-selected $dev_sel, best test $best_test${LOSSBEST:+, loss-selected $LOSSBEST})"
+
+# --- phase 4 (2026-11-16): slim this run's retrieval outputs <run>_s*/{dev,test}/qampari.jsonl in place: drop passage
+# titles/texts, keep query identity + ranked ids and scores (tools/slim_retrieval.py, results/phaseC/full/README_slim.md;
+# ~1 GB -> ~80 MB per step). Each file is replaced only after checking that its titles/texts equal the corpus rows (so
+# `slim_retrieval.py restore` rebuilds it byte for byte) and that the slim copy has the same rows, ids and scores; any
+# failure leaves the file as it was. eval.py (QAMPARI gold ids), fusion_combo.py and the *_steps/_qemb/_kagg files are
+# unaffected. A failed slim does not fail the run; rerun the command in the log line by hand.
+SLIM_CMD="python3 -I $T/slim_all.py --shard 0 --nshards 1 --runs $RUN --min_age_h 0"
+srun --account=torch_pr_152_echoi --time=02:00:00 --mem=48G --cpus-per-task=2 $SLIM_CMD > results/phaseC/$RUN.slim.log 2>&1
+if grep -q "DONE" results/phaseC/$RUN.slim.log && ! grep -q " FAIL " results/phaseC/$RUN.slim.log; then
+  log "SLIM $(grep -c ' OK ' results/phaseC/$RUN.slim.log) retrieval files: $(grep -o 'DONE.*' results/phaseC/$RUN.slim.log)"
+else
+  log "ERROR: slimming incomplete (see results/phaseC/$RUN.slim.log); files not slimmed are untouched. Retry: srun --account=torch_pr_152_echoi --mem=48G $SLIM_CMD"
+fi
