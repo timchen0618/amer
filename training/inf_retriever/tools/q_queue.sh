@@ -38,9 +38,12 @@ QUEUE=(
   # questions instead of the current batch's) on the best multi runs + their singles; inf and Qwen3. 5th field =
   # retriever (default qwen3). inf: F's S0_single_10k_2step / S0_10k_onelabel / S0_cap10k_onelabel /
   # S0_cap10k_onelabel_causal (large third 27.38) / S0_single_10k_2step_causal.
-  "S0_cap10k_onelabel_causal_olshuf|$CAP --force_causal --one_label_shuffled||$OLREADY|inf"
-  "S0_single_10k_2step_causal_olshuf|$SGL --force_causal --one_label_shuffled||$OLREADY|inf"
-  "qw3_S0_cap10k_onelabel_olshuf|$CAP --one_label_shuffled||$OLREADY|qwen3"
+  # 2026-11-16 17:11 the /scratch quota hit 100% and killed the first three (and qw3_S0_cap10k_onelabel_ioproj at
+  # step ~4000); no resume, so they rerun from scratch under new names (_v2), the dead runs' files left as they are.
+  "S0_cap10k_onelabel_causal_olshuf_v2|$CAP --force_causal --one_label_shuffled||$OLREADY|inf"
+  "S0_single_10k_2step_causal_olshuf_v2|$SGL --force_causal --one_label_shuffled||$OLREADY|inf"
+  "qw3_S0_cap10k_onelabel_olshuf_v2|$CAP --one_label_shuffled||$OLREADY|qwen3"
+  "qw3_S0_cap10k_onelabel_ioproj_v2|$CAP --io_proj||$READY"
   "qw3_S0_single_10k_2step_1gpu_olshuf|$SGL --one_label_shuffled|N_1GPU=1|$OLREADY|qwen3"
   "S0_single_10k_2step_olshuf|$SGL --one_label_shuffled||$OLREADY|inf"
   "S0_cap10k_onelabel_olshuf|$CAP --one_label_shuffled||$OLREADY|inf"
