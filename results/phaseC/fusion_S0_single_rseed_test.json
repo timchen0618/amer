@@ -1,0 +1,50 @@
+{
+ "S0_single_10k_2step_causal_rseed1_s9000": {
+  "single": {
+   "test": [
+    34.84,
+    62.89
+   ],
+   "test_large": [
+    25.0,
+    52.38
+   ],
+   "test_small": [
+    50.0,
+    73.82
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed1_s8000": {
+  "single": {
+   "test": [
+    34.27,
+    63.21
+   ],
+   "test_large": [
+    23.21,
+    52.19
+   ],
+   "test_small": [
+    50.56,
+    74.42
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed1_s6000": {
+  "single": {
+   "test": [
+    34.27,
+    62.81
+   ],
+   "test_large": [
+    22.02,
+    51.9
+   ],
+   "test_small": [
+    50.56,
+    73.75
+   ]
+  }
+ }
+}
