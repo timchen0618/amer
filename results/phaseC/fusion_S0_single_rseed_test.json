@@ -46,5 +46,53 @@
     73.75
    ]
   }
+ },
+ "S0_single_10k_2step_causal_rseed2_s10000": {
+  "single": {
+   "test": [
+    35.22,
+    63.36
+   ],
+   "test_large": [
+    25.0,
+    53.07
+   ],
+   "test_small": [
+    50.0,
+    74.44
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed2_s9000": {
+  "single": {
+   "test": [
+    34.84,
+    63.44
+   ],
+   "test_large": [
+    24.4,
+    53.15
+   ],
+   "test_small": [
+    50.0,
+    74.74
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed2_s8000": {
+  "single": {
+   "test": [
+    35.59,
+    63.76
+   ],
+   "test_large": [
+    25.6,
+    53.12
+   ],
+   "test_small": [
+    50.56,
+    74.98
+   ]
+  }
  }
 }
