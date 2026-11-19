@@ -8,7 +8,7 @@
 #SBATCH --output=sbatch_outputs/smoke_frozen_mem_%j.out
 
 
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:1
 

@@ -8,7 +8,7 @@
 #SBATCH --output=sbatch_outputs/ambigqa_2docs_infly_embedding_model_doc_enc_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
 

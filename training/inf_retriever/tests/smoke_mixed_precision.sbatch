@@ -4,7 +4,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --time=1:15:00
 #SBATCH --mem=128GB
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --job-name=smoke_mixed
 #SBATCH --output=sbatch_outputs/smoke_mixed_%x_%j.out
