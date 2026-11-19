@@ -1,6 +1,6 @@
 # Paper reproduction with the fixes: results (2026-10-28)
 
-Code: paper stack `fe0bd78` + data/eval fixes, branch `paper-repro`. Plan, recipe and the full status log: `PLAN.md` in this folder.
+Code: paper stack `fe0bd78` + data/eval fixes, branch `paper-repro`. Exact code for these results: tag `paper-repro-v1` (`git checkout paper-repro-v1`; the scripts expect it at `.claude/worktrees/paper-repro`, and the data in `paper_repro_data/`, which is not in git). Plan, recipe and the full status log: `PLAN.md` in this folder.
 24 runs = 4 LMs × {AmbigQA, QAMPARI} × {single-query, AMER (scheduled sampling), always-predicted}. All 24 trained 120/120 epochs and were scored.
 
 ## Answer
