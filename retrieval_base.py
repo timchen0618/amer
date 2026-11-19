@@ -73,7 +73,7 @@ def retrieve(question_embeddings, num_shards, passages_embeddings, passage_id_ma
         logger.info(f"Search time: {time.time()-start_time_retrieval:.1f} s.")
         all_sharded_ids_and_scores.append(sharded_ids_and_scores)
     
-    top_ids_and_scores = aggregate_sharded_results(all_sharded_ids_and_scores, num_shards)
+    top_ids_and_scores = aggregate_sharded_results(all_sharded_ids_and_scores, num_shards, top_k=top_k_per_query)
     logger.info(f"aggregated top_ids_and_scores for {num_shards} shards")
     return top_ids_and_scores
     # add_passages(data, passage_id_map, top_ids_and_scores)

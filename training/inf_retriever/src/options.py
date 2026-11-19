@@ -119,18 +119,75 @@ class Options:
             "--loss_fn",
             type=str,
             default="auto",
-            choices=["auto", "contrastive", "hungarian_masked", "hungarian"],
+            choices=["auto", "contrastive", "hungarian_masked", "hungarian", "hungarian_plus_single",
+                     "hungarian_masked_div", "hungarian_seq", "hungarian_seq_used"],
             help=(
                 "Loss used by EmbeddingModelDocEncNoProj. 'auto' picks "
                 "hungarian_masked when training_mode=='multi' and contrastive "
                 "otherwise. 'hungarian' is the legacy HungarianContrastiveLoss "
-                "(kept for comparison; has the same-example false-negative issue)."
+                "(kept for comparison; has the same-example false-negative issue). "
+                "'hungarian_plus_single' (multi mode only) = (1 - w) * hungarian + "
+                "w * single-query contrastive on the first embedding, w = --single_loss_weight. "
+                "'hungarian_masked_div' (multi mode only) = hungarian_masked + div_weight * "
+                "mean over i != j of relu(cos(q_i, q_j) - cos(g_a(i), g_a(j))), a(.) = the Hungarian "
+                "assignment: query embeddings may not be more alike than the golds they are matched to. "
+                "'hungarian_seq' (multi only) = hungarian, but output t may not be matched to a gold fed in "
+                "before it (blocks copying the teacher-forced input); 'hungarian_seq_used' = the same match, "
+                "with only the golds already used before step t (fed in or matched earlier) as same-example "
+                "negatives and later golds masked. See reports/objective_audit_2026-10-13/PLAN.md (E1)."
             ),
+        )
+        self.parser.add_argument(
+            "--hps_multi_loss", type=str, default="hungarian",
+            choices=["hungarian", "hungarian_seq", "hungarian_seq_used"],
+            help="Multi-query term of --loss_fn hungarian_plus_single (default: plain hungarian).",
+        )
+        self.parser.add_argument(
+            "--detach_fed_output", action="store_true",
+            help=("Detach a fed-back output before it becomes the next input token, so later steps' losses "
+                  "send no gradient into the step that produced it (objective audit E2)."),
+        )
+        self.parser.add_argument(
+            "--fed_norm", type=str, default="none", choices=["none", "token"],
+            help=("'token': rescale every fed-in vector (teacher gold or own output, in training and "
+                  "generate()) to the mean norm of the question's token embeddings (objective audit E5)."),
+        )
+        self.parser.add_argument(
+            "--doc_grad_until", type=int, default=0,
+            help=("Joint doc encoder only: after this training step, documents are encoded without gradient, "
+                  "so the shared encoder is trained only through the query side (objective audit E3: the "
+                  "post-switch collapse needs a trainable doc encoder). 0 (default) = always train the doc side."),
+        )
+        self.parser.add_argument(
+            "--select_metric", type=str, default="mrr", choices=["mrr", "cover1", "cover5", "all_cover5"],
+            help=("In-training eval score that gates best_model. 'mrr' (default) scores only output 0 in "
+                  "multi mode; cover1 / cover5 / all_cover5 score all k free-running embeddings (multi only)."),
+        )
+        self.parser.add_argument(
+            "--div_weight", type=float, default=0.5,
+            help="Weight of the diversity penalty for --loss_fn hungarian_masked_div.",
+        )
+        self.parser.add_argument(
+            "--single_loss_weight", type=float, default=0.5,
+            help="Weight w of the single-query term for --loss_fn hungarian_plus_single.",
         )
         self.parser.add_argument("--eval_recall", action="store_true")
         self.parser.add_argument("--sample_length", action="store_true")
         self.parser.add_argument("--max_positive_documents", type=int, default=1)
         self.parser.add_argument("--not_save", action='store_true')
+        # Step 5 / phase C knobs (all off by default).
+        self.parser.add_argument("--freeze_norms", action="store_true",
+                                 help="Freeze all RMSNorm/LayerNorm weights of the trainable encoder.")
+        self.parser.add_argument("--freeze_embeddings", action="store_true",
+                                 help="Freeze the input token embeddings of the trainable encoder.")
+        self.parser.add_argument("--l2sp_decay", type=float, default=0.0,
+                                 help="Decoupled pull toward the starting weights after every optimizer step: "
+                                      "theta <- theta - lr_t * l2sp_decay * (theta - theta_0). 0 disables.")
+        self.parser.add_argument("--no_save_optimizer", action="store_true",
+                                 help="Save checkpoints without the AdamW state (~6 GB smaller in fp32).")
+        self.parser.add_argument("--no_save_best_model", action="store_true",
+                                 help="Skip the 'best_model' checkpoint (picked by the in-batch eval MRR, "
+                                      "which is saturated from step 0 and does not track retrieval quality).")
         self.parser.add_argument(
             "--save_every_eval",
             action="store_true",
@@ -166,6 +223,16 @@ class Options:
             help=(
                 "If set, sampling_rate=1.0 always (fully autoregressive, no teacher forcing). "
                 "Default is the linear ramp sampling_rate=step/total_steps."
+            ),
+        )
+        self.parser.add_argument(
+            "--sampling_saturate_frac",
+            type=float,
+            default=1.0,
+            help=(
+                "Scheduled sampling reaches sampling_rate=1.0 at this fraction of total_steps: "
+                "sampling_rate = min(1, step / (frac * total_steps)). 1.0 = the default linear ramp "
+                "over the whole run; --full_sampling overrides it (rate 1.0 from step 0)."
             ),
         )
         self.parser.add_argument(
@@ -206,7 +273,8 @@ class Options:
         self.parser.add_argument("--lora_alpha", type=int, default=16)
         self.parser.add_argument("--lora_dropout", type=float, default=0.1)
 
-    def print_options(self, opt):
+    def print_options(self, opt, out_dir=None):
+        """Print every option (non-defaults marked) and write it to <out_dir or output_dir>/opt.txt."""
         message = ""
         for k, v in sorted(vars(opt).items()):
             comment = ""
@@ -218,12 +286,22 @@ class Options:
         model_dir = os.path.join(opt.output_dir, "models")
         if not os.path.exists(model_dir):
             os.makedirs(os.path.join(opt.output_dir, "models"))
-        file_name = os.path.join(opt.output_dir, "opt.txt")
+        os.makedirs(out_dir or opt.output_dir, exist_ok=True)
+        file_name = os.path.join(out_dir or opt.output_dir, "opt.txt")
         with open(file_name, "wt") as opt_file:
             opt_file.write(message)
             opt_file.write("\n")
 
     def parse(self):
-        opt, _ = self.parser.parse_known_args()
-        # opt = self.parser.parse_args()
+        # parse_args, not parse_known_args: a mistyped flag must fail the run instead of being
+        # silently ignored (code audit 2026-09-28, L5).
+        opt = self.parser.parse_args()
+        if not 0.0 < opt.sampling_saturate_frac <= 1.0:
+            self.parser.error(f"--sampling_saturate_frac must be in (0, 1], got {opt.sampling_saturate_frac}")
+        if opt.select_metric != "mrr" and opt.training_mode != "multi":
+            self.parser.error(f"--select_metric {opt.select_metric} needs --training_mode multi")
+        if opt.doc_grad_until > 0 and opt.freeze_doc_encoder:
+            self.parser.error("--doc_grad_until needs a trainable doc encoder (not --freeze_doc_encoder)")
+        if opt.hps_multi_loss != "hungarian" and opt.loss_fn != "hungarian_plus_single":
+            self.parser.error("--hps_multi_loss only applies to --loss_fn hungarian_plus_single")
         return opt

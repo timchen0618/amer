@@ -32,6 +32,12 @@ except ImportError:
 
 def normalize_np(x, p=2, dim=1, eps=1e-12):
     norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    # fp16 sums of squares overflow once a norm reaches ~256: the norm becomes inf and the vector
+    # all zeros, silently (code audit 2026-09-28, R2). Redo the whole array in fp32 in that case;
+    # otherwise the result is unchanged.
+    if not np.all(np.isfinite(norm)):
+        x = x.astype(np.float32)
+        norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
     norm = np.maximum(norm, eps)
     return x / norm
 
@@ -61,6 +67,15 @@ def load_model_and_tokenizer(args):
 
         print(f"Detected finetuned checkpoint at {checkpoint_dir}, loading via load_retriever")
         model, tokenizer, _ = load_retriever(checkpoint_dir)
+        train_opt = getattr(model, "_train_opt", None)
+        if train_opt is not None and getattr(train_opt, "query_instruct_task", None):
+            # trained with finetuning_multi_paper.py --query_instruct_task (Session F, 2026-10-27): query as in training
+            print(f"query instruction from the checkpoint: {train_opt.query_instruct_task!r}")
+            args.query_instruct_task = train_opt.query_instruct_task
+        if train_opt is not None and bool(getattr(train_opt, "eval_normalize_text", False)) != bool(args.normalize_text):
+            # Training text-normalizes queries iff --eval_normalize_text (code audit 2026-09-28, C4).
+            raise ValueError(f"checkpoint was trained with eval_normalize_text={train_opt.eval_normalize_text}, "
+                             f"but retrieval runs with --normalize_text={args.normalize_text}")
     elif (
         ("stella" in args.model_name_or_path)
         or ("inf-retriever" in args.model_name_or_path)
@@ -81,9 +96,21 @@ def load_model_and_tokenizer(args):
     model.eval()
     model = model.cuda()
     if not args.no_fp16:
-        model = model.half()
+        # Nemotron checkpoints (session N): bf16, the model's native dtype and the training compute dtype
+        # (and Qwen3-Embedding checkpoints, 2026-11-15: bf16 as in training)
+        model = model.to(torch.bfloat16) if getattr(model, "_retriever", "inf") in ("nemotron", "qwen3") else model.half()
 
     return model, tokenizer, use_finetuned
+
+
+def _nemotron():
+    from training.inf_retriever.src import nemotron
+    return nemotron
+
+
+def _qwen3():
+    from training.inf_retriever.src import qwen3emb
+    return qwen3emb
 
 
 def _maybe_normalize_text(q: str, args) -> str:
@@ -111,13 +138,30 @@ def embed_queries_single(args, queries, model, tokenizer):
         batch_dict = tokenizer(batch, max_length=max_length, padding=True, truncation=True, return_tensors='pt')
         for k, v in batch_dict.items():
             batch_dict[k] = v.to(model.device)
-        outputs = model(**batch_dict)
+        # checkpoints trained with --force_causal embed queries with causal attention, as in training
+        # (Nemotron: causality is in the encoder's config, set by NemotronMixin; no per-call kwarg)
+        causal_kw = {"is_causal": True} if getattr(model, "_force_causal", False) and not nemo else {}
+        outputs = model(**batch_dict, **causal_kw)
+        if nemo and not getattr(model, "_force_causal", False):  # Nemotron: mean pooling, as in training
+            return _nemotron().mean_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
+        if nemo:  # Nemotron --force_causal: causal encoder (config) + last-token pooling, as in training
+            assert model.config.is_causal is True, "causal Nemotron checkpoint loaded with a bidirectional encoder"
+            return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
+        if getattr(model, "_retriever", "inf") == "qwen3":  # bf16 (numpy has none)
+            return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).float().cpu().numpy()
         return last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask']).cpu().numpy()
 
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
+    # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
+    # base model's 'Given a web search query, ...' instruction, which training never used.
+    task = args.query_instruct_task
     model.eval()
     embeddings, batch_question = [], []
     max_length = 1024
+    nemo = getattr(model, "_retriever", "inf") == "nemotron"
+    if nemo:
+        get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
+    if getattr(model, "_retriever", "inf") == "qwen3":  # 'Instruct: <task>\nQuery:<q>' (no space)
+        get_detailed_instruct = _qwen3().get_detailed_instruct
 
     for q in queries:
         if args.lowercase:
@@ -228,8 +272,14 @@ def embed_queries_multi(args, queries, model, tokenizer):
     def get_detailed_instruct(task_description: str, query: str) -> str:
         return f'Instruct: {task_description}\nQuery: {query}'
 
-    task = 'Given a web search query, retrieve relevant passages that answer the query'
+    # Must match training (training/inf_retriever/src/finetuning_data.py); was hard-coded to the
+    # base model's 'Given a web search query, ...' instruction, which training never used.
+    task = args.query_instruct_task
     max_length = 1024
+    if getattr(model, "_retriever", "inf") == "nemotron":  # 'query: <q>'; generate() pools with the model's mean pool
+        get_detailed_instruct = lambda task, q: _nemotron().format_query(q)
+    if getattr(model, "_retriever", "inf") == "qwen3":  # 'Instruct: <task>\nQuery:<q>' (no space)
+        get_detailed_instruct = _qwen3().get_detailed_instruct
     if args.max_new_tokens is None:
         raise ValueError("max_new_tokens must be set explicitly for multi-query embedding -- see retrieval_inf.py's --max_new_tokens help text.")
     max_new_tokens = args.max_new_tokens
@@ -274,6 +324,8 @@ def embed_queries_multi(args, queries, model, tokenizer):
             q_position_ids.to(device),
             max_new_tokens=max_new_tokens,
         )
+        if batch_emb.dtype == torch.bfloat16:  # Nemotron runs in bf16, which numpy lacks
+            batch_emb = batch_emb.float()
         return batch_emb.cpu().numpy()
 
     for q in queries:
@@ -290,8 +342,7 @@ def embed_queries_multi(args, queries, model, tokenizer):
         all_embeddings.append(_process_batch(batch_question))
 
     embeddings = np.concatenate(all_embeddings, axis=0)  # (num_queries, k, hidden_dim)
-    norms = np.linalg.norm(embeddings, axis=-1, keepdims=True)
-    embeddings = embeddings / np.maximum(norms, 1e-12)
+    embeddings = normalize_np(embeddings, p=2, dim=-1)  # same fp16 overflow guard (audit R2)
     print(f"Multi-query embeddings shape: {embeddings.shape}")
     return embeddings
 
@@ -303,12 +354,27 @@ def main(args):
         raise AssertionError("No data paths found")
     print("Loading data from data_paths", data_paths)
 
-    # Load model
-    model, tokenizer, use_finetuned = load_model_and_tokenizer(args)
+    # Two-stage retrieval (session N, 2026-11-12): an environment whose faiss has no GPU support (the Nemotron
+    # overlay) embeds the queries with --embed_only (saved to --save_query_embeddings, then exit); the nli
+    # environment then searches with --load_query_embeddings (no model; (n, k, d) = multi-query, (n, d) = single).
+    if args.embed_only and not args.save_query_embeddings:
+        raise ValueError("--embed_only needs --save_query_embeddings")
+    loaded_qemb = None
+    if args.load_query_embeddings:
+        loaded_qemb = np.load(args.load_query_embeddings)
+        model, tokenizer, use_finetuned = None, None, True
+        print(f"Loaded query embeddings {loaded_qemb.shape} from {args.load_query_embeddings} (no model)")
+    else:
+        # Load model
+        model, tokenizer, use_finetuned = load_model_and_tokenizer(args)
+    is_multi = (loaded_qemb.ndim == 3) if loaded_qemb is not None else (
+        use_finetuned and getattr(model, '_is_multi_query', False))
 
     # Load passages
-    passages = load_passages(args.passages)
-    passage_id_map = {x["id"]: x for x in passages}
+    passage_id_map = None
+    if not args.embed_only:
+        passages = load_passages(args.passages)
+        passage_id_map = {x["id"]: x for x in passages}
 
     # Inference
     for path in data_paths:
@@ -319,7 +385,12 @@ def main(args):
         print("start embedding queries")
         queries = [ex.get("question") or ex.get("question_text") or "" for ex in data]
 
-        if use_finetuned:
+        if loaded_qemb is not None:
+            assert loaded_qemb.shape[0] == len(queries), (loaded_qemb.shape, len(queries))
+            if is_multi and args.max_new_tokens is not None:
+                assert loaded_qemb.shape[1] == args.max_new_tokens, (loaded_qemb.shape, args.max_new_tokens)
+            questions_embedding = loaded_qemb
+        elif use_finetuned:
             assert tokenizer is not None
             if getattr(model, '_is_multi_query', False):
                 if args.max_new_tokens is None:
@@ -357,7 +428,52 @@ def main(args):
             np.save(os.path.join(args.output_dir, f"questions_embeddings_{Path(path).stem}.npy"), questions_embedding)
             return
 
-        if use_finetuned and getattr(model, '_is_multi_query', False):
+        if args.save_query_embeddings:
+            # same embeddings retrieval uses below: (n, k, d) multi-query, (n, d) otherwise; L2-normalized
+            os.makedirs(os.path.dirname(args.save_query_embeddings) or ".", exist_ok=True)
+            np.save(args.save_query_embeddings, np.asarray(questions_embedding, dtype=np.float32))
+            print(f"Saved query embeddings {questions_embedding.shape} to {args.save_query_embeddings}")
+            if args.embed_only:
+                return
+
+        if is_multi and args.save_per_step:
+            # Search with all k embeddings in one pass over the index (exact IndexFlatIP, so each
+            # list equals a separate search) and save every embedding's own ranked list, plus the
+            # passages they contain, so any k' <= k and any aggregation can be scored offline
+            # (tools/kagg_eval.py). Step j's embedding does not depend on how many steps follow.
+            n_q, k_emb, dim = questions_embedding.shape
+            flat = retrieve(
+                questions_embedding.reshape(n_q * k_emb, dim),
+                args.num_shards,
+                args.passages_embeddings,
+                passage_id_map,
+                embedding_size=args.projection_size,
+                top_k_per_query=args.n_docs,
+                top_k=args.n_docs,
+                save_or_load_index=args.save_or_load_index,
+                use_gpu=args.use_gpu,
+                n_subquantizers=args.n_subquantizers,
+                n_bits=args.n_bits,
+            )
+            used = set()
+            with open(args.save_per_step, "w") as fout:
+                for qi, ex in enumerate(data):
+                    lists = []
+                    for ki in range(k_emb):
+                        ids, scores = flat[qi * k_emb + ki]
+                        lists.append({"ids": [str(i) for i in ids], "scores": [float(x) for x in scores]})
+                        used.update(str(i) for i in ids)
+                    fout.write(json.dumps({"question": queries[qi], "lists": lists}) + "\n")
+            with open(args.save_per_step + ".passages.jsonl", "w") as fout:
+                for pid in sorted(used):
+                    p = passage_id_map[pid]
+                    fout.write(json.dumps({"id": pid, "title": p.get("title", ""), "text": p.get("text", "")}) + "\n")
+            print(f"Saved per-step lists ({k_emb} per query) to {args.save_per_step}")
+            # Also write the usual aggregated output, merged from the same lists (no second search).
+            all_results = [[flat[qi * k_emb + ki] for qi in range(n_q)] for ki in range(k_emb)]
+            agg_fn = aggregate_rrf if args.agg_func == "rrf" else aggregate_round_robin
+            top_ids_and_scores = agg_fn(all_results, args.n_docs)
+        elif is_multi:
             k_emb = questions_embedding.shape[1]
             all_results = []
             for ki in range(k_emb):
@@ -464,5 +580,26 @@ if __name__ == "__main__":
         choices=["round_robin", "rrf"],
         help="Aggregation function for multi-query results (multi-query mode only)",
     )
+    parser.add_argument(
+        "--save_per_step",
+        type=str,
+        default=None,
+        help="Multi-query only: save each generated embedding's own top-n_docs list to this jsonl "
+             "(and the passages they contain to <path>.passages.jsonl) in addition to the aggregated "
+             "output, for offline scoring of every k' <= max_new_tokens and aggregation.",
+    )
+    parser.add_argument(
+        "--save_query_embeddings",
+        type=str,
+        default=None,
+        help="Also save the query embeddings (.npy, float32) and continue with retrieval as usual; "
+             "read by training/inf_retriever/tools/geometry_eval.py.",
+    )
+    parser.add_argument("--embed_only", action="store_true",
+                        help="Save the query embeddings (--save_query_embeddings) and exit, without loading passages "
+                             "or searching (first stage of two-stage retrieval).")
+    parser.add_argument("--load_query_embeddings", type=str, default=None,
+                        help="Search with these saved query embeddings (.npy) instead of loading a model "
+                             "(second stage); --model_name_or_path is then only a label.")
     args = parser.parse_args()
     main(args)

@@ -1,0 +1,98 @@
+{
+ "S0_single_10k_2step_causal_rseed1_s9000": {
+  "single": {
+   "test": [
+    34.84,
+    62.89
+   ],
+   "test_large": [
+    25.0,
+    52.38
+   ],
+   "test_small": [
+    50.0,
+    73.82
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed1_s8000": {
+  "single": {
+   "test": [
+    34.27,
+    63.21
+   ],
+   "test_large": [
+    23.21,
+    52.19
+   ],
+   "test_small": [
+    50.56,
+    74.42
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed1_s6000": {
+  "single": {
+   "test": [
+    34.27,
+    62.81
+   ],
+   "test_large": [
+    22.02,
+    51.9
+   ],
+   "test_small": [
+    50.56,
+    73.75
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed2_s10000": {
+  "single": {
+   "test": [
+    35.22,
+    63.36
+   ],
+   "test_large": [
+    25.0,
+    53.07
+   ],
+   "test_small": [
+    50.0,
+    74.44
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed2_s9000": {
+  "single": {
+   "test": [
+    34.84,
+    63.44
+   ],
+   "test_large": [
+    24.4,
+    53.15
+   ],
+   "test_small": [
+    50.0,
+    74.74
+   ]
+  }
+ },
+ "S0_single_10k_2step_causal_rseed2_s8000": {
+  "single": {
+   "test": [
+    35.59,
+    63.76
+   ],
+   "test_large": [
+    25.6,
+    53.12
+   ],
+   "test_small": [
+    50.56,
+    74.98
+   ]
+  }
+ }
+}

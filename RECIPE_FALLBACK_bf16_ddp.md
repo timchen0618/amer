@@ -4,6 +4,13 @@
 `multi_hungarian` (AmbigQA) results. Keep it as the fallback until a clean recipe beats it.
 Verified 2026-09-23/24; git tag `fallback-bf16-ddp`.
 
+> **Reproduce this only from the tag.** Since branch `fsdp-clean-recipe`, the training code
+> always uses mixed precision (fp32 weights + fp32 AdamW, bf16 autocast), steps the LR scheduler
+> once per step, and seeds a rank-consistent data order. It has no pure-bf16 mode, so the current
+> code cannot reproduce this recipe. Use the tagged code, e.g.
+> `git worktree add ../autoregressive-fallback fallback-bf16-ddp`, and run the scripts from there.
+> Relative output paths (`checkpoints/`, `results/`, `sbatch_outputs/`) then land inside the worktree.
+
 Full investigation (narrative, evidence, all tables):
 https://claude.ai/code/artifact/ee8584b3-851e-4d5a-b7d4-a8f1a0c7e28e
 

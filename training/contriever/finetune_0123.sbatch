@@ -8,7 +8,7 @@
 #SBATCH --job-name=tune-0123
 #SBATCH --output=/scratch/dq2024/diverse_retriever/training/contriever/standard/out_files/standard-finetune-0123.out
 #SBATCH --gres=gpu:4
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 
 if [[ -e /dev/nvidia0 ]]; then nv="--nv"; fi
 

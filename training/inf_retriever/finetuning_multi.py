@@ -2,6 +2,18 @@
 
 import pdb
 import os
+# Must be set before the first CUDA allocation. Mixed precision keeps fp32 weights,
+# grads and AdamW state on every GPU (~21 GB more than pure bf16 for this 1.5B model),
+# so memory is tight; expandable segments reduce allocator fragmentation. Does not
+# change numerics. On this cluster it only takes effect in single-process runs: with
+# 2 processes (DDP/FSDP) PyTorch prints "expandable_segments not supported on this
+# platform" and ignores it (harmless).
+# Measured on H200 (2026-09-25): DDP and 1-GPU still OOM at 50 examples/GPU; DDP fits
+# at 40/GPU; FSDP fits at 50/GPU.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+import random
+import hashlib
+from collections import Counter
 import time
 import sys
 import torch
@@ -26,8 +38,8 @@ import wandb
 from tqdm import tqdm
 
 # add accelerator
-from accelerate import Accelerator, InitProcessGroupKwargs
-from accelerate.utils import LoggerType
+from accelerate import Accelerator, InitProcessGroupKwargs, DistributedDataParallelKwargs
+from accelerate.utils import LoggerType, DistributedType
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -206,6 +218,7 @@ def prepare_data(opt, tokenizer):
     if opt.training_mode == 'multi' and hasattr(train_dataset, 'gold_counts') and train_dataset.gold_counts:
         train_batch_sampler = finetuning_data.GoldLengthGroupedBatchSampler(
             train_dataset.gold_counts, opt.per_gpu_batch_size, drop_last=True, shuffle=True,
+            seed=opt.seed,
         )
         train_dataloader = DataLoader(
             train_dataset,
@@ -483,7 +496,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             model = inbatch.EmbeddingModelDocEncNoProj(opt, None, None)
     else:
         raise NotImplementedError
-    model.load_state_dict(state_dict, strict=True)
+    inbatch.load_model_state(model, state_dict)  # strict, except a frozen doc-encoder copy may be absent
     model.eval()
     model = model.to(device)
     print('finish getting model')
@@ -495,11 +508,23 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
 
     # Multi-embedding diagnostics
     multi_step_correct = {}   # step_j -> total correct across all batches
+    multi_step_count = {}     # step_j -> number of queries with more than j golds (the ones that have a step j)
     multi_step_total = 0
+    # Gold coverage of the k free-running embeddings (2026-10-13): share of a query's golds that
+    # are the top-1 (cover1) / in the top 5 (cover5) of at least one embedding, over the in-batch pool.
+    total_cover1 = 0.0
+    total_cover5 = 0.0
+    total_all_cover5 = 0
     total_pairwise_sim = 0.0
     total_pairwise_count = 0
     total_same_top1 = 0       # queries where all k embeddings retrieve the same top-1 doc
     total_top1_agree_frac = 0.0  # sum of (mode_count / k) per query
+    # Query/gold geometry (inbatch.geometry_stats): name -> [sum, count] over eval examples
+    geom = {}
+    def _add_geom(stats):
+        for name, (v, c) in stats.items():
+            acc_ = geom.setdefault(name, [0.0, 0])
+            acc_[0] += v; acc_[1] += c
 
     for i, batch in tqdm(enumerate(eval_loader)):
         batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
@@ -543,6 +568,7 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             )  # (bsz, nqe, hidden_dim)
             if opt.norm_query:
                 multi_embs = F.normalize(multi_embs, dim=-1)
+            _add_geom(inbatch.geometry_stats(multi_embs, g_emb.reshape(bsz, nqe, -1), n_emb))
 
             # Pairwise cosine similarity within each query's k embeddings
             if nqe > 1:
@@ -554,17 +580,29 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
 
             # Per-step accuracy: for step j, is top-1 retrieved doc any gold of that query?
             all_top1 = torch.zeros(bsz, nqe, dtype=torch.long, device=batch["q_tokens"].device)
+            hit1 = torch.zeros(bsz, nqe, dtype=torch.bool, device=batch["q_tokens"].device)  # [qi, gold]
+            hit5 = torch.zeros(bsz, nqe, dtype=torch.bool, device=batch["q_tokens"].device)
             for step_j in range(nqe):
                 if step_j not in multi_step_correct:
                     multi_step_correct[step_j] = 0
+                    multi_step_count[step_j] = 0
+                multi_step_count[step_j] += bsz
                 step_emb = multi_embs[:, step_j, :]  # (bsz, d)
                 step_scores = torch.einsum("id,jd->ij", step_emb, all_docs)  # (bsz, total_docs)
                 top1 = step_scores.argmax(dim=-1)  # (bsz,)
+                top5 = step_scores.topk(min(5, step_scores.size(1)), dim=-1).indices  # (bsz, 5)
                 all_top1[:, step_j] = top1
                 for qi in range(bsz):
                     pos_start = qi * nqe
                     pos_end = pos_start + nqe
                     multi_step_correct[step_j] += int(top1[qi].item() in range(pos_start, pos_end))
+                    if pos_start <= top1[qi].item() < pos_end:
+                        hit1[qi, top1[qi].item() - pos_start] = True
+                    in5 = top5[qi][(top5[qi] >= pos_start) & (top5[qi] < pos_end)] - pos_start
+                    hit5[qi, in5] = True
+            total_cover1 += hit1.float().mean(dim=1).sum().item()
+            total_cover5 += hit5.float().mean(dim=1).sum().item()
+            total_all_cover5 += hit5.all(dim=1).sum().item()
 
             # Mode collapse check: all k embeddings retrieve the same top-1 document
             same_top1 = (all_top1 == all_top1[:, :1]).all(dim=-1)  # (bsz,)
@@ -581,6 +619,8 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
             multi_step_total += bsz
 
         else:
+            # one gold per example in single-query eval, so only alignment (cosine to that gold) and gold_neg_cos
+            _add_geom(inbatch.geometry_stats(q_emb.unsqueeze(1), g_emb, n_emb))
             labels = torch.arange(0, bsz, device=q_emb.device, dtype=torch.long)
             argmax_idx = torch.argmax(scores, dim=1)
             total_correct += (argmax_idx == labels).sum().item()
@@ -610,10 +650,24 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
         log_dict["eval_repeat_pct"] = repeat_pct
         message.append(f"repeat_pct: {repeat_pct:.1f}%")
 
+        # Divided by the queries that have a step j (more than j golds); before 2026-10-13 this divided
+        # by all queries, which made accuracy appear to fall after j = 4 (the smallest gold count).
         for j in sorted(multi_step_correct):
-            step_acc = 100.0 * multi_step_correct[j] / multi_step_total
+            step_acc = 100.0 * multi_step_correct[j] / multi_step_count[j]
             log_dict[f"eval_step_{j}_acc"] = step_acc
             message.append(f"step_{j}_acc: {step_acc:.2f}%")
+
+        cover1 = 100.0 * total_cover1 / multi_step_total
+        cover5 = 100.0 * total_cover5 / multi_step_total
+        all_cover5 = 100.0 * total_all_cover5 / multi_step_total
+        log_dict.update({"eval_cover1": cover1, "eval_cover5": cover5, "eval_all_cover5": all_cover5})
+        message += [f"cover1: {cover1:.2f}%", f"cover5: {cover5:.2f}%", f"all_cover5: {all_cover5:.2f}%"]
+
+    for name in sorted(geom):
+        v = geom[name][0] / max(geom[name][1], 1)
+        log_dict[f"eval_{name}"] = v
+        if not name.startswith("step_"):
+            message.append(f"{name}: {v:.4f}")
 
     logger.info(" | ".join(message))
     accelerator.log(log_dict, step=step)
@@ -626,7 +680,73 @@ def evaluate(opt, state_dict, eval_loader, accelerator, step, device):
     del model
     torch.cuda.empty_cache()
 
-    return acc, mrr
+    return acc, mrr, log_dict
+
+
+# GRAD_DIAG_STEPS=N (environment, default 0 = off): for the first N steps, every rank logs one
+# "[graddiag]" JSON line before and after optimizer.step(): its local trainable tensors, how many
+# have a gradient, the local and global gradient L2 norm, the loss, and how many local trainable
+# tensors have optimizer state. Used to check that every rank trains its share of the weights under
+# FSDP (frozen doc-encoder classes, 2026-10-09) and to compare backends step by step.
+GRAD_DIAG_STEPS = int(os.environ.get("GRAD_DIAG_STEPS", "0"))
+
+
+def _grad_diag(accelerator, model, optimizer, step, loss, phase):
+    import json
+    import torch.distributed as dist
+    trainable = [p for p in model.parameters() if p.requires_grad and p.numel() > 0]
+    with_grad = [p for p in trainable if p.grad is not None]
+    local_sq = torch.zeros((), device=accelerator.device, dtype=torch.float64)
+    for p in with_grad:
+        local_sq += p.grad.detach().double().pow(2).sum()
+    global_sq = local_sq.clone()
+    sharded = accelerator.distributed_type == DistributedType.FSDP
+    if sharded and dist.is_initialized():
+        dist.all_reduce(global_sq)  # FSDP: each rank holds a disjoint shard of the gradient
+    with_state = sum(1 for p in trainable if len(optimizer.state.get(p, {})) > 0) if hasattr(optimizer, "state") else -1
+    rec = {"rank": accelerator.process_index, "step": step, "phase": phase,
+           "backend": str(accelerator.distributed_type), "loss": float(loss.detach()),
+           "trainable_tensors": len(trainable), "trainable_numel": sum(p.numel() for p in trainable),
+           "with_grad": len(with_grad), "local_grad_norm": float(local_sq.sqrt()),
+           "global_grad_norm": float(global_sq.sqrt()), "with_opt_state": with_state}
+    print("[graddiag] " + json.dumps(rec), flush=True)
+
+
+def build_accelerator(opt, log_with="wandb", ignored_modules=None):
+    """The training Accelerator (also used by tests/test_scheduler_stepping.py).
+
+    mixed_precision="bf16": bf16 autocast compute over the fp32 weights cast in main().
+    step_scheduler_with_optimizer=False: step the LR scheduler exactly once per
+    training step. accelerate's default steps it num_processes times per call,
+    which on 2 GPUs halved warmup and hit lr=0 at total_steps/2.
+    gradient_as_bucket_view=True (DDP only): gradients live directly in DDP's
+    all-reduce buckets instead of a second fp32 copy (~7 GB saved). Same math.
+    FSDP: an explicit MixedPrecision policy keeps bf16 parameters and buffers for the
+    forward/backward but reduce-scatters gradients in fp32. accelerate's default for
+    mixed_precision="bf16" also reduces in bf16, unlike DDP and 1-GPU, which reduce the
+    fp32 gradients (code audit 2026-09-28, L12). The other FSDP settings still come from
+    the accelerate config (the plugin reads them from the launcher's environment).
+    ignored_modules (FSDP only): modules kept out of FSDP, i.e. replicated on every rank and
+    never sharded. Used for the frozen doc-encoder copy (see finetuning()).
+    """
+    fsdp_plugin = None
+    if os.environ.get("ACCELERATE_USE_FSDP", "false") == "true":
+        from accelerate import FullyShardedDataParallelPlugin
+        from torch.distributed.fsdp import MixedPrecision
+        kw = {"ignored_modules": ignored_modules} if ignored_modules else {}
+        fsdp_plugin = FullyShardedDataParallelPlugin(mixed_precision_policy=MixedPrecision(
+            param_dtype=torch.bfloat16, reduce_dtype=torch.float32, buffer_dtype=torch.bfloat16), **kw)
+    return Accelerator(
+        gradient_accumulation_steps=opt.accumulation_steps,
+        mixed_precision="bf16",
+        step_scheduler_with_optimizer=False,
+        fsdp_plugin=fsdp_plugin,
+        log_with=log_with,
+        kwargs_handlers=[
+            InitProcessGroupKwargs(timeout=timedelta(seconds=3000)),
+            DistributedDataParallelKwargs(gradient_as_bucket_view=True),
+        ],
+    )
 
 
 def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
@@ -640,8 +760,18 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     #########
     # accelerate: multi-gpu training
     #########
-    accelerator = Accelerator(gradient_accumulation_steps=opt.accumulation_steps, mixed_precision="bf16", log_with="wandb", kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=3000))])
+    # Frozen doc-encoder copy (EmbeddingModelFrozenDocEnc*): kept out of FSDP. The model is one FSDP
+    # unit (accelerate config), so the copy used to be flattened together with the trainable encoder
+    # and split in half across the 2 ranks; being the second, equal-sized half, it made up nearly all
+    # of rank 1's shard, so rank 1 owned no trainable weights and got no gradients (2026-09-25). As an
+    # ignored module it is replicated on each rank in bf16 (it is never updated; under bf16 autocast
+    # the compute is the same), and FSDP shards only the trainable encoder, exactly as for the
+    # joint-doc-encoder runs.
+    frozen_doc = getattr(model, "doc_encoder", None)
+    accelerator = build_accelerator(opt, ignored_modules=[frozen_doc] if frozen_doc is not None else None)
     device = accelerator.device
+    if frozen_doc is not None:
+        frozen_doc.to(device=device, dtype=torch.bfloat16)
     
     wandb_config = {
         "tags": ['finetuning', opt.training_mode],
@@ -653,30 +783,76 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
     model, optimizer, train_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, scheduler
     )
-    
+
+    # Precision guard: training must be mixed precision (fp32 trainable weights)
+    # on every backend. Fails fast if a config/backend ever changes that silently.
+    trainable_dtypes = Counter(str(p.dtype) for p in model.parameters() if p.requires_grad)
+    frozen_dtypes = Counter(str(p.dtype) for p in model.parameters() if not p.requires_grad)
+    logger.warning(
+        f"[setup] rank={accelerator.process_index} distributed_type={accelerator.distributed_type} "
+        f"num_processes={accelerator.num_processes} mixed_precision={accelerator.mixed_precision} "
+        f"trainable_param_dtypes={dict(trainable_dtypes)} frozen_param_dtypes={dict(frozen_dtypes)}"
+    )
+    if accelerator.distributed_type == DistributedType.FSDP:
+        fp = accelerator.state.fsdp_plugin
+        mp = fp.mixed_precision_policy
+        logger.warning(f"[setup] FSDP mixed precision policy: {mp}; version={fp.fsdp_version} "
+                       f"sharding={fp.sharding_strategy} wrap={fp.auto_wrap_policy} state_dict={fp.state_dict_type} "
+                       f"use_orig_params={fp.use_orig_params} sync_module_states={fp.sync_module_states} "
+                       f"cpu_ram_efficient_loading={fp.cpu_ram_efficient_loading}")
+        if getattr(mp, "reduce_dtype", None) != torch.float32:
+            raise RuntimeError(f"FSDP must reduce gradients in fp32 (see build_accelerator); got {mp}")
+    if set(trainable_dtypes) != {"torch.float32"}:
+        raise RuntimeError(
+            f"Expected fp32 trainable weights (mixed precision), got {dict(trainable_dtypes)}"
+        )
+
+    # Phase C knob: decoupled L2-SP. Reference = the weights at step 0, captured after
+    # prepare() so they have the same (possibly FSDP-sharded) layout as the live params.
+    l2sp = getattr(opt, "l2sp_decay", 0.0)
+    if l2sp > 0:
+        l2sp_params = [p for p in model.parameters() if p.requires_grad]
+        l2sp_ref = [p.detach().clone() for p in l2sp_params]
+        logger.warning(f"[knobs] l2sp_decay={l2sp} over {sum(p.numel() for p in l2sp_params)} local weights")
+
     # get the state dict of the main model
     state_dict=accelerator.get_state_dict(model)
+
+    # --no_save_optimizer: checkpoints keep weights/opt/scheduler but not the AdamW state.
+    ckpt_optimizer = None if getattr(opt, "no_save_optimizer", False) else optimizer
 
     # Zero-shot ("untrained") baseline: eval the freshly-loaded model before any
     # optimizer step, and save it as a real checkpoint (step-0) so it can be
     # reloaded later (e.g. for corpus embedding generation) for comparison.
+    # The save respects --not_save (a fp32 checkpoint is ~7 GB).
     if accelerator.is_main_process:
         evaluate(opt, state_dict, eval_loader, accelerator, step, device)
-        utils.save_state_dict(
-            state_dict,
-            optimizer,
-            scheduler,
-            step,
-            opt,
-            opt.output_dir + opt.run_name,
-            f"step-{step}",
-        )
+        if not opt.not_save:
+            utils.save_state_dict(
+                state_dict,
+                ckpt_optimizer,
+                scheduler,
+                step,
+                opt,
+                opt.output_dir + opt.run_name,
+                f"step-{step}",
+            )
 
+    # Best eval MRR over the whole run (it used to reset every epoch, so
+    # best_model meant "best since the start of the current epoch").
+    best_eval_metric = 0
     while step < opt.total_steps:
         logger.info(f"Start epoch {epoch}, number of batches: {len(train_dataloader)}")
-        best_eval_metric = 0
         for i, batch in enumerate(train_dataloader):
             step += 1
+            if i == 0:
+                # Data-order fingerprint: differs between ranks (disjoint batches),
+                # identical across reruns with the same seed.
+                fp = hashlib.sha1(batch["q_tokens"].cpu().numpy().tobytes()).hexdigest()[:12]
+                logger.warning(
+                    f"[data] rank={accelerator.process_index} epoch={epoch} first_batch "
+                    f"size={batch['q_tokens'].shape[0]} q_tokens_sha1={fp}"
+                )
             if step % 50 == 0:
                 print(f"==> at global step {step}", flush=True)
             with accelerator.accumulate(model):
@@ -686,18 +862,49 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         
                 # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in batch.items()}
 
-                _sampling_rate = 1.0 if opt.full_sampling else step / opt.total_steps
-                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate)
+                _sampling_rate = 1.0 if opt.full_sampling else min(1.0, step / (opt.sampling_saturate_frac * opt.total_steps))
+                # --doc_grad_until N: after step N the documents are encoded without gradient (E3).
+                _doc_grad = opt.doc_grad_until <= 0 or step <= opt.doc_grad_until
+                train_loss, iter_stats = model(**batch, stats_prefix="train", sampling_rate=_sampling_rate, doc_grad=_doc_grad)
                 accelerator.backward(train_loss)
                 if opt.optim == "sam" or opt.optim == "asam":
                     optimizer.first_step(zero_grad=True)
-                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=_sampling_rate)
+                    sam_loss, _ = model(**batch, stats_prefix="train/sam_opt", sampling_rate=_sampling_rate, doc_grad=_doc_grad)
                     # sam_loss.backward()
                     accelerator.backward(sam_loss)
                     optimizer.second_step(zero_grad=True)
                 else:
+                    cur_lr = scheduler.get_last_lr()[0]
+                    if step <= GRAD_DIAG_STEPS:
+                        _grad_diag(accelerator, model, optimizer, step, train_loss, "pre_step")
                     optimizer.step()
+                    if step <= GRAD_DIAG_STEPS:
+                        _grad_diag(accelerator, model, optimizer, step, train_loss, "post_step")
+                    if l2sp > 0:
+                        with torch.no_grad():
+                            for p, p0 in zip(l2sp_params, l2sp_ref):
+                                p.sub_((p - p0) * (cur_lr * l2sp))
                 scheduler.step()
+
+                if step == 1:
+                    # AdamW state is created on the first step; it must be fp32 too.
+                    state_dtypes = Counter(
+                        str(v.dtype)
+                        for s in optimizer.state.values()
+                        for k, v in s.items()
+                        if torch.is_tensor(v) and k != "step"
+                    )
+                    logger.warning(f"[setup] rank={accelerator.process_index} optimizer_state_dtypes={dict(state_dtypes)}")
+                    if not state_dtypes:
+                        # No trainable parameter on this rank got a gradient, so this
+                        # rank updated nothing. Seen with the frozen-doc-encoder class
+                        # under FSDP (2026-09-25); train that class on 1 GPU.
+                        raise RuntimeError(
+                            f"rank {accelerator.process_index} has no optimizer state after the "
+                            f"first step: none of its trainable parameters received a gradient"
+                        )
+                    if set(state_dtypes) != {"torch.float32"}:
+                        raise RuntimeError(f"Expected fp32 optimizer state, got {dict(state_dtypes)}")
                 optimizer.zero_grad()
 
                 run_stats.update(iter_stats)
@@ -709,7 +916,9 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                         log += f" | {k}: {v:.3f}"
 
                     log += f" | lr: {scheduler.get_last_lr()[0]:0.3g}"
-                    log += f" | Memory: {torch.cuda.max_memory_allocated()//1e9} GiB"
+                    # Decimal GB (1e9 bytes); this was mislabelled "GiB" before. H200 = 150 GB.
+                    log += f" | Memory: {torch.cuda.max_memory_allocated()//1e9} GB"
+                    log += f" | MemReserved: {torch.cuda.max_memory_reserved()//1e9} GB"
 
                     logger.info(log)
                     wandb_stats = {k: float(v) for k, v in avg.items()}
@@ -719,19 +928,25 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                 if step % (opt.eval_freq * opt.accumulation_steps) == 0:
                     state_dict=accelerator.get_state_dict(model)
                     if accelerator.is_main_process:
-                        _, mrr = evaluate(opt, state_dict, eval_loader, accelerator, step, device)
+                        _, mrr, eval_log = evaluate(opt, state_dict, eval_loader, accelerator, step, device)
+                        # --select_metric: the score best_model is gated on. 'mrr' (default) is output 0's
+                        # in-batch MRR; for multi runs 'cover5' scores all k embeddings (2026-10-13).
+                        select_metric = getattr(opt, "select_metric", "mrr")
+                        if select_metric != "mrr" and f"eval_{select_metric}" not in eval_log:
+                            raise ValueError(f"--select_metric {select_metric} is not logged for this run")
+                        score = mrr if select_metric == "mrr" else eval_log[f"eval_{select_metric}"]
                         if opt.eval_recall:
                             precision_score, mrecall_score, recall_score = evaluate_recall(opt, model, tokenizer, device)
                             accelerator.log({"precision": precision_score, "mrecall": mrecall_score, "recall": recall_score}, step=step)    
                         
-                        if mrr > best_eval_metric:  # save only when gets better performance
-                            print('mrr', mrr, 'best eval metric', best_eval_metric)
-                            best_eval_metric = mrr
+                        if score > best_eval_metric:  # save only when gets better performance
+                            print(select_metric, score, 'best eval metric', best_eval_metric)
+                            best_eval_metric = score
                             if step % (opt.save_freq * opt.accumulation_steps) == 0 and dist_utils.get_rank() == 0:
-                                if (not opt.not_save) and accelerator.is_main_process:
+                                if (not opt.not_save) and (not getattr(opt, "no_save_best_model", False)) and accelerator.is_main_process:
                                     utils.save_state_dict(
                                         state_dict,
-                                        optimizer,
+                                        ckpt_optimizer,
                                         scheduler,
                                         step,
                                         opt,
@@ -749,7 +964,7 @@ def finetuning(opt, model, optimizer, scheduler, tokenizer, step):
                             if (not opt.not_save) and accelerator.is_main_process:
                                 utils.save_state_dict(
                                     state_dict,
-                                    optimizer,
+                                    ckpt_optimizer,
                                     scheduler,
                                     step,
                                     opt,
@@ -774,13 +989,29 @@ def main():
     options = Options()
     opt = options.parse()
 
+    # Seed every RNG identically on all ranks. Python `random` drives data
+    # sampling (gold shuffles, negatives, the eval subset); it used to be
+    # unseeded, so each rank drew different, non-reproducible samples.
+    random.seed(opt.seed)
+    np.random.seed(opt.seed)
     torch.manual_seed(opt.seed)
+    torch.cuda.manual_seed_all(opt.seed)
 
-    # set up output directory
-    directory_exists = os.path.isdir(opt.output_dir)        
+    # Flags that are parsed but have no effect in this script must not be set to anything else,
+    # or a run would silently do something other than what its command line says (audit L5).
+    if opt.continue_training:
+        raise ValueError("--continue_training is not implemented in finetuning_multi.py (there is no resume code)")
+    base_model = "infly/inf-retriever-v1-1.5b"
+    if opt.model_path not in ("none", base_model):
+        raise ValueError(f"--model_path {opt.model_path!r} is ignored: training always starts from {base_model}")
+    if opt.retriever_model_id not in (options.parser.get_default("retriever_model_id"), base_model):
+        raise ValueError(f"--retriever_model_id {opt.retriever_model_id!r} is ignored: the model is always {base_model}")
+
+    # set up output directory; log every option and write it to the run's own directory
+    # (output_dir is shared by all runs of a dataset, audit L11)
     os.makedirs(opt.output_dir, exist_ok=True)
-    if not directory_exists and dist_utils.is_main():
-        options.print_options(opt)
+    if int(os.environ.get("RANK", "0")) == 0:  # the process group does not exist yet
+        options.print_options(opt, out_dir=opt.output_dir + opt.run_name)
     
     # set up logging
     utils.init_logger(opt)
@@ -810,6 +1041,30 @@ def main():
     else:
         raise NotImplementedError
     tokenizer = model.tokenizer
+
+    # Mixed precision on every backend: fp32 master weights + fp32 AdamW state,
+    # bf16 autocast compute (Accelerator(mixed_precision="bf16") below). The
+    # model loads in bf16, so cast it here -- before the optimizer is built, so
+    # the AdamW moments are created in fp32 too. bf16 -> fp32 is exact.
+    # Without this cast, DDP/1-GPU silently trained in pure bf16 (most updates
+    # rounded away) while FSDP upcast to fp32 -- see RECIPE_FALLBACK_bf16_ddp.md.
+    model.to(torch.float32)
+    if hasattr(model, "doc_encoder"):
+        # The frozen doc-encoder copy is never updated, so bf16 is enough. Under FSDP it is an
+        # ignored module (not sharded, see finetuning()), cast to bf16 and moved to the GPU there.
+        model.doc_encoder.to(torch.bfloat16)
+
+    # Phase C knobs: freeze parts of the trainable encoder (before the optimizer is built).
+    if getattr(opt, "freeze_norms", False) or getattr(opt, "freeze_embeddings", False):
+        n_frozen = 0
+        for name, p in model.named_parameters():
+            if name.startswith("doc_encoder."):
+                continue
+            is_norm = name.endswith("norm.weight") or "layernorm" in name
+            is_emb = "embed_tokens" in name or name.startswith("embedding.")
+            if (opt.freeze_norms and is_norm) or (opt.freeze_embeddings and is_emb):
+                p.requires_grad_(False); n_frozen += p.numel()
+        logger.warning(f"[knobs] freeze_norms={opt.freeze_norms} freeze_embeddings={opt.freeze_embeddings}: froze {n_frozen} weights")
 
     # set up optimizers
     optimizer, scheduler = utils.set_optim(opt, model)

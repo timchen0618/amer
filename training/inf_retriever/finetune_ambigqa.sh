@@ -8,7 +8,7 @@
 #SBATCH --output=sbatch_outputs/ambigqa_infly_embedding_model_doc_enc_multi_hungarian.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=hc3337@nyu.edu
-#SBATCH --account=torch_pr_152_courant
+#SBATCH --account=torch_pr_152_echoi
 #SBATCH --constraint=h200
 #SBATCH --gres=gpu:2
 
@@ -57,7 +57,7 @@ accumulation_steps=1
 max_positive_documents=1
 num_workers=2
 
-accelerate launch --main_process_port 29501 training/inf_retriever/finetuning_multi.py \
+accelerate launch --config_file training/inf_retriever/accelerate_config_2gpu_ddp.yaml --main_process_port 29501 training/inf_retriever/finetuning_multi.py \
     --train_data \$data_dir/train_data.jsonl \
     --eval_data \$data_dir/dev_data.jsonl \
     --temperature \$temperature \

@@ -1,0 +1,186 @@
+{
+ "single|sel": [
+  {
+   "step": 10000,
+   "dev": 51.16,
+   "test": 35.22,
+   "test_large": 25.0,
+   "test_small": 49.44
+  },
+  {
+   "step": 9000,
+   "dev": 51.2,
+   "test": 34.84,
+   "test_large": 25.0,
+   "test_small": 50.0
+  },
+  {
+   "step": 10000,
+   "dev": 51.08,
+   "test": 35.22,
+   "test_large": 25.0,
+   "test_small": 50.0
+  }
+ ],
+ "cap|sel": [
+  {
+   "step": 10000,
+   "dev": 50.63,
+   "test": 33.52,
+   "test_large": 27.38,
+   "test_small": 44.44
+  },
+  {
+   "step": 8000,
+   "dev": 49.49,
+   "test": 33.15,
+   "test_large": 23.81,
+   "test_small": 47.22
+  },
+  {
+   "step": 9000,
+   "dev": 49.9,
+   "test": 29.94,
+   "test_large": 23.21,
+   "test_small": 40.56
+  }
+ ],
+ "no-cap|sel": [
+  {
+   "step": 9000,
+   "dev": 49.78,
+   "test": 32.77,
+   "test_large": 25.0,
+   "test_small": 45.56
+  },
+  {
+   "step": 9000,
+   "dev": 49.82,
+   "test": 33.9,
+   "test_large": 25.0,
+   "test_small": 47.22
+  },
+  {
+   "step": 9000,
+   "dev": 50.06,
+   "test": 33.15,
+   "test_large": 25.0,
+   "test_small": 45.0
+  }
+ ],
+ "no-cap io_proj|sel": [
+  {
+   "step": 7000,
+   "dev": 49.61,
+   "test": 34.27,
+   "test_large": 25.0,
+   "test_small": 47.78
+  },
+  {
+   "step": 9000,
+   "dev": 49.65,
+   "test": 31.83,
+   "test_large": 23.21,
+   "test_small": 44.44
+  },
+  {
+   "step": 9000,
+   "dev": 49.49,
+   "test": 32.02,
+   "test_large": 23.81,
+   "test_small": 43.33
+  }
+ ],
+ "single|10000": [
+  {
+   "step": 10000,
+   "dev": 51.16,
+   "test": 35.22,
+   "test_large": 25.0,
+   "test_small": 49.44
+  },
+  {
+   "step": "10000 (collapsed)",
+   "dev": null,
+   "test": null,
+   "test_large": null,
+   "test_small": null
+  },
+  {
+   "step": 10000,
+   "dev": 51.08,
+   "test": 35.22,
+   "test_large": 25.0,
+   "test_small": 50.0
+  }
+ ],
+ "cap|10000": [
+  {
+   "step": 10000,
+   "dev": 50.63,
+   "test": 33.52,
+   "test_large": 27.38,
+   "test_small": 44.44
+  },
+  {
+   "step": 10000,
+   "dev": 49.25,
+   "test": 32.96,
+   "test_large": 23.81,
+   "test_small": 47.22
+  },
+  {
+   "step": 10000,
+   "dev": 49.29,
+   "test": 30.51,
+   "test_large": 23.81,
+   "test_small": 41.11
+  }
+ ],
+ "no-cap|10000": [
+  {
+   "step": 10000,
+   "dev": 49.74,
+   "test": 32.58,
+   "test_large": 25.0,
+   "test_small": 45.0
+  },
+  {
+   "step": 10000,
+   "dev": 49.45,
+   "test": 34.09,
+   "test_large": 25.6,
+   "test_small": 47.22
+  },
+  {
+   "step": 10000,
+   "dev": 49.78,
+   "test": 32.58,
+   "test_large": 25.0,
+   "test_small": 43.33
+  }
+ ],
+ "no-cap io_proj|10000": [
+  {
+   "step": 10000,
+   "dev": 49.41,
+   "test": 30.89,
+   "test_large": 22.62,
+   "test_small": 44.44
+  },
+  {
+   "step": 10000,
+   "dev": 49.25,
+   "test": 31.64,
+   "test_large": 23.81,
+   "test_small": 43.89
+  },
+  {
+   "step": 10000,
+   "dev": 49.45,
+   "test": 31.83,
+   "test_large": 23.81,
+   "test_small": 43.89
+  }
+ ]
+}

@@ -1,0 +1,158 @@
+#!/bin/bash
+# Full-corpus evaluation queue for one dataset (step 5 / phase C). Processes candidates
+# listed in results/phaseC/full_queue_<ds>.txt ("<tag> <checkpoint dir> <k or ->" per line),
+# taking the first unclaimed one whose checkpoint is fully written: embed the full corpus once,
+# retrieve for BOTH the dev set (selection) and the test set (reporting), score both, then delete
+# the embeddings. New lines can be appended while it runs; a line "END" stops it once everything
+# before it is done.
+#
+# Several workers may run on one queue (2026-09-30: two per dataset). Each claims a candidate by
+# creating results/phaseC/full/<ds>/.claims/<tag>/ (mkdir is atomic) and records its job ids there,
+# so no two workers submit the same checkpoint. Each worker keeps one embedding set (~75 GB) on
+# disk at a time.
+#
+# Usage (repo root, run detached):
+#   WORKER=a bash training/inf_retriever/tools/full_eval_queue.sh <qampari|ambigqa>
+#   QUEUE=results/phaseC/full_queue_qampari_v2.txt DEV_TAG=cleanv2 WORKER=a bash .../full_eval_queue.sh qampari
+#   RESUME="<tag> <embed job> <dev job> <test job>" WORKER=a bash .../full_eval_queue.sh <ds>
+#     (adopt an eval that is already submitted: wait for its jobs, score it, then continue)
+set -u
+cd /scratch/hc3337/projects/autoregressive
+DS=$1; T=training/inf_retriever/tools
+WORKER=${WORKER:-a}; RESUME=${RESUME:-}
+# PER_STEP=1: multi-query evals also save per-embedding lists and score every k <= K with
+# round-robin and RRF (tools/kagg_eval.py) into <base>/{dev,test}_kagg.json. The id lists are kept (small, and
+# only recoverable by re-embedding the corpus) for later rescoring, e.g. on a question subset; the passage-text
+# files next to them are deleted (large, rebuildable from the corpus by id).
+PER_STEP=${PER_STEP:-0}
+# GEOM=1 (default): retrieval also saves the query embeddings, and before the corpus embeddings are
+# deleted tools/geometry_eval.py writes query/gold geometry (alignment, query and gold pairwise cosine,
+# nearest-sibling rank) to <base>/{dev,test}_geom.json. A failure is logged and does not stop the queue.
+GEOM=${GEOM:-1}
+# SHARED_EMB=<dir>: frozen-doc-encoder checkpoints (wave 3, cells A/C) all embed the corpus with the
+# same frozen base retriever, so one corpus embedding (gen_embed_ckpt.sbatch with the base model at
+# 512 tokens) serves every eval of the queue: no per-checkpoint embedding job, retrieval starts at
+# once, and the shared embedding is never deleted. Only for queues whose checkpoints all have a
+# frozen doc encoder.
+SHARED_EMB=${SHARED_EMB:-}
+# QUEUE: the queue file, default results/phaseC/full_queue_<ds>.txt (the 24-run grid); other run
+# families get their own (grid_launch.sh PREFIX=...), started with the matching DEV_TAG.
+Q=${QUEUE:-results/phaseC/full_queue_$DS.txt}; touch $Q
+CLAIMS=results/phaseC/full/$DS/.claims; mkdir -p $CLAIMS
+LOG=results/phaseC/phaseC.log
+# Clean dev sets (500 each; data_creation/build_clean_splits.py). DEV_TAG="" = phase A dev sets.
+DEV_TAG=${DEV_TAG-clean}
+if [ -n "$DEV_TAG" ]; then DEV=data/phaseA/${DS}_${DEV_TAG}dev500.jsonl
+else DEV=$( [ $DS = qampari ] && echo data/phaseA/qampari_dev500.jsonl || echo data/phaseA/ambigqa_dev300.jsonl ); fi
+GOLD=""; [ $DS = ambigqa ] && GOLD="--no-gold-id"
+IMG=/share/apps/images/cuda12.1.1-cudnn8.9.0-devel-ubuntu22.04.2.sif
+log() { echo "[$(date '+%F %T')] [fullq_$DS] $*" | tee -a "$LOG" >&2; }
+# squeue can come back empty while the controller is busy, so confirm with sacct before calling a
+# job finished; an unknown state counts as active (worst case: one more poll).
+JOB_ACTIVE_STATES='^(PENDING|RUNNING|CONFIGURING|COMPLETING|REQUEUED|RESIZING|SUSPENDED)'
+active() {
+  squeue -h -j "$1" 2>/dev/null | grep -q . && return 0
+  local st; st=$(sacct -j "$1" -X -n -o State 2>/dev/null | tr -d ' ')
+  [ -z "$st" ] && return 0
+  echo "$st" | grep -qE "$JOB_ACTIVE_STATES"
+}
+ok_all() { [ "$(sacct -j "$1" -X -n -o State 2>/dev/null | tr -d ' ' | grep -vc '^COMPLETED$')" = 0 ]; }
+evalf() {  # $1 data $2 results jsonl $3 metrics out
+  # Scoring only needs the retrieval output, which stays on disk, so a failed srun is retried here
+  # instead of redoing the 2-3 h embedding (code audit 2026-09-28, G11).
+  local try
+  for try in 1 2 3; do
+    srun --account=torch_pr_152_echoi --time=00:30:00 --mem=32G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/div.ext3:ro $IMG \
+      bash -c "source /ext3/env.sh; cd /scratch/hc3337/projects/autoregressive; python eval.py --data_path $1 --topk 100 10 $GOLD --input-file $2" > $3 2>&1
+    grep -q MRecall $3 && return 0
+    log "WARNING: scoring $2 failed (attempt $try of 3)"; sleep 60
+  done
+  return 1
+}
+geom() {  # $1 tag $2 base $3 corpus embedding dir; runs while the embeddings still exist
+  local tag=$1 base=$2 emb=$3 set data
+  for set in dev test; do
+    data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
+    [ -s $base/${set}_qemb.npy ] || { log "GEOM $tag $set: no query embeddings saved; skipped"; continue; }
+    srun --account=torch_pr_152_echoi --partition=cpu_short --time=02:00:00 --mem=96G --cpus-per-task=16 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+      bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/geometry_eval.py --qemb $base/${set}_qemb.npy --emb_glob '$emb/passages_*' --data $data --out $base/${set}_geom.json" > $base/${set}_geom.log 2>&1 \
+      && log "GEOM $tag $set: $(tail -1 $base/${set}_geom.log)" \
+      || log "ERROR: $tag $set geometry failed (see $base/${set}_geom.log); continuing"
+  done
+}
+# Wait for one submitted eval, score it, delete its embeddings. Returns 1 on failure (logged).
+finish() {  # $1 tag $2 embed job $3 dev job $4 test job
+  local tag=$1 ej=$2 rd=$3 rt=$4
+  local base=results/phaseC/full/$DS/$tag emb=wikipedia_embeddings/$DS/full_$tag
+  [ -n "$SHARED_EMB" ] && emb=$SHARED_EMB
+  if [ "$ej" != shared ]; then
+    while active $ej; do sleep 120; done
+    ok_all $ej || { log "ERROR: $tag embedding failed; embeddings kept at $emb"; return 1; }
+  fi
+  while active $rd || active $rt; do sleep 60; done
+  if [ -s $base/dev/$DS.jsonl ] && [ -s $base/test/$DS.jsonl ]; then
+    [ "$GEOM" = 1 ] && geom $tag $base $emb
+    [ -n "$SHARED_EMB" ] || rm -rf $emb   # a shared corpus embedding is kept for the next eval
+  else log "ERROR: $tag retrieval missing output; embeddings kept at $emb"; return 1; fi
+  evalf $DEV $base/dev/$DS.jsonl $base/dev/eval_metrics.txt || { log "ERROR: $tag dev scoring failed"; return 1; }
+  evalf data/amer_data/eval_data/$DS.jsonl $base/test/$DS.jsonl $base/test/eval_metrics.txt || { log "ERROR: $tag test scoring failed"; return 1; }
+  log "RESULT full $tag: DEV $(grep -m1 MRecall $base/dev/eval_metrics.txt | cut -d'|' -f1-2) | TEST $(grep -m1 MRecall $base/test/eval_metrics.txt | cut -d'|' -f1-2)"
+  if [ -s $base/dev_steps.jsonl ] && [ -s $base/test_steps.jsonl ]; then   # PER_STEP=1, multi-query
+    local kmax; kmax=$( [ $DS = qampari ] && echo 5 || echo 2 )
+    local ok=1
+    for set in dev test; do
+      local data=$DEV; [ $set = test ] && data=data/amer_data/eval_data/$DS.jsonl
+      srun --account=torch_pr_152_echoi --time=01:00:00 --mem=48G --cpus-per-task=4 singularity exec --overlay /scratch/hc3337/envs/nli.ext3:ro $IMG \
+        bash -c "source /ext3/env.sh; conda activate nli; cd /scratch/hc3337/projects/autoregressive; python training/inf_retriever/tools/kagg_eval.py --ds $DS --per_step $base/${set}_steps.jsonl --data $data --ks $(seq -s ' ' 1 $kmax) --aggs round_robin rrf --out $base/${set}_kagg.json" > $base/${set}_kagg.log 2>&1
+      local rc=$?; [ $rc = 0 ] || echo "srun returned $rc (output is validated below)" >> $base/${set}_kagg.log
+      # judge by the output, not srun's return code: srun has returned nonzero for steps that COMPLETED 0:0
+      # with full output (2026-10-10/11, three times)
+      python3 -c "import json,sys; sys.exit(len(json.load(open('$base/${set}_kagg.json'))['results']) != 2*$kmax)" 2>/dev/null || ok=0
+    done
+    if [ $ok = 1 ]; then
+      rm -f $base/dev_steps.jsonl.passages.jsonl $base/test_steps.jsonl.passages.jsonl; log "KAGG $tag: k=1..$kmax round-robin/RRF scores in $base/{dev,test}_kagg.json"
+    else log "ERROR: $tag k/aggregation scoring failed (per-step lists kept; see $base/*_kagg.log)"; fi
+  fi
+}
+
+if [ -n "$RESUME" ]; then
+  read -r rtag rej rrd rrt <<< "$RESUME"
+  mkdir -p $CLAIMS/$rtag; echo "$rej $rrd $rrt worker=$WORKER" > $CLAIMS/$rtag/jobs
+  log "worker $WORKER: resuming $rtag (embed $rej -> dev $rrd, test $rrt)"
+  finish $rtag $rej $rrd $rrt || exit 1
+fi
+
+while true; do
+  line=""
+  while read -r tag ck k; do
+    [ -z "$tag" ] && continue
+    [ "$tag" = END ] && { line=END; break; }
+    grep -q MRecall results/phaseC/full/$DS/$tag/test/eval_metrics.txt 2>/dev/null && continue
+    [ -d $CLAIMS/$tag ] && continue
+    f=$ck/checkpoint.pth   # ready = fully written: exists and unchanged for 2+ minutes
+    [ -f "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -gt 120 ] || continue
+    mkdir $CLAIMS/$tag 2>/dev/null || continue   # another worker claimed it first
+    line="$tag $ck $k"; break
+  done < $Q
+  if [ -z "$line" ]; then sleep 300; continue; fi
+  if [ "$line" = END ]; then log "worker $WORKER: queue END reached"; exit 0; fi
+  read -r tag ck k <<< "$line"; [ "$k" = "-" ] && k=""
+  base=results/phaseC/full/$DS/$tag; emb=wikipedia_embeddings/$DS/full_$tag
+  # Remove outputs of any earlier attempt, so finish() can only see this attempt's files (a
+  # stale retrieval output would otherwise pass its "-s" check, code audit 2026-09-28, R5).
+  rm -f $base/dev/$DS.jsonl $base/test/$DS.jsonl $base/dev/eval_metrics.txt $base/test/eval_metrics.txt
+  if [ -n "$SHARED_EMB" ]; then
+    emb=$SHARED_EMB; ej=shared; dep=""
+    [ -n "$(ls $emb/passages_* 2>/dev/null)" ] || { log "ERROR: SHARED_EMB $emb has no passages_* shards"; exit 1; }
+  else
+    ej=$(sbatch --parsable --job-name=full_$tag --export=ALL,CKPT=$ck,EMB_DIR=$emb $T/gen_embed_ckpt.sbatch)
+    dep="--dependency=afterok:$ej"
+  fi
+  ps_dev=""; ps_test=""; [ "$PER_STEP" = 1 ] && [ -n "$k" ] && { ps_dev=$base/dev_steps.jsonl; ps_test=$base/test_steps.jsonl; }
+  qe_dev=""; qe_test=""; [ "$GEOM" = 1 ] && { qe_dev=$base/dev_qemb.npy; qe_test=$base/test_qemb.npy; rm -f $qe_dev $qe_test $base/{dev,test}_geom.json; }
+  rd=$(sbatch --parsable $dep --job-name=full_${tag}_dev --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,DATA=$DEV,OUT_DIR=$base/dev,K=$k,SAVE_PER_STEP=$ps_dev,SAVE_QEMB=$qe_dev $T/retrieve_ckpt.sbatch)
+  rt=$(sbatch --parsable $dep --job-name=full_${tag}_test --export=ALL,CKPT=$ck,EMB_DIR=$emb,DATA_NAME=$DS,OUT_DIR=$base/test,K=$k,SAVE_PER_STEP=$ps_test,SAVE_QEMB=$qe_test $T/retrieve_ckpt.sbatch)
+  echo "$ej $rd $rt worker=$WORKER" > $CLAIMS/$tag/jobs
+  log "$tag: full-corpus eval submitted by worker $WORKER (embed $ej -> dev $rd, test $rt)"
+  finish $tag $ej $rd $rt || exit 1
+done

@@ -724,3 +724,18 @@ The DDP/bf16 setting is now the documented **fallback recipe**: see `RECIPE_FALL
 bugs it depends on (bf16 rounding, the 2× scheduler step already noted above, unseeded per-rank
 shuffling) and the artifacts to keep. Full investigation:
 https://claude.ai/code/artifact/ee8584b3-851e-4d5a-b7d4-a8f1a0c7e28e
+
+### Clean training loop on branch `fsdp-clean-recipe` (2026-09-25)
+
+The training code no longer reproduces the fallback: it now trains in **mixed precision on
+every backend** (fp32 weights + fp32 AdamW, bf16 autocast), steps the **LR scheduler once per
+training step**, and uses a **seeded, rank-consistent data order**. Tests
+(`training/inf_retriever/tests/`) pass on 1 GPU, 2-GPU DDP and 2-GPU FSDP, and DDP and FSDP loss
+curves agree within 0.3%. QAMPARI at 50 examples/GPU runs out of memory under DDP and 1 GPU, so
+**QAMPARI joint training uses FSDP** (`training/inf_retriever/finetune_qampari_joint_fsdp.sh`).
+The frozen-doc-encoder class stays on 1 GPU (under FSDP, rank 1 received no gradients). The old
+fallback is reproducible only from tag `fallback-bf16-ddp`. Commits `bd97733`..`fabfe1a`.
+Full report, including what's still missing for the clean-recipe search:
+https://claude.ai/code/artifact/af5e017f-fc23-49a2-8511-27747056f3f9
+Step 5 (clean-recipe search) plan, standing rules, phase B tracker and decision log:
+https://claude.ai/code/artifact/1c7621cd-7d9d-4137-8ff4-71a8891e17bd

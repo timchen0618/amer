@@ -1,0 +1,215 @@
+# Session F plan: closing the gaps to the paper's training (QAMPARI, frozen document encoder)
+
+User-approved 2026-10-22. Run autonomously, in stages; each stage builds on the previous stage's best setting (selected on full dev, MRecall@100, RRF k = 5; test for reporting only; < 2 points = tie). Push notification after Stage A.
+
+**Base recipe (all runs unless changed):** C_multi = frozen INF-Retriever document encoder, INF-1.5B query model (full finetune, bidirectional), plain Hungarian (the paper's loss), temperature 0.05, lr 1e-5, hard negatives (ratio 0.5, 1 negative per gold), linear 0 → 1 sampling ramp, 2500 steps, no input/output layers. References: C_multi 31.4 / 31.07, frozen single 31.8 / 31.26 (dev / test).
+
+| Stage | What changes | Runs | Question |
+| --- | --- | --- | --- |
+| A | Sampling schedule {linear 0→1, paper cap `min(10·t/T, 0.8)`, constant 1.0} × length {2500, 10000 steps} | 5 new (linear @ 2500 = C_multi) | Does the paper's schedule or longer training help, alone or together? |
+| B | On A's best: paper one-label step × random-init linear input/output layers (2 × 2) | 3 new | Do the paper's extra one-gold step and its projection layers help? |
+| C | On B's best, single changes: temperature 0.01 / 0.02 / 0.03; 15 negatives per gold (`--negative_ctxs 15`; memory probe: peak 56 GB of 140 GB, same as 8) | 4 | RepLlama-style contrastive settings: sharper softmax, more hard negatives |
+| D | On the best so far, single ablations: no hard negatives; causal attention (query-model ablation) | 2 | Do hard negatives or bidirectional attention matter? |
+| E | Only if nothing beats C_multi: data filter (drop 1-gold questions, or keep only 5–8 golds as the paper did) | 1–2 | Does training on the paper's gold-count range help? |
+| F | After everything, on the final best: re-test input layers: linear input + output, linear input only, **2-layer MLP input, no output layer** | 3 | Do learned input layers help once the rest of the recipe is right? |
+
+**Stage A re-run on a larger, seeded dev set (user, 2026-10-23).** The 500-question dev set is too small to select reliably. Stage B (both tracks) was cancelled before training; Stage A is re-run (7 runs, `S0_*`, single-query baseline included) on a seeded 90/10 split of the training pool (`tools/build_seed_split.py --seed 0`: 23,732 train / 2,637 dev; no test overlap), as in the legacy code's `train_test_split(test_size=0.1)`. The 2,637 dev questions are both the full-dev selection set and the in-training eval set; a full-dev eval takes ~11 min (≈10 min at 500: corpus loading dominates). Other seeds give other splits for variance runs once the recipe is settled. Note: ~20% of training-split questions are "born in X / died in X" questions that the test set does not have; a test-like dev score without them is reported alongside. GPU use starts after the other session's Llama-8B runs finish (user, 2026-10-23).
+
+**Stage A re-run results (all 7 done, 2026-10-30).** Split as finally built (user 2026-10-27): only questions with 5–8 unique golds are kept before splitting, so dev is 2,459 questions (`data/phaseA/qampari_clean_v3_dev_s0.jsonl`), not the 2,637 above; S0 numbers are comparable with each other, not with the original Stage A runs. Base recipe as above (frozen doc encoder, full finetune, plain Hungarian, HN 0.5, lr 1e-5). Score: multi = MRecall@100 RRF k = 5; single = MRecall@100. Test is evaluated on the top 2 checkpoints by full dev, the final step and the lowest-`eval_loss_sr1` step. Source: `results/phaseC/clean_v3_f_qampari_S0_*.driver.out` (`RESULT full` lines).
+
+| Run | Schedule × length | Dev-selected step: dev / test | Loss-selected step: test | Other tested steps (test) |
+| --- | --- | --- | --- | --- |
+| S0_single | single query, 2500 | 2500: 39.16 / **32.39** | – | 2250: 32.39 |
+| S0_multi | linear 0→1, 2500 | 2250: 38.10 / **30.32** | 2500: 30.13 | 1750: 31.07 |
+| S0_cap | cap 0.8, 2500 | 2500: 39.81 / **29.94** | 2500: 29.94 | 2250: 30.32 |
+| S0_const | constant 1.0, 2500 | 2250: 41.52 / **29.38** | 2500: 29.57 | – |
+| S0_10k | linear 0→1, 10000 | 10000: 46.03 / **31.64** | 9000: 32.02 | – |
+| S0_cap_10k | cap 0.8, 10000 | 7000: 46.28 / **31.07** | 10000: 30.89 | 9000: 31.26 |
+| S0_const_10k | constant 1.0, 10000 | 4000: 43.76 / **29.00** | 7000: 28.81 | 5000: 29.94, 10000: 28.06 |
+| S0_mult10_10k | multiplier 10, no cap (`min(10·t/T, 1)`), 10000 | 6000: 43.31 / **29.76** | 7000: 29.38 | 4000: 30.32, 10000: 28.44 |
+
+- At 2500 steps no multi schedule beats single (−2.1 to −3.0 test). At 10k, linear 0→1 (S0_10k) reaches 31.6–32.0, level with single (32.39, < 2 points = tie); the paper cap and constant schedules do not help at either length.
+- Dev and test disagree: 10k runs gain 5–8 dev points over 2500 but ≤ 1.7 test. S0_const_10k peaks on dev at step 4000 and drifts down after (41.64 at 10000).
+- Selection rules: the lowest-`eval_loss_sr1` checkpoint tests within 0.4 of the full-dev pick in every run (better in 3 of 6, worse in 2).
+- S0_const_10k was cancelled at step ~2,100 on 2026-10-29 when the Slurm account `torch_pr_152_courant` was retired, and was re-run from step 0 on `torch_pr_152_echoi` (job 21396564).
+- Paper's large / small test thirds (168 / 180 questions; `tools/fusion_eval.py`, `results/phaseC/fusion_S0_*test.json`), dev-selected step: single 15.48 / 49.44, multi 13.10 / 47.22, cap 13.69 / 45.00, const 13.69 / 45.56, 10k 20.83 / 42.78 (s9000 21.43), cap_10k 19.64 / 43.89 (s9000 22.62), const_10k 13.69 / 41.67. 10k with the linear ramp or the cap beats single on the large third by 4–7 points and loses ~6 on the small third.
+- S0_mult10_10k (added 2026-10-31, user): the paper's multiplier 10 without the 0.8 cap. Dev peaks at step 6000 and drifts down (like constant 1.0); test 29.76 at the dev-selected step (large / small 19.64 / 41.67; s4000 30.32, 16.67 / 44.44), below S0_cap_10k (31.07) on every rule, so the cap helps.
+- Stage A winner on this split: S0_10k (linear 0→1, 10000 steps). **Stage B base = S0_cap_10k** (user 2026-11-01: the higher-test of S0_cap_10k / S0_mult10_10k). Stage B queued 2026-11-01: S0_cap10k_onelabel, S0_cap10k_ioprojrand, S0_cap10k_onelabel_ioprojrand.
+
+**Stage B results (all 3 done, 2026-11-02).** Base S0_cap_10k (cap 0.8, multiplier 10, 10000 steps) on the S0 split; same scoring and checkpoint rules as Stage A (multi = MRecall@100 RRF k = 5; large / small = the paper's test distance thirds, `results/phaseC/fusion_S0_test.json`). Source: `results/phaseC/clean_v3_f_qampari_S0_cap10k_*.driver.out`.
+
+| Run | Change vs base | Dev-selected step: dev / test | Large / small | Loss-selected step: test | Other tested steps (test) |
+| --- | --- | --- | --- | --- | --- |
+| S0_cap_10k (base) | – | 7000: 46.28 / 31.07 | 19.64 / 43.89 | 10000: 30.89 | 9000: 31.26 |
+| S0_cap10k_onelabel | `--one_label_step` | 10000: **50.71 / 33.15** | **25.00** / 43.89 | 9000: 33.52 (25.60 / 44.44) | – |
+| S0_cap10k_ioprojrand | `--io_proj --io_proj_init random` | 7000: 28.26 / 12.62 | 7.14 / 18.33 | 5000: 12.81 | 8000: 12.05, 10000: 11.30 |
+| S0_cap10k_onelabel_ioprojrand | both | 10000: 37.01 / 19.96 | 14.29 / 27.22 | 7000: 19.02 | 8000: 19.21 |
+
+- The paper's one-gold step is the first change to beat the base clearly: +4.4 dev, +2.1 test (+2.5 at step 9000), and +5.4 on the large third with the small third unchanged. It is F's best multi run and the first above S0_single (32.39 test; < 2 points, so a tie by the plan's rule), with the large third 10 points above single (15.48).
+- Dev was still rising at step 10000 (49.49 / 50.18 / 50.55 / 50.71 at 7k–10k), so the setting is re-run at 20000 steps (S0_cap20k_onelabel, 2026-11-01, user) before Stage C.
+- Random-init linear input / output layers hurt badly: dev starts near zero (3.25 at step 1000, vs 37.05 with the one-gold step and no layers) and plateaus at ~28 dev / ~12.5 test. The one-gold step partly offsets it (37.01 / 19.96) but stays 13 test points below the one-gold run without layers. So the paper's projection layers are not part of the best recipe here; Stage F (learned input layers on the final recipe) is the remaining check.
+- The selection rules agree within 0.5 test in every run (loss-selected better in 2 of 3).
+- The driver's per-embedding (copy / best-single-query) scoring failed on the two io_proj runs; the RRF scores are unaffected.
+- Stage B winner: S0_cap10k_onelabel. Stages C–F not started.
+
+**One-gold step at 20,000 steps (S0_cap20k_onelabel, 2026-11-03).** Same flags as S0_cap10k_onelabel, run twice as long (warmup 800, ramp saturating at step 2000 under the 0.8 cap, lr decay over 20k; a fresh run, not a continuation). Full dev every 2000 steps: 39.89 / 45.02 / 47.99 / **49.29** / 48.92 / 48.88 / 48.31 / 48.80 / 49.13 / 49.04 (2k–20k).
+
+| Step | Why tested | Dev | Test | Large / small |
+| --- | --- | --- | --- | --- |
+| 8000 | dev-selected | 49.29 | **33.15** | 23.21 / 46.11 |
+| 12000 | lowest dev loss | 48.88 | 32.77 | 25.00 / 45.56 |
+| 18000 | 2nd by dev | 49.13 | 31.83 | 24.40 / 43.89 |
+| 20000 | final | 49.04 | 32.39 | 24.40 / 44.44 |
+
+- Twice the steps does not help: dev plateaus at ~49 from step 8000 (below the 10k run's 50.71) and test at the dev-selected step equals the 10k run (33.15 vs 33.15; 10k run's s9000 33.52). Large third 23–25 in both. The 10k run's rising dev at its end came from its own lr decay / schedule, not from under-training.
+- So the Stage B best stays S0_cap10k_onelabel (10k steps), the cheaper base for Stage C.
+
+### Step-matched single-query baselines (added 2026-11-04)
+
+The S0 single baseline ran 2,500 steps; the one-gold multi run ran 10,000 steps with two updates per step. Two single runs match that budget (same data, lr, warmup 400, 10k steps): `S0_single_10k` (one update per step) and `S0_single_10k_2step` (`--one_label_step` in single mode: a second update on the same questions with an independently redrawn gold and negatives).
+
+| Run | Step | Dev | Test | Large / small |
+|---|---|---|---|---|
+| S0_single (2.5k) | 2500 | 39.16 | 32.39 | 15.48 / 49.44 |
+| S0_single_10k | 10000 (dev-selected) | 47.46 | **35.59** | 22.62 / 50.00 |
+| S0_single_10k | 9000 (lowest dev loss) | 46.60 | 35.78 | 22.62 / 50.56 |
+| S0_single_10k_2step | 10000 (dev-selected) | 51.93 | **35.03** | 25.00 / 50.00 |
+| S0_single_10k_2step | 8000 (lowest dev loss) | 51.24 | 35.78 | 25.00 / 49.44 |
+| S0_single_10k_2step | 9000 (2nd by dev) | 51.65 | 34.84 | 24.40 / 49.44 |
+| S0_cap10k_onelabel (multi) | 10000 | 50.71 | 33.15 | 25.00 / 43.89 |
+
+- At matched steps the single baseline beats the best multi run on full test (35.59 vs 33.15). Multi's remaining edge is the large third (25.00 vs 22.62, 2.4 points on ~168 questions), and it loses 6 points on the small third.
+- Most of the earlier multi-over-single large-third gap (25.00 vs 15.48) came from training length, not from multiple queries.
+- With the second (redrawn-gold) update too, single matches the one-gold multi run on every axis or beats it: dev 51.93 vs 50.71, test 35.03 vs 33.15, large third 25.00 vs 25.00, small third 50.00 vs 43.89. The multi run's large-third edge disappears at matched updates; the second update helps single on dev (+4.5) and the large third (+2.4) but not on full test (35.03 vs 35.59).
+- Stage D (no hard negatives, causal attention) therefore runs on both the multi base and S0_single_10k_2step (user 2026-11-04); C / E / F wait.
+
+### Stage D results (all 4 done, 2026-11-05)
+
+Run before Stage C (user 2026-11-04), each on both bases: multi = S0_cap10k_onelabel, single = S0_single_10k_2step. Same scoring and checkpoint rules as Stage B; large / small thirds from `results/phaseC/fusion_S0_test.json` (multi, RRF k = 5) and `fusion_S0_single_test.json`.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps (test) |
+|---|---|---|---|
+| Multi base (S0_cap10k_onelabel) | 10000: 50.71 / 33.15 | 25.00 / 43.89 | 9000: 33.52 |
+| Multi, no hard negatives | 8000: 49.69 / 32.39 | 24.40 / 43.89 | 10000: 32.02, 9000 (loss): 32.39 |
+| Multi, causal attention | 10000: 50.63 / 33.52 | 27.38 / 44.44 | 9000 (loss): 34.09 (26.19 / 46.67) |
+| Single base (S0_single_10k_2step) | 10000: 51.93 / 35.03 | 25.00 / 50.00 | 8000 (loss): 35.78 |
+| Single, no hard negatives | 10000: 50.75 / 34.09 | 24.40 / 48.33 | 8000 (loss): 34.65 |
+| Single, causal attention | 10000: 51.16 / 35.22 | 25.00 / 49.44 | 5000 (loss): 35.03 |
+
+- Every change is within the < 2-point tie band on dev and on test, for both bases.
+- Hard negatives help slightly and consistently: removing them costs ~1 dev and ~1 test in both multi and single.
+- Causal attention is neutral: single 35.22 vs 35.03 test, multi 33.52 vs 33.15 (large third +2.4, within noise on 168 questions).
+- Single stays ahead of multi under every D setting (test 34.1–35.2 vs 32.0–34.1). Bidirectional attention with hard negatives stays the recipe.
+
+### Losses and learned layers on the causal base (all 3 done, 2026-11-09)
+
+Base S0_cap10k_onelabel_causal (user 2026-11-06: causal kept for multi). Each run changes one thing: `--loss_fn hungarian_seq` (output t may not match a gold fed before it), `--loss_fn hungarian_seq_used` (only already-used golds are negatives), or `--io_proj` (learned input + output layers, identity init, plain Hungarian). Restarted from step 0 on 2026-11-09 after the /scratch quota failure. Same scoring as Stage D; "(loss)" = lowest dev loss at rate 1.0.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Causal base | 10000: 50.63 / 33.52 | 27.38 / 44.44 | 9000 (loss): 34.09 (26.19 / 46.67); 8000: 33.52 (25.60 / 45.00) |
+| + hungarian_seq | 8000 (= loss): 50.71 / 32.39 | 25.00 / 43.89 | 10000: 32.39 (25.00 / 43.89) |
+| + hungarian_seq_used | 8000 (= loss): 51.36 / 32.58 | 25.00 / 45.00 | 10000: 32.96 (25.60 / 47.22) |
+| + io_proj (identity) | 8000: 50.67 / 32.39 | 23.81 / 43.89 | 9000 (loss): 32.02 (23.81 / 45.00); 10000: 32.02 (23.81 / 44.44) |
+
+- All three tie with the base (< 2 points) and none is higher on test; each is 1–3.6 below on the large third. seq_used has the best dev (51.36), which does not carry to test.
+- No combo run (it needed ioproj and a seq loss each to improve). The final step (10000) was tested in every run.
+- Follow-up (user 2026-11-09): the same four runs without the cap schedule (linear 0 → 1 over 10k, as S0_10k, the Stage A test winner): S0_10k_onelabel_causal{,_seq,_seqused,_ioproj}. Multi Stage C waits on them; single Stage C partners (temperature 0.01 / 0.02 / 0.03, 15 negatives) run meanwhile.
+- The driver's per-embedding scoring fails on these S0 runs (row-count assertion in perstep_eval.py); RRF scores are unaffected.
+
+### Stage C single partners: temperature (3 done, 2026-11-11)
+
+Base S0_single_10k_2step_causal (temperature 0.05). Each run changes only `--temperature`. Single runs score MRecall@100 (dev / test); "(loss)" = lowest dev loss at rate 1.0.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Single base (t 0.05) | 10000: 51.16 / 35.22 | 25.00 / 49.44 | 5000 (loss): 35.03 (23.81 / 49.44) |
+| t 0.01 | 10000: 57.42 / 36.35 | 28.57 / 47.22 | 9000: 35.78 (26.79 / 47.78); 2500 (loss): 31.45 (21.43 / 46.11) |
+| **t 0.02** | **9000: 58.85 / 40.11** | **27.98 / 54.44** | 10000: 40.11 (27.98 / 55.56); 3000 (loss): 36.72 (19.64 / 53.89) |
+| t 0.03 | 10000: 57.06 / 36.72 | 27.98 / 50.00 | 9000: 37.10 (28.57 / 50.00); 5000 (loss): 38.79 (27.38 / 53.89) |
+
+- Every lower temperature raises dev by 6–8 points. On test only 0.02 clears the 2-point bar: +4.9 (40.11 vs 35.22), +3.0 large, +5.0 small. 0.01 (+1.1) and 0.03 (+1.5) tie with the base.
+- The three temperatures tie with each other on dev (57.1–58.9); 0.02 has the best dev and the best test, so it is the single winner.
+- The loss-selected steps come early (2500–5000) and trail the dev-selected ones except for 0.03 (38.79 at 5000, best of that run).
+- Multi temperature runs (held) go next once the no-cap multi base is decided; 0.02 is the value to beat.
+
+### No-cap multi base, its variants, and multi temperature (2026-11-12)
+
+The four causal runs repeated without `--sampling_saturate_frac 0.1 --sampling_cap 0.8` (default linear 0 → 1 ramp over 10k; user 2026-11-09), then multi temperature on the winning base. RRF k=5 dev / test.
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test (large / small) |
+|---|---|---|---|
+| Cap base (reference) | 10000: 50.63 / 33.52 | 27.38 / 44.44 | |
+| **No-cap base** | 9000 (= loss): 49.78 / 32.77 | 25.00 / 45.56 | 8000: 33.90 (25.00 / 47.78); 10000: 32.58 (25.00 / 45.00) |
+| + hungarian_seq | 10000: 51.04 / 33.15 | 23.81 / 45.56 | 9000 (loss): 33.15 (23.81 / 47.22) |
+| + hungarian_seq_used | 10000: 51.08 / 33.90 | 25.00 / 46.67 | 9000 (loss): 34.65 (25.60 / 47.78) |
+| + io_proj (identity) | 7000: 49.61 / 34.27 | 25.00 / 47.78 | 9000 (loss): 31.83 (23.21 / 44.44); 10000: 30.89 (22.62 / 44.44) |
+| t 0.01 | 8000: 53.44 / 36.16 | 26.19 / 52.22 | 10000 (loss): 34.27 (23.81 / 50.00) |
+| **t 0.02** | **6000: 54.05 / 37.10** | **27.98 / 50.56** | 10000 (loss): 32.20 (25.60 / 43.33) |
+| t 0.03 | 6000: 52.95 / 33.90 | 25.00 / 46.67 | 7000: 34.09 (26.19 / 46.11); 9000 (loss): 31.83; 10000: 30.70 |
+| 3 negatives per gold | 10000: 49.98 / 33.15 | 24.40 / 45.56 | 9000 (loss): 33.33 (23.81 / 45.56) |
+| + seq + io_proj | 10000: 50.51 / 31.26 | 23.81 / 45.56 | 8000: 33.33; 9000 (loss): 31.64 |
+| + seq_used + io_proj | 8000: 51.36 / 33.52 | 25.00 / 46.11 | 9000 (loss): 32.58; 10000: 33.52 |
+| + io_proj input-only (`--io_proj_mode in`) | 9000: 50.06 / 30.70 | 23.21 / 42.22 | |
+| + io_proj 2-layer MLP input (`--io_proj_mode mlp_in`) | 9000 (= loss): 49.45 / 31.45 | 23.81 / 44.44 | 8000: 32.96; 10000: 31.26 (24.40 / 42.78) |
+| lr 2e-5 (creative) | 10000: 49.00 / 31.64 | 23.81 / 44.44 | 9000 (loss): 32.02 |
+
+Single partner, 15 negatives per gold (MRecall@100): 10000 (= loss): 46.20 / 34.09, large 23.81 / small 47.78, against the single base 51.16 / 35.22. Dev drops 5, so it does not count.
+
+Single partner, io_proj output-only (identity init, `--io_proj --io_proj_mode out`; single mode supports output only): 10000: 50.92 / 35.97, large 26.19 / small 50.00 (9000: 35.78, 25.60 / 50.56; 7000 (loss): 35.22), against the single base 51.16 / 35.22 (large 25.00 / small 49.44). A tie (+0.75).
+
+Single partner, lr 2e-5: 10000: 51.12 / 33.71, large 24.40 / small 47.22 (9000: 34.46; 8000 (loss): 33.52), against the single base 51.16 / 35.22. A tie (−1.5); lr 2e-5 lowers single and multi alike (multi −1.1).
+
+Cap base, io_proj combined with the seq objectives (user 2026-11-13: be comprehensive on cap, the best large third; base 10000: 50.63 / 33.52, large 27.38 / small 44.44):
+
+| Run | Dev-selected step: dev / test | Large / small | Other tested steps: test |
+|---|---|---|---|
+| cap + seq + io_proj | 10000: 49.29 / 32.58 | 25.00 / 44.44 | 6000 (loss): 33.15; 9000: 32.58 |
+| cap + seq_used + io_proj | 10000: 50.14 / 33.33 | 23.21 / 47.22 | 6000 (loss): 34.09; 9000: 33.33 |
+| cap + io_proj MLP input | 8000: 50.79 / 33.15 | 23.81 / 45.00 | 10000 (loss): 33.71 (24.40 / 46.67) |
+
+Both cap combos and cap + MLP input tie on full test (−0.9, −0.2, −0.4) but lose 2.4 / 4.2 / 3.6 on the large third, like every cap variant before them (seq 25.00, seq_used 25.00, io_proj 23.81).
+
+### Seed reruns (2026-11-14, user): seeds 1 and 2 of the cap, no-cap, no-cap io_proj and single bases
+
+Cap base, test full / large / small: seed 0 (10000, dev-selected) 33.52 / 27.38 / 44.44; seed 1 (9000 dev-selected) 31.26 / 23.21 / 42.78, (10000) 31.45 / 24.40 / 42.78; seed 2 (9000 dev-selected) 33.90 / 25.60 / 44.44, (10000) 34.09 / 25.60 / 44.44. At step 10000 the three seeds give large 27.38 / 24.40 / 25.60 (mean 25.8) and full 33.52 / 31.45 / 34.09: seed 0's large third was the high draw, and the spread across seeds (3 on large, 2.6 on full) is as wide as every difference between the 0.05 variants.
+
+**Caveat (found 2026-11-15):** `GoldLengthGroupedBatchSampler` orders batches with `Random(seed + epoch)`, so seed s epoch k uses seed 0's epoch k + s batch grouping (first-batch fingerprints confirm it); over ~46 epochs the seeds share ~44 epochs of batch groupings, shifted. Gold shuffles, negatives and dropout do differ. These are partial seeds and likely understate the spread. f_queue stopped pending the user's decision.
+
+**Fix and rerun (user, 2026-11-15).** `finetuning_multi_paper.py` now swaps in a subclass that orders batches with `Random(seed * 1000003 + epoch)` (`_install_seed_mixed_sampler`); seed 0 gives `Random(epoch)`, the old order, so every seed-0 run is unchanged. Single mode uses `RandomSampler` (seeded from `--seed` via torch) and was never affected. All 8 seed runs rerun as `_rseed1` / `_rseed2`. The old `_seedN` no-cap and no-cap io_proj seed 1 runs had finished training and complete their test retrievals; they are kept only as a record of partial seeds.
+
+**Seed results (all 8 reruns done 2026-11-18; `tools/seed_report.py`, `results/phaseC/seed_report.md`).** Test MRecall@100 at each seed's dev-selected step, mean ± sd over seeds 0–2 (multi: RRF k = 5):
+
+| Run | Dev | Test | Large third | Small third | Gap to single: test / large / small |
+|---|---|---|---|---|---|
+| single | 51.15 ± 0.06 | 35.09 ± 0.22 | 25.00 ± 0.00 | 49.81 ± 0.32 | — |
+| cap | 50.01 ± 0.58 | 32.20 ± 1.97 | 24.80 ± 2.25 | 44.07 ± 3.35 | −2.9 / −0.2 / −5.7 |
+| no-cap | 49.89 ± 0.15 | 33.27 ± 0.58 | 25.00 ± 0.00 | 45.93 ± 1.15 | −1.8 / 0.0 / −3.9 |
+| no-cap io_proj | 49.58 ± 0.08 | 32.71 ± 1.36 | 24.01 ± 0.91 | 45.18 ± 2.32 | −2.4 / −1.0 / −4.6 |
+
+- The cap base's large-third lead was a seed-0 draw: 27.38 / 23.81 / 23.21 over the three seeds (mean 24.8, the same as no-cap's 25.00).
+- io_proj's +1.5 on test was also seed 0 only: 34.27 / 31.83 / 32.02, mean 32.7, 0.6 below the no-cap base.
+- Seed spread on multi test is up to 3.6 points (cap), larger than the 2-point tie threshold; single and no-cap are stable (sd 0.2 and 0.6). Differences between single-seed multi variants below about 2–3 points were noise.
+- Multi vs single, counting noise: on the large third every model sits at 24–25 (gap 0.0 for no-cap, inside the noise for the others); the whole full-test gap (−1.8 to −2.9) comes from the small third (−3.9 to −5.7), which is larger than the spread.
+- At step 10000 the picture is the same (no-cap 33.08 vs single 35.22). Single seed 1 collapsed at step 10000: train loss was normal through step 10000, but the in-training eval right after the last update fell to 1.5% accuracy (dev loss 4.59 vs 0.63 at 9000; test 0.00), so that update broke the weights. Dev selection picked 9000; the checkpoint was already deleted by the keep rule.
+
+- No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
+- On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
+- Temperature 0.02 lifts multi +4.3 (37.10) and 0.01 +3.4 (36.16), mostly on the small third. Both peak early and fall off by step 10000 (0.02: 37.10 at 6000 → 32.20 at 10000), so the dev-selected step matters at low temperature.
+- 3 negatives per gold ties the 1-negative base (+0.2 dev, +0.4 test, thirds unchanged), so extra negatives do not help multi either (single at 15 per gold lost 5 dev).
+- Temperature 0.03 is a tie (+1.1 test, +3.2 dev), well below 0.02 (+4.3) and 0.01 (+3.4); it also peaks at 6000–7000 and falls by 10000 (30.70).
+- Combining the positive ties does not add up: seq + io_proj is −1.5 (31.26) and seq_used + io_proj +0.75 (33.52), both ties and both below io_proj alone (34.27). The base stays the no-cap base.
+- Temperature lifts single (+4.9) about as much as multi, so the gap stays (single 40.11 vs multi 37.10 at 0.02). User 2026-11-12: keep iterating at 0.05. Queued: seq + io_proj and seq_used + io_proj (combos of the positive ties), io_proj input-only and MLP input (multi), io_proj output-only (single partner).
+
+**Two tracks from Stage B on (user, 2026-10-23).** Track 1 builds on the full-dev best (C_multi). Track 2 builds on the setting best on the paper's large-distance test third, paper cap 0.8 × 10k (its step 10000: 26.0 / 32.77 test, large 23.81 vs single 13.69, query–query cosine 0.68). Every later stage runs on both, doubling the runs. Track 2 reports its **final checkpoint (step 10000)**, a fixed rule: the dev large-distance third (rebuilt with the paper's thresholds; 173 / 165 of 500) sits at 2–5 MRecall for every checkpoint and does not follow test-large, so it cannot select. Track 1 keeps full-dev selection.
+
+**Selection-rule comparison (user, 2026-10-23).** Every run from Stage B on also logs the legacy rule's metric, `eval_loss_sr1` (Hungarian loss on the 3000 held-out dev questions at sampling rate 1.0, every 250 steps); the lowest-loss checkpoint is kept and test-evaluated next to the top 2 by full dev, so the two rules can be compared on test.
+
+Notes:
+
+- The RepLlama-inspired changes (Stage C, added 2026-10-22) run before the deferred ablations (Stage D), so the ablations are done on the final best setting.
+- Code: options live in F's own entry script `training/inf_retriever/finetuning_multi_paper.py` (`--sampling_cap`, `--one_label_step`, `--io_proj_init random`) and `src/inbatch_proj.py`; the 2-layer MLP input is to be added there. J's files are not edited; every option defaults to off.
+- More negatives: `--negative_ctxs n > 1` (frozen, plain Hungarian) is supported by F's entry script (the shared collator / doc split / loss assume one negative per gold); the frozen doc encoder encodes passages in chunks of 1024. Each question has ~30 mined hard negatives, so at 15 per gold most extra slots are random negatives.
+- Long runs: 10,000 steps, warmup 400, checkpoints every 1000 steps plus 2500, 16 h walltime (`f_queue.sh` 5th field).
+- Every run is added to `f_queue.sh`'s QUEUE, so J's deferred runs wait for it.
+- Each run reports: full dev / test, the paper's large / small distance thirds, best single query, query–query cosine, copy statistics, and round-robin next to RRF.

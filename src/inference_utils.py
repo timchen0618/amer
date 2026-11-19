@@ -27,12 +27,18 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
             # Default to INF-Retriever model
             retriever_model_id = "infly/inf-retriever-v1-1.5b"
             
-        tokenizer = load_hf(transformers.AutoTokenizer, retriever_model_id, trust_remote_code=True)
-        cfg = load_hf(transformers.AutoConfig, retriever_model_id, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        cfg.pad_token_id = tokenizer.pad_token_id
-        tokenizer.padding_side = "right"
+        # --retriever (finetuning_multi_nemo.py, session N 2026-11-12); older checkpoints have none = inf-retriever
+        retriever_kind = getattr(opt, "retriever", "inf")
+        if retriever_kind == "nemotron":
+            from training.inf_retriever.src import nemotron
+            tokenizer = nemotron.load_tokenizer()
+        else:
+            tokenizer = load_hf(transformers.AutoTokenizer, retriever_model_id, trust_remote_code=True)
+            cfg = load_hf(transformers.AutoConfig, retriever_model_id, trust_remote_code=True)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            cfg.pad_token_id = tokenizer.pad_token_id
+            tokenizer.padding_side = "right"
 
         if hasattr(opt, "run_name"):
             if hasattr(opt, "training_mode"):
@@ -44,23 +50,39 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
                         if freeze_doc_encoder
                         else inbatch.EmbeddingModelDocEncNoProjSingleQuery
                     )
+                    if getattr(opt, "io_proj", False):  # output layer, single query (Session F P3-single, 2026-10-27)
+                        from training.inf_retriever.src import inbatch_proj
+                        model_class = inbatch_proj.EmbeddingModelFrozenDocEncSingleQueryProj
                 elif opt.training_mode == 'multi':
                     model_class = (
                         inbatch.EmbeddingModelFrozenDocEnc
                         if freeze_doc_encoder
                         else inbatch.EmbeddingModelDocEncNoProj
                     )
+                    if getattr(opt, "io_proj", False):  # learned input/output layers (finetuning_multi_proj.py)
+                        from training.inf_retriever.src import inbatch_proj
+                        model_class = (
+                            inbatch_proj.EmbeddingModelFrozenDocEncProj
+                            if freeze_doc_encoder
+                            else inbatch_proj.EmbeddingModelDocEncProj
+                        )
             else:
                 raise NotImplementedError("training_mode not specified")
         else:
             raise NotImplementedError("run_name not specified")
 
+        if retriever_kind == "nemotron":
+            model_class = nemotron.nemotron_class(model_class)
+        elif retriever_kind == "qwen3":  # Qwen3-Embedding-0.6B (session N, 2026-11-15): inf path, own model id
+            from training.inf_retriever.src import qwen3emb
+            model_class = qwen3emb.qwen3_class(model_class)
         print(f"Using model class: {model_class}, retriever_model_id: {retriever_model_id}")
         pretrained_dict = pretrained_dict["model"]
 
         model = model_class(opt, None, None)
         print(f"Using model = {model_class}", flush=True)
-        model.load_state_dict(pretrained_dict, strict=True)
+        # strict, except that frozen-doc-encoder checkpoints omit the frozen copy (rebuilt from the base model)
+        inbatch.load_model_state(model, pretrained_dict)
         model.eval()
         print('Finished loading model')
         if opt.training_mode == 'standard_org_q':
@@ -71,9 +93,22 @@ def load_retriever(model_path, pooling="last_token", random_init=False):
                 # find it via hasattr(retriever, 'doc_encoder') even though the
                 # query-encoder object itself is what's returned here.
                 retriever.doc_encoder = model.doc_encoder
+            if hasattr(model, 'out_proj'):
+                # P3-single (io_proj, output layer only): the encoder's forward hook calls model.out_proj. Register it
+                # on the returned encoder too, so the caller's .cuda()/.half() move it with the encoder.
+                retriever.query_out_proj = model.out_proj
         else:
             retriever = model
         retriever._is_multi_query = (opt.training_mode != 'standard_org_q')
+        # Training options, so callers can check that inference matches training (code audit
+        # 2026-09-28, C4: chunk_length and eval_normalize_text used to be ignored at inference).
+        retriever._train_opt = opt
+        # --force_causal (query encoder only): multi-query generate() reads it from the model; the
+        # single-query path calls the bare encoder, so retrieval_inf.embed_queries_single reads this.
+        retriever._force_causal = getattr(opt, "force_causal", False)
+        # retriever_kind "nemotron": retrieval_inf.py formats queries as 'query: <q>' and mean-pools (single query);
+        # "qwen3": queries 'Instruct: <task>\nQuery:<q>' (no space), bf16
+        retriever._retriever = retriever_kind
 
 
     else:
@@ -88,6 +123,12 @@ def normalize_np(x, p=2, dim=1, eps=1e-12):
     NumPy implementation of torch.nn.functional.normalize
     """
     norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
+    # fp16 sums of squares overflow once a norm reaches ~256: the norm becomes inf and the vector
+    # all zeros, silently (code audit 2026-09-28, R2). Redo the whole array in fp32 in that case;
+    # otherwise the result is unchanged.
+    if not np.all(np.isfinite(norm)):
+        x = x.astype(np.float32)
+        norm = np.linalg.norm(x, ord=p, axis=dim, keepdims=True)
     norm = np.maximum(norm, eps)  # Avoid division by zero
     return x / norm
 
