@@ -178,6 +178,21 @@ Cap base, test full / large / small: seed 0 (10000, dev-selected) 33.52 / 27.38 
 
 **Fix and rerun (user, 2026-11-15).** `finetuning_multi_paper.py` now swaps in a subclass that orders batches with `Random(seed * 1000003 + epoch)` (`_install_seed_mixed_sampler`); seed 0 gives `Random(epoch)`, the old order, so every seed-0 run is unchanged. Single mode uses `RandomSampler` (seeded from `--seed` via torch) and was never affected. All 8 seed runs rerun as `_rseed1` / `_rseed2`. The old `_seedN` no-cap and no-cap io_proj seed 1 runs had finished training and complete their test retrievals; they are kept only as a record of partial seeds.
 
+**Seed results (all 8 reruns done 2026-11-18; `tools/seed_report.py`, `results/phaseC/seed_report.md`).** Test MRecall@100 at each seed's dev-selected step, mean ± sd over seeds 0–2 (multi: RRF k = 5):
+
+| Run | Dev | Test | Large third | Small third | Gap to single: test / large / small |
+|---|---|---|---|---|---|
+| single | 51.15 ± 0.06 | 35.09 ± 0.22 | 25.00 ± 0.00 | 49.81 ± 0.32 | — |
+| cap | 50.01 ± 0.58 | 32.20 ± 1.97 | 24.80 ± 2.25 | 44.07 ± 3.35 | −2.9 / −0.2 / −5.7 |
+| no-cap | 49.89 ± 0.15 | 33.27 ± 0.58 | 25.00 ± 0.00 | 45.93 ± 1.15 | −1.8 / 0.0 / −3.9 |
+| no-cap io_proj | 49.58 ± 0.08 | 32.71 ± 1.36 | 24.01 ± 0.91 | 45.18 ± 2.32 | −2.4 / −1.0 / −4.6 |
+
+- The cap base's large-third lead was a seed-0 draw: 27.38 / 23.81 / 23.21 over the three seeds (mean 24.8, the same as no-cap's 25.00).
+- io_proj's +1.5 on test was also seed 0 only: 34.27 / 31.83 / 32.02, mean 32.7, 0.6 below the no-cap base.
+- Seed spread on multi test is up to 3.6 points (cap), larger than the 2-point tie threshold; single and no-cap are stable (sd 0.2 and 0.6). Differences between single-seed multi variants below about 2–3 points were noise.
+- Multi vs single, counting noise: on the large third every model sits at 24–25 (gap 0.0 for no-cap, inside the noise for the others); the whole full-test gap (−1.8 to −2.9) comes from the small third (−3.9 to −5.7), which is larger than the spread.
+- At step 10000 the picture is the same (no-cap 33.08 vs single 35.22). Single seed 1 collapsed at step 10000: train loss was normal through step 10000, but the in-training eval right after the last update fell to 1.5% accuracy (dev loss 4.59 vs 0.63 at 9000; test 0.00), so that update broke the weights. Dev selection picked 9000; the checkpoint was already deleted by the keep rule.
+
 - No-cap ties the cap base (−0.85 dev, −0.75 test), so the simpler no-cap setting became the multi base.
 - On the no-cap base seq (+0.4), seq_used (+1.1) and io_proj (+1.5) all tie on test, but none is negative, unlike on the cap base.
 - Temperature 0.02 lifts multi +4.3 (37.10) and 0.01 +3.4 (36.16), mostly on the small third. Both peak early and fall off by step 10000 (0.02: 37.10 at 6000 → 32.20 at 10000), so the dev-selected step matters at low temperature.
