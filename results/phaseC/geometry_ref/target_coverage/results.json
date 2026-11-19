@@ -23,6 +23,28 @@
    "hungarian_large": 0.23208598652854562,
    "closest_small": 0.29348128537336987,
    "hungarian_small": 0.29348128537336987
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_single_10k_2step_causal_rseed1_s9000",
+   "k": 1,
+   "q_random": -0.01149720884859562,
+   "closest_all": 0.258919130246069,
+   "hungarian_all": 0.258919130246069,
+   "closest_large": 0.23057882722821973,
+   "hungarian_large": 0.23057882722821973,
+   "closest_small": 0.2933250777837303,
+   "hungarian_small": 0.2933250777837303
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_single_10k_2step_causal_rseed2_s10000",
+   "k": 1,
+   "q_random": -0.010541475377976894,
+   "closest_all": 0.2595551638476368,
+   "hungarian_all": 0.2595551638476368,
+   "closest_large": 0.23179594141298107,
+   "hungarian_large": 0.23179594141298107,
+   "closest_small": 0.2929761365056038,
+   "hungarian_small": 0.2929761365056038
   }
  ],
  "F multi, cap": [
@@ -82,6 +104,17 @@
    "hungarian_large": 0.23657121624620187,
    "closest_small": 0.3067555839402808,
    "hungarian_small": 0.2855263841234975
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_rseed2_s9000",
+   "k": 5,
+   "q_random": -0.00606620404869318,
+   "closest_all": 0.27430784195072233,
+   "hungarian_all": 0.2558081241608676,
+   "closest_large": 0.2513143347044076,
+   "hungarian_large": 0.23653416477498554,
+   "closest_small": 0.30514906727605395,
+   "hungarian_small": 0.28219187296926973
   }
  ],
  "F multi, no-cap io_proj": [
@@ -95,6 +128,28 @@
    "hungarian_large": 0.23777190571473467,
    "closest_small": 0.30428190496232776,
    "hungarian_small": 0.2866279861165418
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_ioproj_rseed1_s9000",
+   "k": 5,
+   "q_random": -0.0095131304115057,
+   "closest_all": 0.26870581877054805,
+   "hungarian_all": 0.24902079731450466,
+   "closest_large": 0.24326697408798195,
+   "hungarian_large": 0.2275035562038067,
+   "closest_small": 0.29966974237726796,
+   "hungarian_small": 0.27540562827554016
+  },
+  {
+   "dir": "results/phaseC/full/qampari/clean_v3_f_qampari_S0_10k_onelabel_causal_ioproj_rseed2_s9000",
+   "k": 5,
+   "q_random": -0.006722861435264349,
+   "closest_all": 0.27179523740181255,
+   "hungarian_all": 0.2531452752621722,
+   "closest_large": 0.2489354677409643,
+   "hungarian_large": 0.2349606903402933,
+   "closest_small": 0.3017342740462886,
+   "hungarian_small": 0.2788452618237999
   }
  ],
  "Repro llama-1b single": [
