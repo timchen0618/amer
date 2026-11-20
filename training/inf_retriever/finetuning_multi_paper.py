@@ -24,6 +24,10 @@ inbatch.py are not edited. Every option defaults to off, so without them this is
   --query_instruct_task t (or "paper") the query instruction ("Instruct: t\nQuery: q") in training and in-training eval; saved in
                           the checkpoint's opt, which retrieval_inf.py then uses (2026-10-27, P3: the paper's prompt).
   --save_best_dev_loss    keep checkpoint/best_dev_loss/: the lowest eval_loss_sr1 so far (legacy save_only_improve)
+  --max_grad_norm m       clip the gradient norm at m before every optimizer step, including the --one_label_step update
+                          (legacy train_distributed.py: --max_grad_norm 5.0, both steps clipped). Default 0 = off.
+  --log_grad_norm         log the pre-clip gradient norm (mean / max over the last 25 optimizer steps, fraction clipped);
+                          implied by --max_grad_norm > 0. Off by default, so earlier runs are unchanged.
 
     tools/phaseC_train.sbatch with TRAIN_SCRIPT=finetuning_multi_paper.py and EXTRA="... --sampling_cap 0.8 ..."
 """
@@ -51,6 +55,10 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
                                  help="query instruction for training and retrieval (default: finetuning_data's)")
         self.parser.add_argument("--save_best_dev_loss", action="store_true",
                                  help="save checkpoint/best_dev_loss whenever eval_loss_sr1 reaches a new minimum")
+        self.parser.add_argument("--max_grad_norm", type=float, default=0.0,
+                                 help="clip the gradient norm at this value before every optimizer step (0 = off)")
+        self.parser.add_argument("--log_grad_norm", action="store_true",
+                                 help="log the pre-clip gradient norm every 25 optimizer steps")
 
     def parse(self):
         opt = super().parse()  # ProjOptions binds the --io_proj class
@@ -67,6 +75,11 @@ class PaperOptions(finetuning_multi_proj.ProjOptions):
                 _enable_single_negatives(opt.negative_ctxs)
         if opt.sampling_cap < 1.0:
             _cap_sampling(opt.sampling_cap)
+        if opt.max_grad_norm < 0:
+            self.parser.error(f"--max_grad_norm must be >= 0, got {opt.max_grad_norm}")
+        if opt.max_grad_norm > 0 or opt.log_grad_norm:
+            # installed before the one-label hook, so that hook's extra update goes through the clipped step too
+            _install_grad_clip(opt.max_grad_norm)
         if opt.one_label_step:
             _install_one_label_step()
             if opt.training_mode == "standard_org_q":
@@ -299,6 +312,47 @@ def one_label_batch(batch):
     out = {key: batch[key] for key in ("q_tokens", "q_mask", "q_position_ids")}
     out["k_tokens"], out["k_mask"] = batch["k_tokens"][rows], batch["k_mask"][rows]
     return out
+
+
+def _install_grad_clip(max_norm):
+    """--max_grad_norm / --log_grad_norm (2026-11-20, P3 -> F ladder rung e).
+
+    Wraps optimizer.step so every call first runs accelerator.clip_grad_norm_ (FSDP-aware; returns the pre-clip total
+    norm). max_norm 0 means log only (clip at +inf, a no-op). Hooked into build_accelerator like the one-label step;
+    this hook must be installed first so the one-label wrapper's two step() calls both go through it (the legacy loop
+    clips both updates)."""
+    build = finetuning_multi.build_accelerator
+    limit = max_norm if max_norm > 0 else float("inf")
+    stats = {"n": 0, "sum": 0.0, "max": 0.0, "clipped": 0}
+
+    def build_accelerator(*args, **kwargs):
+        acc = build(*args, **kwargs)
+        prepare = acc.prepare
+
+        def prepare_and_hook(*objs):
+            out = prepare(*objs)
+            model, optimizer = out[0], out[1]
+            step = optimizer.step
+
+            def clipped_step(*a, **kw):
+                norm = float(acc.clip_grad_norm_(model.parameters(), limit))
+                stats["n"] += 1
+                stats["sum"] += norm
+                stats["max"] = max(stats["max"], norm)
+                stats["clipped"] += int(norm > limit)
+                if stats["n"] % 25 == 0:
+                    logger.warning(f"[grad_norm] calls={stats['n']} mean_last25={stats['sum'] / 25:.4f} "
+                                   f"max_last25={stats['max']:.4f} clipped_last25={stats['clipped']}/25 limit={limit}")
+                    stats.update(sum=0.0, max=0.0, clipped=0)
+                return step(*a, **kw)
+
+            optimizer.step = clipped_step
+            return out
+
+        acc.prepare = prepare_and_hook
+        return acc
+
+    finetuning_multi.build_accelerator = build_accelerator
 
 
 class _BatchRecorder:
